@@ -5,6 +5,7 @@ struct HealthCheckApp: App {
     private let store: HealthStore
     @StateObject private var importViewModel: ImportViewModel
     @StateObject private var dashboardViewModel: DashboardViewModel
+    @StateObject private var trendsViewModel: TrendsViewModel
 
     init() {
         let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
@@ -16,11 +17,12 @@ struct HealthCheckApp: App {
         self.store = store
         _importViewModel = StateObject(wrappedValue: ImportViewModel(importer: HealthExportImporter(store: store)))
         _dashboardViewModel = StateObject(wrappedValue: DashboardViewModel(store: store, resolver: SourcePriorityResolver(priority: ["Watch", "iPhone"])))
+        _trendsViewModel = StateObject(wrappedValue: TrendsViewModel(store: store, resolver: SourcePriorityResolver(priority: ["Watch", "iPhone"])))
     }
 
     var body: some Scene {
         WindowGroup {
-            ContentView(importViewModel: importViewModel, dashboardViewModel: dashboardViewModel)
+            ContentView(importViewModel: importViewModel, dashboardViewModel: dashboardViewModel, trendsViewModel: trendsViewModel)
         }
     }
 }
