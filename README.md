@@ -5,9 +5,17 @@ manuel depuis iOS) pour produire des analyses de santé et d'exercices.
 
 ## État du projet
 
-En conception — Spec 1 (import + dashboard quotidien) rédigée, en attente
-de plan d'implémentation. Voir `MEMORY.md` pour l'état détaillé et
-`TODOS.md` pour la liste des tâches.
+Spec 1 implémentée et fusionnée dans `main` : import de l'export Apple
+Santé, dédoublonnage par priorité de source, stockage SQLite, dashboard
+jour/semaine. Voir `MEMORY.md` pour l'état détaillé et `TODOS.md` pour la
+liste des tâches.
+
+## Lancer le projet
+
+```bash
+xcodegen generate
+open HealthCheck.xcodeproj   # scheme HealthCheck
+```
 
 ## Pourquoi un import manuel ?
 
@@ -18,7 +26,7 @@ santé »), transféré ensuite au Mac. Voir `ARCHITECTURE.md` pour le détail.
 
 ## Roadmap
 
-- [ ] Spec 1 — import + dédoublonnage + stockage + dashboard quotidien
+- [x] Spec 1 — import + dédoublonnage + stockage + dashboard quotidien
 - [ ] Spec 2 — tendances long terme
 - [ ] Spec 3 — suivi d'entraînement détaillé
 - [ ] Spec 4 — corrélations santé
