@@ -37,6 +37,7 @@ final class HealthExportImporter {
         var workoutsInserted = 0
         var recordBuffer: [HealthRecord] = []
         var workoutBuffer: [Workout] = []
+        var flushError: Error?
 
         func flushRecords() throws {
             guard !recordBuffer.isEmpty else { return }
@@ -55,15 +56,21 @@ final class HealthExportImporter {
                 recordBuffer.append(record)
                 recordsSeen += 1
                 progress(recordsSeen + workoutsSeen)
-                if recordBuffer.count >= self.batchSize { try? flushRecords() }
+                if recordBuffer.count >= self.batchSize {
+                    do { try flushRecords() } catch { flushError = flushError ?? error }
+                }
             },
             onWorkout: { workout in
                 workoutBuffer.append(workout)
                 workoutsSeen += 1
                 progress(recordsSeen + workoutsSeen)
-                if workoutBuffer.count >= self.batchSize { try? flushWorkouts() }
+                if workoutBuffer.count >= self.batchSize {
+                    do { try flushWorkouts() } catch { flushError = flushError ?? error }
+                }
             }
         )
+
+        if let flushError { throw flushError }
 
         try flushRecords()
         try flushWorkouts()
