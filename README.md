@@ -5,10 +5,11 @@ manuel depuis iOS) pour produire des analyses de santé et d'exercices.
 
 ## État du projet
 
-Spec 1 implémentée et fusionnée dans `main` : import de l'export Apple
-Santé, dédoublonnage par priorité de source, stockage SQLite, dashboard
-jour/semaine. Voir `MEMORY.md` pour l'état détaillé et `TODOS.md` pour la
-liste des tâches.
+Specs 1 et 2 implémentées et fusionnées dans `main` : import de l'export
+Apple Santé, dédoublonnage par priorité de source, stockage SQLite,
+dashboard jour/semaine, et tendances long terme (FC repos, poids, VO2
+max, sommeil) sur période sélectionnable. Voir `MEMORY.md` pour l'état
+détaillé et `TODOS.md` pour la liste des tâches.
 
 ## Lancer le projet
 
@@ -27,6 +28,6 @@ santé »), transféré ensuite au Mac. Voir `ARCHITECTURE.md` pour le détail.
 ## Roadmap
 
 - [x] Spec 1 — import + dédoublonnage + stockage + dashboard quotidien
-- [ ] Spec 2 — tendances long terme
+- [x] Spec 2 — tendances long terme (FC repos, poids, VO2 max, sommeil)
 - [ ] Spec 3 — suivi d'entraînement détaillé
 - [ ] Spec 4 — corrélations santé
