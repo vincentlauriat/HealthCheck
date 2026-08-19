@@ -1,0 +1,72 @@
+name: HealthCheck
+options:
+  bundleIdPrefix: fr.vincentlauriat
+  deploymentTarget:
+    macOS: "15.0"
+
+packages:
+  GRDB:
+    url: https://github.com/groue/GRDB.swift
+    from: 6.29.0
+
+schemes:
+  HealthCheck:
+    build:
+      targets:
+        HealthCheck: all
+    test:
+      targets:
+        - HealthCheckTests
+    run:
+      config: Debug
+
+targets:
+  HealthCheck:
+    type: application
+    platform: macOS
+    deploymentTarget: "15.0"
+    sources:
+      - path: HealthCheck
+        excludes:
+          - "**/*.entitlements"
+          - "Info.plist"
+    dependencies:
+      - package: GRDB
+        product: GRDB
+    settings:
+      base:
+        PRODUCT_NAME: HealthCheck
+        PRODUCT_BUNDLE_IDENTIFIER: fr.vincentlauriat.healthcheck
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        SWIFT_VERSION: "5.9"
+        MARKETING_VERSION: "0.1.0"
+        CURRENT_PROJECT_VERSION: "1"
+        MACOSX_DEPLOYMENT_TARGET: "15.0"
+        CODE_SIGN_ENTITLEMENTS: HealthCheck/HealthCheck.entitlements
+        CODE_SIGN_IDENTITY: ""
+        CODE_SIGNING_REQUIRED: NO
+        CODE_SIGNING_ALLOWED: NO
+    info:
+      path: HealthCheck/Info.plist
+      properties:
+        CFBundleName: HealthCheck
+        CFBundleDisplayName: HealthCheck
+        CFBundleIdentifier: fr.vincentlauriat.healthcheck
+        CFBundleShortVersionString: "$(MARKETING_VERSION)"
+        CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
+        LSMinimumSystemVersion: "15.0"
+        NSHumanReadableCopyright: ""
+
+  HealthCheckTests:
+    type: bundle.unit-test
+    platform: macOS
+    deploymentTarget: "15.0"
+    sources:
+      - path: HealthCheckTests
+    dependencies:
+      - target: HealthCheck
+    settings:
+      base:
+        SWIFT_VERSION: "5.9"
+        CODE_SIGNING_REQUIRED: NO
+        CODE_SIGNING_ALLOWED: NO
