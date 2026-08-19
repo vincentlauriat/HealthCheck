@@ -26,4 +26,21 @@ final class HealthExportParserTests: XCTestCase {
 
         XCTAssertEqual(workouts.first?.routeFileName, "route_2026-08-18_1.gpx")
     }
+
+    func test_parse_extractsSleepRecordsSeparatelyFromNumericRecords() throws {
+        var records: [HealthRecord] = []
+        var sleepRecords: [SleepRecord] = []
+
+        try HealthExportParser().parse(
+            fileURL: fixtureURL,
+            onRecord: { records.append($0) },
+            onWorkout: { _ in },
+            onSleepRecord: { sleepRecords.append($0) }
+        )
+
+        XCTAssertEqual(records.count, 3, "the sleep record must not land in the numeric records array")
+        XCTAssertEqual(sleepRecords.count, 1)
+        XCTAssertEqual(sleepRecords.first?.value, "HKCategoryValueSleepAnalysisAsleepCore")
+        XCTAssertEqual(sleepRecords.first?.sourceName, "Watch")
+    }
 }

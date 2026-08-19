@@ -10,6 +10,7 @@ final class HealthExportParser: NSObject, XMLParserDelegate {
 
     private var onRecord: ((HealthRecord) -> Void) = { _ in }
     private var onWorkout: ((Workout) -> Void) = { _ in }
+    private var onSleepRecord: ((SleepRecord) -> Void) = { _ in }
     private var parseError: Error?
 
     private var currentWorkoutAttributes: [String: String]?
@@ -18,10 +19,12 @@ final class HealthExportParser: NSObject, XMLParserDelegate {
     func parse(
         fileURL: URL,
         onRecord: @escaping (HealthRecord) -> Void,
-        onWorkout: @escaping (Workout) -> Void
+        onWorkout: @escaping (Workout) -> Void,
+        onSleepRecord: @escaping (SleepRecord) -> Void = { _ in }
     ) throws {
         self.onRecord = onRecord
         self.onWorkout = onWorkout
+        self.onSleepRecord = onSleepRecord
         self.parseError = nil
 
         guard let stream = InputStream(url: fileURL) else {
@@ -49,6 +52,27 @@ final class HealthExportParser: NSObject, XMLParserDelegate {
     ) {
         switch elementName {
         case "Record":
+            if attributeDict["type"] == "HKCategoryTypeIdentifierSleepAnalysis" {
+                guard
+                    let type = attributeDict["type"],
+                    let sourceName = attributeDict["sourceName"],
+                    let value = attributeDict["value"],
+                    let startDate = date(from: attributeDict, key: "startDate"),
+                    let endDate = date(from: attributeDict, key: "endDate")
+                else {
+                    return
+                }
+                onSleepRecord(SleepRecord(
+                    type: type,
+                    sourceName: sourceName,
+                    device: attributeDict["device"],
+                    value: value,
+                    startDate: startDate,
+                    endDate: endDate,
+                    creationDate: date(from: attributeDict, key: "creationDate")
+                ))
+                return
+            }
             guard
                 let type = attributeDict["type"],
                 let sourceName = attributeDict["sourceName"],
