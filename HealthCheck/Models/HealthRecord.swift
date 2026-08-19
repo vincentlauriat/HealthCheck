@@ -1,7 +1,7 @@
 import Foundation
 import CryptoKit
 
-struct HealthRecord: Equatable {
+struct HealthRecord: Equatable, TimedHealthValue {
     let type: String
     let sourceName: String
     let device: String?

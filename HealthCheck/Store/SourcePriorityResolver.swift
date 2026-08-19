@@ -3,8 +3,8 @@ import Foundation
 struct SourcePriorityResolver {
     let priority: [String]
 
-    func resolve(_ records: [HealthRecord]) -> [HealthRecord] {
-        var kept: [HealthRecord] = []
+    func resolve<T: TimedHealthValue>(_ records: [T]) -> [T] {
+        var kept: [T] = []
 
         for record in records.sorted(by: { $0.startDate < $1.startDate }) {
             let overlapIndex = kept.firstIndex { existing in

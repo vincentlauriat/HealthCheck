@@ -49,4 +49,31 @@ final class SourcePriorityResolverTests: XCTestCase {
 
         XCTAssertEqual(resolver.resolve(records).count, 1)
     }
+
+    private func makeSleepRecord(sourceName: String, start: Date, end: Date) -> SleepRecord {
+        SleepRecord(
+            type: "HKCategoryTypeIdentifierSleepAnalysis",
+            sourceName: sourceName,
+            device: nil,
+            value: "HKCategoryValueSleepAnalysisAsleepCore",
+            startDate: start,
+            endDate: end,
+            creationDate: start
+        )
+    }
+
+    func test_resolve_worksGenericallyForSleepRecords() {
+        let start = Date(timeIntervalSince1970: 1_700_000_000)
+        let end = start.addingTimeInterval(3600)
+        let records = [
+            makeSleepRecord(sourceName: "iPhone", start: start, end: end),
+            makeSleepRecord(sourceName: "Watch", start: start, end: end)
+        ]
+        let resolver = SourcePriorityResolver(priority: ["Watch", "iPhone"])
+
+        let resolved = resolver.resolve(records)
+
+        XCTAssertEqual(resolved.count, 1)
+        XCTAssertEqual(resolved.first?.sourceName, "Watch")
+    }
 }
