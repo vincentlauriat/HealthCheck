@@ -1,0 +1,134 @@
+import Foundation
+import GRDB
+
+final class HealthStore {
+    private let dbQueue: DatabaseQueue
+
+    init(path: String) throws {
+        dbQueue = try DatabaseQueue(path: path)
+        try dbQueue.write { db in
+            try db.execute(sql: """
+                CREATE TABLE IF NOT EXISTS health_record (
+                    id TEXT PRIMARY KEY,
+                    type TEXT NOT NULL,
+                    sourceName TEXT NOT NULL,
+                    device TEXT,
+                    unit TEXT,
+                    value REAL NOT NULL,
+                    startDate TEXT NOT NULL,
+                    endDate TEXT NOT NULL,
+                    creationDate TEXT
+                )
+                """)
+            try db.execute(sql: """
+                CREATE INDEX IF NOT EXISTS idx_health_record_type_start
+                ON health_record(type, startDate)
+                """)
+            try db.execute(sql: """
+                CREATE TABLE IF NOT EXISTS workout (
+                    id TEXT PRIMARY KEY,
+                    activityType TEXT NOT NULL,
+                    sourceName TEXT NOT NULL,
+                    duration REAL NOT NULL,
+                    durationUnit TEXT NOT NULL,
+                    totalDistance REAL,
+                    totalDistanceUnit TEXT,
+                    totalEnergyBurned REAL,
+                    totalEnergyBurnedUnit TEXT,
+                    startDate TEXT NOT NULL,
+                    endDate TEXT NOT NULL,
+                    routeFileName TEXT
+                )
+                """)
+        }
+    }
+
+    private static let isoFormatter: ISO8601DateFormatter = {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return f
+    }()
+
+    @discardableResult
+    func insertRecords(_ records: [HealthRecord], batchSize: Int = 5000) throws -> Int {
+        var insertedCount = 0
+        for batch in stride(from: 0, to: records.count, by: batchSize).map({ Array(records[$0..<min($0 + batchSize, records.count)]) }) {
+            try dbQueue.write { db in
+                for record in batch {
+                    try db.execute(
+                        sql: """
+                            INSERT OR IGNORE INTO health_record
+                            (id, type, sourceName, device, unit, value, startDate, endDate, creationDate)
+                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                            """,
+                        arguments: [
+                            record.dedupKey, record.type, record.sourceName, record.device, record.unit,
+                            record.value,
+                            Self.isoFormatter.string(from: record.startDate),
+                            Self.isoFormatter.string(from: record.endDate),
+                            record.creationDate.map(Self.isoFormatter.string(from:))
+                        ]
+                    )
+                    if db.changesCount > 0 { insertedCount += 1 }
+                }
+            }
+        }
+        return insertedCount
+    }
+
+    @discardableResult
+    func insertWorkouts(_ workouts: [Workout], batchSize: Int = 5000) throws -> Int {
+        var insertedCount = 0
+        for batch in stride(from: 0, to: workouts.count, by: batchSize).map({ Array(workouts[$0..<min($0 + batchSize, workouts.count)]) }) {
+            try dbQueue.write { db in
+                for workout in batch {
+                    try db.execute(
+                        sql: """
+                            INSERT OR IGNORE INTO workout
+                            (id, activityType, sourceName, duration, durationUnit, totalDistance, totalDistanceUnit,
+                             totalEnergyBurned, totalEnergyBurnedUnit, startDate, endDate, routeFileName)
+                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                            """,
+                        arguments: [
+                            workout.dedupKey, workout.activityType, workout.sourceName,
+                            workout.duration, workout.durationUnit,
+                            workout.totalDistance, workout.totalDistanceUnit,
+                            workout.totalEnergyBurned, workout.totalEnergyBurnedUnit,
+                            Self.isoFormatter.string(from: workout.startDate),
+                            Self.isoFormatter.string(from: workout.endDate),
+                            workout.routeFileName
+                        ]
+                    )
+                    if db.changesCount > 0 { insertedCount += 1 }
+                }
+            }
+        }
+        return insertedCount
+    }
+
+    func records(type: String, from: Date, to: Date) throws -> [HealthRecord] {
+        try dbQueue.read { db in
+            let rows = try Row.fetchAll(
+                db,
+                sql: """
+                    SELECT * FROM health_record
+                    WHERE type = ? AND startDate >= ? AND startDate <= ?
+                    ORDER BY startDate
+                    """,
+                arguments: [type, Self.isoFormatter.string(from: from), Self.isoFormatter.string(from: to)]
+            )
+            return rows.map { row in
+                HealthRecord(
+                    type: row["type"],
+                    sourceName: row["sourceName"],
+                    device: row["device"],
+                    unit: row["unit"],
+                    value: row["value"],
+                    startDate: Self.isoFormatter.date(from: row["startDate"])!,
+                    endDate: Self.isoFormatter.date(from: row["endDate"])!,
+                    creationDate: (row["creationDate"] as String?).flatMap(Self.isoFormatter.date(from:))
+                )
+            }
+        }
+    }
+}
