@@ -64,6 +64,17 @@ final class TrendsViewModel: ObservableObject {
             .sorted { $0.date < $1.date }
     }
 
+    /// Moyenne mobile glissante sur `window` points — un point par position à
+    /// partir de la première fenêtre complète, rien si la série est trop courte.
+    nonisolated static func movingAverage(_ points: [TrendPoint], window: Int = 7) -> [TrendPoint] {
+        guard window > 1, points.count >= window else { return [] }
+        return (window - 1 ..< points.count).map { index in
+            let slice = points[(index - window + 1)...index]
+            let mean = slice.reduce(0) { $0 + $1.value } / Double(window)
+            return TrendPoint(date: points[index].date, value: mean)
+        }
+    }
+
     private func nightlySleepHours(from: Date, to: Date) throws -> [TrendPoint] {
         let asleep = try store.sleepRecords(from: from, to: to)
             .filter { $0.value.hasPrefix("HKCategoryValueSleepAnalysisAsleep") }

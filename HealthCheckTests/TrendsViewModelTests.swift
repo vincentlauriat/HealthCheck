@@ -49,4 +49,24 @@ final class TrendsViewModelTests: XCTestCase {
         XCTAssertEqual(viewModel.sleepHours.count, 1, "both segments belong to the same pre-midnight-shifted night bucket")
         XCTAssertEqual(viewModel.sleepHours.first?.value, 2.0, "only the 2-hour Asleep segment counts, not the Awake one")
     }
+
+    func test_movingAverage_smoothsOverTheWindow() {
+        let day: TimeInterval = 86_400
+        let base = Date(timeIntervalSince1970: 1_700_000_000)
+        let points = [10.0, 20.0, 30.0, 40.0].enumerated().map { index, value in
+            TrendPoint(date: base.addingTimeInterval(Double(index) * day), value: value)
+        }
+
+        let smoothed = TrendsViewModel.movingAverage(points, window: 3)
+
+        XCTAssertEqual(smoothed.count, 2)
+        XCTAssertEqual(smoothed[0].value, 20.0, "(10+20+30)/3")
+        XCTAssertEqual(smoothed[1].value, 30.0, "(20+30+40)/3")
+        XCTAssertEqual(smoothed[1].date, points[3].date, "each smoothed point is anchored to the window's last date")
+    }
+
+    func test_movingAverage_returnsEmptyWhenSeriesShorterThanWindow() {
+        let points = [TrendPoint(date: Date(timeIntervalSince1970: 1_700_000_000), value: 5)]
+        XCTAssertTrue(TrendsViewModel.movingAverage(points, window: 7).isEmpty)
+    }
 }

@@ -128,7 +128,7 @@ final class HealthStore {
                 db,
                 sql: """
                     SELECT * FROM health_record
-                    WHERE type = ? AND startDate >= ? AND startDate <= ?
+                    WHERE type = ? AND startDate >= ? AND startDate < ?
                     ORDER BY startDate
                     """,
                 arguments: [type, Self.isoFormatter.string(from: from), Self.isoFormatter.string(from: to)]
@@ -180,7 +180,7 @@ final class HealthStore {
                 db,
                 sql: """
                     SELECT * FROM sleep_record
-                    WHERE startDate >= ? AND startDate <= ?
+                    WHERE startDate >= ? AND startDate < ?
                     ORDER BY startDate
                     """,
                 arguments: [Self.isoFormatter.string(from: from), Self.isoFormatter.string(from: to)]

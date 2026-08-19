@@ -21,8 +21,11 @@ final class ImportViewModel: ObservableObject {
 
         do {
             let summary = try await Task.detached(priority: .userInitiated) { [importer] in
-                try importer.importZip(at: url, progress: { count in
-                    Task { @MainActor in self.elementsProcessed = count }
+                try importer.importZip(at: url, progress: { [weak self] count in
+                    // Le parseur émet ~1,8M callbacks sur un vrai export ; ne
+                    // republier qu'un échantillon évite de saturer le MainActor.
+                    guard count % 2000 == 0 else { return }
+                    Task { @MainActor in self?.elementsProcessed = count }
                 })
             }.value
             lastSummary = summary

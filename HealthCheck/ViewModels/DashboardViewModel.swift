@@ -12,7 +12,7 @@ struct PeriodSummary {
 final class DashboardViewModel: ObservableObject {
     @Published private(set) var today: PeriodSummary?
     @Published private(set) var thisWeek: PeriodSummary?
-    @Published private(set) var loadError: Error?
+    @Published private(set) var lastWeek: PeriodSummary?
 
     private let store: HealthStore
     private let resolver: SourcePriorityResolver
@@ -35,6 +35,10 @@ final class DashboardViewModel: ObservableObject {
     func loadThisWeek() throws {
         let interval = calendar.dateInterval(of: .weekOfYear, for: now())!
         thisWeek = try summary(from: interval.start, to: interval.end)
+
+        if let lastWeekStart = calendar.date(byAdding: .weekOfYear, value: -1, to: interval.start) {
+            lastWeek = try summary(from: lastWeekStart, to: interval.start)
+        }
     }
 
     private func summary(from: Date, to: Date) throws -> PeriodSummary {

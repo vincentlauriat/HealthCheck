@@ -53,4 +53,26 @@ final class DashboardViewModelTests: XCTestCase {
 
         XCTAssertEqual(viewModel.thisWeek?.steps, 1500)
     }
+
+    @MainActor
+    func test_loadThisWeek_alsoLoadsPreviousWeekForComparison() throws {
+        let store = try HealthStore(path: ":memory:")
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.firstWeekday = 2 // Monday
+        let now = Date()
+        let startOfWeek = calendar.dateInterval(of: .weekOfYear, for: now)!.start
+        let thisWeekSample = startOfWeek.addingTimeInterval(3600)
+        let lastWeekSample = calendar.date(byAdding: .weekOfYear, value: -1, to: startOfWeek)!.addingTimeInterval(3600)
+
+        try store.insertRecords([
+            record(type: "HKQuantityTypeIdentifierStepCount", sourceName: "Watch", value: 2000, start: thisWeekSample),
+            record(type: "HKQuantityTypeIdentifierStepCount", sourceName: "Watch", value: 5000, start: lastWeekSample)
+        ])
+
+        let viewModel = DashboardViewModel(store: store, resolver: SourcePriorityResolver(priority: ["Watch", "iPhone"]), calendar: calendar, now: { now })
+        try viewModel.loadThisWeek()
+
+        XCTAssertEqual(viewModel.thisWeek?.steps, 2000)
+        XCTAssertEqual(viewModel.lastWeek?.steps, 5000, "the previous week's sample must land in lastWeek, not thisWeek")
+    }
 }
