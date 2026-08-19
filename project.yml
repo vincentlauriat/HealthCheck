@@ -63,6 +63,8 @@ targets:
     deploymentTarget: "15.0"
     sources:
       - path: HealthCheckTests
+    resources:
+      - path: HealthCheckTests/Fixtures
     dependencies:
       - target: HealthCheck
     settings:
