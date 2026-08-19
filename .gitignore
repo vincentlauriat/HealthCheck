@@ -4,9 +4,27 @@ CHANGES.md
 TODOS.md
 PLAN.md
 
-*.dmg
-*.zip
+# ── macOS ──
 .DS_Store
-.build/
+
+# ── Xcode / XcodeGen ──
+*.xcodeproj/
+build/
 DerivedData/
+xcuserdata/
+*.xcuserstate
+
+# ── Swift Package Manager ──
+.build/
+.swiftpm/
+
+# ── Release artifacts ──
+*.dmg
 release/
+
+# ── zip: ignore everywhere except the committed test fixture ──
+*.zip
+!HealthCheckTests/Fixtures/*.zip
+
+# ── subagent-driven-development scratch workspace (not source) ──
+.superpowers/
