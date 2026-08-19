@@ -174,6 +174,19 @@ final class HealthStore {
         return insertedCount
     }
 
+    /// Agrégat SQL — indispensable pour les types à très haute fréquence
+    /// (FC continue : centaines de milliers de lignes) qu'on ne charge
+    /// jamais en mémoire.
+    func maxValue(type: String, from: Date, to: Date) throws -> Double? {
+        try dbQueue.read { db in
+            try Double.fetchOne(
+                db,
+                sql: "SELECT MAX(value) FROM health_record WHERE type = ? AND startDate >= ? AND startDate < ?",
+                arguments: [type, Self.isoFormatter.string(from: from), Self.isoFormatter.string(from: to)]
+            )
+        }
+    }
+
     func sleepRecords(from: Date, to: Date) throws -> [SleepRecord] {
         try dbQueue.read { db in
             let rows = try Row.fetchAll(
