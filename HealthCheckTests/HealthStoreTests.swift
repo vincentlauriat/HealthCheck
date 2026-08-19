@@ -47,4 +47,35 @@ final class HealthStoreTests: XCTestCase {
         let insertedCount = try store.insertRecords(batch)
         XCTAssertEqual(insertedCount, 1)
     }
+
+    private func makeSleepRecord(sourceName: String, value: String, start: Date, end: Date) -> SleepRecord {
+        SleepRecord(
+            type: "HKCategoryTypeIdentifierSleepAnalysis",
+            sourceName: sourceName,
+            device: nil,
+            value: value,
+            startDate: start,
+            endDate: end,
+            creationDate: start
+        )
+    }
+
+    func test_insertSleepRecords_isIdempotentAndQueryable() throws {
+        let store = try HealthStore(path: ":memory:")
+        let start = Date(timeIntervalSince1970: 1_700_000_000)
+        let end = start.addingTimeInterval(3600)
+        let records = [
+            makeSleepRecord(sourceName: "Watch", value: "HKCategoryValueSleepAnalysisAsleepCore", start: start, end: end)
+        ]
+
+        let firstCount = try store.insertSleepRecords(records)
+        XCTAssertEqual(firstCount, 1)
+
+        let secondCount = try store.insertSleepRecords(records)
+        XCTAssertEqual(secondCount, 0, "re-import must be idempotent")
+
+        let stored = try store.sleepRecords(from: start.addingTimeInterval(-1), to: end.addingTimeInterval(1))
+        XCTAssertEqual(stored.count, 1)
+        XCTAssertEqual(stored.first?.value, "HKCategoryValueSleepAnalysisAsleepCore")
+    }
 }

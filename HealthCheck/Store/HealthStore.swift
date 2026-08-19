@@ -40,6 +40,22 @@ final class HealthStore {
                     routeFileName TEXT
                 )
                 """)
+            try db.execute(sql: """
+                CREATE TABLE IF NOT EXISTS sleep_record (
+                    id TEXT PRIMARY KEY,
+                    type TEXT NOT NULL,
+                    sourceName TEXT NOT NULL,
+                    device TEXT,
+                    value TEXT NOT NULL,
+                    startDate TEXT NOT NULL,
+                    endDate TEXT NOT NULL,
+                    creationDate TEXT
+                )
+                """)
+            try db.execute(sql: """
+                CREATE INDEX IF NOT EXISTS idx_sleep_record_start
+                ON sleep_record(startDate)
+                """)
         }
     }
 
@@ -123,6 +139,57 @@ final class HealthStore {
                     sourceName: row["sourceName"],
                     device: row["device"],
                     unit: row["unit"],
+                    value: row["value"],
+                    startDate: Self.isoFormatter.date(from: row["startDate"])!,
+                    endDate: Self.isoFormatter.date(from: row["endDate"])!,
+                    creationDate: (row["creationDate"] as String?).flatMap(Self.isoFormatter.date(from:))
+                )
+            }
+        }
+    }
+
+    @discardableResult
+    func insertSleepRecords(_ records: [SleepRecord], batchSize: Int = 5000) throws -> Int {
+        var insertedCount = 0
+        for batch in stride(from: 0, to: records.count, by: batchSize).map({ Array(records[$0..<min($0 + batchSize, records.count)]) }) {
+            try dbQueue.write { db in
+                for record in batch {
+                    try db.execute(
+                        sql: """
+                            INSERT OR IGNORE INTO sleep_record
+                            (id, type, sourceName, device, value, startDate, endDate, creationDate)
+                            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                            """,
+                        arguments: [
+                            record.dedupKey, record.type, record.sourceName, record.device, record.value,
+                            Self.isoFormatter.string(from: record.startDate),
+                            Self.isoFormatter.string(from: record.endDate),
+                            record.creationDate.map(Self.isoFormatter.string(from:))
+                        ]
+                    )
+                    if db.changesCount > 0 { insertedCount += 1 }
+                }
+            }
+        }
+        return insertedCount
+    }
+
+    func sleepRecords(from: Date, to: Date) throws -> [SleepRecord] {
+        try dbQueue.read { db in
+            let rows = try Row.fetchAll(
+                db,
+                sql: """
+                    SELECT * FROM sleep_record
+                    WHERE startDate >= ? AND startDate <= ?
+                    ORDER BY startDate
+                    """,
+                arguments: [Self.isoFormatter.string(from: from), Self.isoFormatter.string(from: to)]
+            )
+            return rows.map { row in
+                SleepRecord(
+                    type: row["type"],
+                    sourceName: row["sourceName"],
+                    device: row["device"],
                     value: row["value"],
                     startDate: Self.isoFormatter.date(from: row["startDate"])!,
                     endDate: Self.isoFormatter.date(from: row["endDate"])!,
