@@ -1,4 +1,5 @@
 import XCTest
+import GRDB
 @testable import HealthCheck
 
 final class HealthExportImporterTests: XCTestCase {
@@ -22,6 +23,7 @@ final class HealthExportImporterTests: XCTestCase {
     }
 
     func test_importZip_midStreamStoreFailure_propagatesError() throws {
+        // sample_export.xml has 3 records followed by 1 workout, in that order.
         let fixtureURL = Bundle(for: Self.self).url(forResource: "sample_export", withExtension: "zip")!
 
         let dbDir = FileManager.default.temporaryDirectory
@@ -33,17 +35,27 @@ final class HealthExportImporterTests: XCTestCase {
         }
 
         let store = try HealthStore(path: dbDir.appendingPathComponent("test.sqlite").path)
-        // batchSize: 1 forces a flush after the very first record, i.e. mid-stream,
-        // well before the parser finishes and the final post-loop flush runs.
+        // batchSize: 1 makes every record trigger a flush attempt as soon as it's seen.
         let importer = HealthExportImporter(store: store, batchSize: 1)
 
-        // Removing write permission on the db's directory makes every subsequent
-        // write transaction fail (SQLite can no longer create its journal file),
-        // simulating a real mid-stream store failure without a mock.
+        // Make the directory read-only so SQLite can't create its rollback-journal
+        // file: the very first mid-stream flush (record #1) fails for real, no mock.
         try FileManager.default.setAttributes([.posixPermissions: 0o555], ofItemAtPath: dbDir.path)
 
-        XCTAssertThrowsError(try importer.importZip(at: fixtureURL, progress: { _ in })) { error in
-            XCTAssertFalse(error is HealthExportImporterError, "the error must come from the store, not be masked")
+        // `progress` fires after a record is buffered but before its flush attempt,
+        // so restoring write access when count == 2 lets every later write (record
+        // #2 onward, including the final flush) succeed. This isolates a failure
+        // that happens ONLY mid-stream, with the rest of the import succeeding —
+        // exactly the case the old `try? flushRecords()` used to swallow silently,
+        // letting importZip return a plausible-but-wrong summary instead of throwing.
+        XCTAssertThrowsError(
+            try importer.importZip(at: fixtureURL, progress: { count in
+                if count == 2 {
+                    try? FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: dbDir.path)
+                }
+            })
+        ) { error in
+            XCTAssertTrue(error is DatabaseError, "expected the underlying store error to surface, got \(error)")
         }
     }
 }
