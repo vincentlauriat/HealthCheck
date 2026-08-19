@@ -15,11 +15,14 @@ final class HealthExportImporterTests: XCTestCase {
         XCTAssertEqual(firstSummary.recordsInserted, 3)
         XCTAssertEqual(firstSummary.workoutsSeen, 1)
         XCTAssertEqual(firstSummary.workoutsInserted, 1)
+        XCTAssertEqual(firstSummary.sleepRecordsSeen, 1)
+        XCTAssertEqual(firstSummary.sleepRecordsInserted, 1)
         XCTAssertFalse(progressCalls.isEmpty)
 
         let secondSummary = try importer.importZip(at: fixtureURL, progress: { _ in })
         XCTAssertEqual(secondSummary.recordsInserted, 0, "re-import must be idempotent")
         XCTAssertEqual(secondSummary.workoutsInserted, 0)
+        XCTAssertEqual(secondSummary.sleepRecordsInserted, 0)
     }
 
     func test_importZip_midStreamStoreFailure_propagatesError() throws {

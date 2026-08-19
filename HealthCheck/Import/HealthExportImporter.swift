@@ -5,6 +5,8 @@ struct ImportSummary {
     let recordsInserted: Int
     let workoutsSeen: Int
     let workoutsInserted: Int
+    let sleepRecordsSeen: Int
+    let sleepRecordsInserted: Int
 }
 
 enum HealthExportImporterError: Error {
@@ -35,8 +37,11 @@ final class HealthExportImporter {
         var recordsInserted = 0
         var workoutsSeen = 0
         var workoutsInserted = 0
+        var sleepRecordsSeen = 0
+        var sleepRecordsInserted = 0
         var recordBuffer: [HealthRecord] = []
         var workoutBuffer: [Workout] = []
+        var sleepRecordBuffer: [SleepRecord] = []
         var flushError: Error?
 
         func flushRecords() throws {
@@ -49,13 +54,18 @@ final class HealthExportImporter {
             workoutsInserted += try store.insertWorkouts(workoutBuffer)
             workoutBuffer.removeAll(keepingCapacity: true)
         }
+        func flushSleepRecords() throws {
+            guard !sleepRecordBuffer.isEmpty else { return }
+            sleepRecordsInserted += try store.insertSleepRecords(sleepRecordBuffer)
+            sleepRecordBuffer.removeAll(keepingCapacity: true)
+        }
 
         try HealthExportParser().parse(
             fileURL: exportURL,
             onRecord: { record in
                 recordBuffer.append(record)
                 recordsSeen += 1
-                progress(recordsSeen + workoutsSeen)
+                progress(recordsSeen + workoutsSeen + sleepRecordsSeen)
                 if recordBuffer.count >= self.batchSize {
                     do { try flushRecords() } catch { flushError = flushError ?? error }
                 }
@@ -63,9 +73,17 @@ final class HealthExportImporter {
             onWorkout: { workout in
                 workoutBuffer.append(workout)
                 workoutsSeen += 1
-                progress(recordsSeen + workoutsSeen)
+                progress(recordsSeen + workoutsSeen + sleepRecordsSeen)
                 if workoutBuffer.count >= self.batchSize {
                     do { try flushWorkouts() } catch { flushError = flushError ?? error }
+                }
+            },
+            onSleepRecord: { sleepRecord in
+                sleepRecordBuffer.append(sleepRecord)
+                sleepRecordsSeen += 1
+                progress(recordsSeen + workoutsSeen + sleepRecordsSeen)
+                if sleepRecordBuffer.count >= self.batchSize {
+                    do { try flushSleepRecords() } catch { flushError = flushError ?? error }
                 }
             }
         )
@@ -74,12 +92,15 @@ final class HealthExportImporter {
 
         try flushRecords()
         try flushWorkouts()
+        try flushSleepRecords()
 
         return ImportSummary(
             recordsSeen: recordsSeen,
             recordsInserted: recordsInserted,
             workoutsSeen: workoutsSeen,
-            workoutsInserted: workoutsInserted
+            workoutsInserted: workoutsInserted,
+            sleepRecordsSeen: sleepRecordsSeen,
+            sleepRecordsInserted: sleepRecordsInserted
         )
     }
 
