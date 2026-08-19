@@ -1,0 +1,12 @@
+COMMANDS.md
+MEMORY.md
+CHANGES.md
+TODOS.md
+PLAN.md
+
+*.dmg
+*.zip
+.DS_Store
+.build/
+DerivedData/
+release/
