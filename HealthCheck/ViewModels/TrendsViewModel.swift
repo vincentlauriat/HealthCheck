@@ -76,17 +76,7 @@ final class TrendsViewModel: ObservableObject {
     }
 
     private func nightlySleepHours(from: Date, to: Date) throws -> [TrendPoint] {
-        let asleep = try store.sleepRecords(from: from, to: to)
-            .filter { $0.value.hasPrefix("HKCategoryValueSleepAnalysisAsleep") }
-        let resolved = resolver.resolve(asleep)
-        let grouped = Dictionary(grouping: resolved) { record in
-            calendar.startOfDay(for: record.startDate.addingTimeInterval(-12 * 3600))
-        }
-        return grouped
-            .map { night, records -> TrendPoint in
-                let totalSeconds = records.reduce(0.0) { $0 + $1.endDate.timeIntervalSince($1.startDate) }
-                return TrendPoint(date: night, value: totalSeconds / 3600)
-            }
-            .sorted { $0.date < $1.date }
+        let resolved = resolver.resolve(try store.sleepRecords(from: from, to: to))
+        return SleepAggregator.nightlyHours(resolved, calendar: calendar)
     }
 }

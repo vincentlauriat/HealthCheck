@@ -8,9 +8,32 @@ struct DashboardView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 28) {
+                if let readiness = viewModel.readiness {
+                    VStack(alignment: .leading, spacing: 12) {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Forme du jour").font(.title2.bold())
+                            Text(Date.now.formatted(.dateTime.weekday(.wide).day().month(.wide)))
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
+                        }
+                        ReadinessCard(readiness: readiness)
+                    }
+                }
+
+                if !viewModel.insights.isEmpty {
+                    VStack(alignment: .leading, spacing: 12) {
+                        Text("Observations").font(.title2.bold())
+                        ForEach(viewModel.insights, id: \.title) { insight in
+                            InsightCard(insight: insight)
+                        }
+                    }
+                }
+
                 section(
                     title: "Aujourd'hui",
-                    subtitle: Date.now.formatted(.dateTime.weekday(.wide).day().month(.wide)),
+                    subtitle: viewModel.readiness == nil
+                        ? Date.now.formatted(.dateTime.weekday(.wide).day().month(.wide))
+                        : nil,
                     summary: viewModel.today,
                     reference: nil
                 )
@@ -27,6 +50,7 @@ struct DashboardView: View {
         .task {
             try? viewModel.loadToday()
             try? viewModel.loadThisWeek()
+            try? viewModel.loadWellness()
         }
     }
 

@@ -75,4 +75,32 @@ final class DashboardViewModelTests: XCTestCase {
         XCTAssertEqual(viewModel.thisWeek?.steps, 2000)
         XCTAssertEqual(viewModel.lastWeek?.steps, 5000, "the previous week's sample must land in lastWeek, not thisWeek")
     }
+
+    @MainActor
+    func test_loadWellness_scoresTodayAgainstPersonalBaseline() throws {
+        let store = try HealthStore(path: ":memory:")
+        let now = Date()
+        let calendar = Calendar.current
+        let startOfToday = calendar.startOfDay(for: now)
+
+        // Baseline : 10 jours à 60 bpm, puis 66 bpm aujourd'hui (+10 %).
+        var records: [HealthRecord] = (1...10).map { daysAgo in
+            record(
+                type: "HKQuantityTypeIdentifierRestingHeartRate",
+                sourceName: "Watch",
+                value: 60,
+                start: calendar.date(byAdding: .day, value: -daysAgo, to: startOfToday)!.addingTimeInterval(3600)
+            )
+        }
+        records.append(record(type: "HKQuantityTypeIdentifierRestingHeartRate", sourceName: "Watch", value: 66, start: startOfToday.addingTimeInterval(3600)))
+        try store.insertRecords(records)
+
+        let viewModel = DashboardViewModel(store: store, resolver: SourcePriorityResolver(priority: ["Watch", "iPhone"]), now: { now })
+        try viewModel.loadWellness()
+
+        let hrComponent = viewModel.readiness?.components.first(where: { $0.name == "FC repos" })
+        XCTAssertNotNil(hrComponent)
+        // +10 % au-dessus de la baseline → 100 − 0,10 × 600 = 40
+        XCTAssertEqual(hrComponent!.score, 40, accuracy: 0.01)
+    }
 }

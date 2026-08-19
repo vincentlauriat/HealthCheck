@@ -13,6 +13,8 @@ final class DashboardViewModel: ObservableObject {
     @Published private(set) var today: PeriodSummary?
     @Published private(set) var thisWeek: PeriodSummary?
     @Published private(set) var lastWeek: PeriodSummary?
+    @Published private(set) var readiness: ReadinessScore?
+    @Published private(set) var insights: [Insight] = []
 
     private let store: HealthStore
     private let resolver: SourcePriorityResolver
@@ -39,6 +41,83 @@ final class DashboardViewModel: ObservableObject {
         if let lastWeekStart = calendar.date(byAdding: .weekOfYear, value: -1, to: interval.start) {
             lastWeek = try summary(from: lastWeekStart, to: interval.start)
         }
+    }
+
+    /// Calcule le score de forme (baselines 30 j) et les insights.
+    /// À appeler après `loadThisWeek()` — les insights de pas comparent
+    /// les agrégats hebdomadaires déjà chargés.
+    func loadWellness() throws {
+        let end = now()
+        guard
+            let d30 = calendar.date(byAdding: .day, value: -30, to: end),
+            let d90 = calendar.date(byAdding: .day, value: -90, to: end),
+            let d7 = calendar.date(byAdding: .day, value: -7, to: end)
+        else { return }
+        let startOfToday = calendar.startOfDay(for: end)
+        let yesterday = calendar.date(byAdding: .day, value: -1, to: startOfToday)!
+
+        let hrDaily = try dailyAverages(type: "HKQuantityTypeIdentifierRestingHeartRate", from: d30, to: end)
+        let hrvDaily = try dailyAverages(type: "HKQuantityTypeIdentifierHeartRateVariabilitySDNN", from: d30, to: end)
+        let energyDaily = DailyAggregator.totals(
+            resolver.resolve(try store.records(type: "HKQuantityTypeIdentifierActiveEnergyBurned", from: d30, to: end)),
+            calendar: calendar
+        )
+        let sleepNights = SleepAggregator.nightlyHours(
+            resolver.resolve(try store.sleepRecords(from: d30, to: end)),
+            calendar: calendar
+        )
+
+        // « Aujourd'hui » = dernier point s'il date bien d'aujourd'hui
+        // (d'hier pour le sommeil : la nuit dernière est rangée sous hier) ;
+        // la baseline = tous les points précédents.
+        func split(_ points: [TrendPoint], latestNoOlderThan cutoff: Date) -> (latest: Double?, baseline: [Double]) {
+            guard let last = points.last else { return (nil, []) }
+            guard last.date >= cutoff else { return (nil, points.map(\.value)) }
+            return (last.value, points.dropLast().map(\.value))
+        }
+
+        let hr = split(hrDaily, latestNoOlderThan: startOfToday)
+        let hrv = split(hrvDaily, latestNoOlderThan: startOfToday)
+        let sleep = split(sleepNights, latestNoOlderThan: yesterday)
+
+        // Activité : la veille, seul jour complet — aujourd'hui est partiel.
+        let completeDays = energyDaily.filter { $0.date < startOfToday }
+        let yesterdayEnergy = completeDays.last(where: { $0.date == yesterday })?.value
+        let energyBaseline = completeDays.filter { $0.date != yesterday }.map(\.value)
+
+        readiness = HealthScoreEngine.readiness(
+            sleep: sleep.latest.flatMap { HealthScoreEngine.sleepScore(lastNightHours: $0, baseline: sleep.baseline) },
+            restingHeartRate: hr.latest.flatMap { HealthScoreEngine.restingHeartRateScore(today: $0, baseline: hr.baseline) },
+            hrv: hrv.latest.flatMap { HealthScoreEngine.hrvScore(today: $0, baseline: hrv.baseline) },
+            activity: yesterdayEnergy.flatMap { HealthScoreEngine.activityBalanceScore(yesterday: $0, baseline: energyBaseline) }
+        )
+
+        var inputs = InsightInputs()
+        inputs.restingHRMean7 = mean(hrDaily.filter { $0.date >= d7 }.map(\.value))
+        inputs.restingHRMean30 = mean(hrDaily.map(\.value))
+        inputs.sleepHoursMean7 = mean(sleepNights.filter { $0.date >= d7 }.map(\.value))
+        inputs.stepsThisWeek = thisWeek?.steps
+        inputs.stepsLastWeek = lastWeek?.steps
+        let vo2Daily = try dailyAverages(type: "HKQuantityTypeIdentifierVO2Max", from: d90, to: end)
+        inputs.vo2Latest = vo2Daily.last?.value
+        inputs.vo2ThreeMonthsAgo = vo2Daily.first?.value
+        let weightDaily = try dailyAverages(type: "HKQuantityTypeIdentifierBodyMass", from: d30, to: end)
+        if let first = weightDaily.first?.value, let last = weightDaily.last?.value {
+            inputs.weightDelta30d = last - first
+        }
+        insights = InsightsEngine.generate(from: inputs)
+    }
+
+    private func dailyAverages(type: String, from: Date, to: Date) throws -> [TrendPoint] {
+        DailyAggregator.averages(
+            resolver.resolve(try store.records(type: type, from: from, to: to)),
+            calendar: calendar
+        )
+    }
+
+    private func mean(_ values: [Double]) -> Double? {
+        guard !values.isEmpty else { return nil }
+        return values.reduce(0, +) / Double(values.count)
     }
 
     private func summary(from: Date, to: Date) throws -> PeriodSummary {

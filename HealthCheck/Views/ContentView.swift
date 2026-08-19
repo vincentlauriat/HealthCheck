@@ -38,6 +38,7 @@ struct ContentView: View {
         .onChange(of: importViewModel.lastSummary?.recordsInserted) { _, _ in
             try? dashboardViewModel.loadToday()
             try? dashboardViewModel.loadThisWeek()
+            try? dashboardViewModel.loadWellness()
         }
     }
 }
