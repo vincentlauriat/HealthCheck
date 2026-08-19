@@ -12,7 +12,7 @@ struct DashboardView: View {
                     VStack(alignment: .leading, spacing: 12) {
                         VStack(alignment: .leading, spacing: 2) {
                             Text("Forme du jour").font(.title2.bold())
-                            Text(Date.now.formatted(.dateTime.weekday(.wide).day().month(.wide)))
+                            Text(Date.now.formatted(.dateTime.weekday(.wide).day().month(.wide).locale(Locale(identifier: "fr_FR"))))
                                 .font(.subheadline)
                                 .foregroundStyle(.secondary)
                         }
@@ -32,14 +32,14 @@ struct DashboardView: View {
                 section(
                     title: "Aujourd'hui",
                     subtitle: viewModel.readiness == nil
-                        ? Date.now.formatted(.dateTime.weekday(.wide).day().month(.wide))
+                        ? Date.now.formatted(.dateTime.weekday(.wide).day().month(.wide).locale(Locale(identifier: "fr_FR")))
                         : nil,
                     summary: viewModel.today,
                     reference: nil
                 )
                 section(
                     title: "Cette semaine",
-                    subtitle: viewModel.lastWeek != nil ? "Comparé à la semaine précédente" : nil,
+                    subtitle: viewModel.lastWeek != nil ? "Comparé à la même période la semaine dernière" : nil,
                     summary: viewModel.thisWeek,
                     reference: viewModel.lastWeek
                 )

@@ -55,25 +55,28 @@ final class DashboardViewModelTests: XCTestCase {
     }
 
     @MainActor
-    func test_loadThisWeek_alsoLoadsPreviousWeekForComparison() throws {
+    func test_loadThisWeek_comparesToSameElapsedPortionOfPreviousWeek() throws {
         let store = try HealthStore(path: ":memory:")
         var calendar = Calendar(identifier: .gregorian)
         calendar.firstWeekday = 2 // Monday
-        let now = Date()
-        let startOfWeek = calendar.dateInterval(of: .weekOfYear, for: now)!.start
-        let thisWeekSample = startOfWeek.addingTimeInterval(3600)
-        let lastWeekSample = calendar.date(byAdding: .weekOfYear, value: -1, to: startOfWeek)!.addingTimeInterval(3600)
+        let startOfWeek = calendar.dateInterval(of: .weekOfYear, for: Date())!.start
+        // « Maintenant » figé au mercredi 01:00 : la portion écoulée = 2 j + 1 h.
+        let fixedNow = startOfWeek.addingTimeInterval(2 * 86_400 + 3_600)
+        let lastWeekStart = calendar.date(byAdding: .weekOfYear, value: -1, to: startOfWeek)!
 
         try store.insertRecords([
-            record(type: "HKQuantityTypeIdentifierStepCount", sourceName: "Watch", value: 2000, start: thisWeekSample),
-            record(type: "HKQuantityTypeIdentifierStepCount", sourceName: "Watch", value: 5000, start: lastWeekSample)
+            record(type: "HKQuantityTypeIdentifierStepCount", sourceName: "Watch", value: 2000, start: startOfWeek.addingTimeInterval(3600)),
+            // Dans la portion comparable de la semaine passée (lundi 01:00) :
+            record(type: "HKQuantityTypeIdentifierStepCount", sourceName: "Watch", value: 5000, start: lastWeekStart.addingTimeInterval(3600)),
+            // Hors portion comparable (jeudi de la semaine passée) — doit être exclu :
+            record(type: "HKQuantityTypeIdentifierStepCount", sourceName: "Watch", value: 9000, start: lastWeekStart.addingTimeInterval(3 * 86_400))
         ])
 
-        let viewModel = DashboardViewModel(store: store, resolver: SourcePriorityResolver(priority: ["Watch", "iPhone"]), calendar: calendar, now: { now })
+        let viewModel = DashboardViewModel(store: store, resolver: SourcePriorityResolver(priority: ["Watch", "iPhone"]), calendar: calendar, now: { fixedNow })
         try viewModel.loadThisWeek()
 
         XCTAssertEqual(viewModel.thisWeek?.steps, 2000)
-        XCTAssertEqual(viewModel.lastWeek?.steps, 5000, "the previous week's sample must land in lastWeek, not thisWeek")
+        XCTAssertEqual(viewModel.lastWeek?.steps, 5000, "only the same elapsed portion of last week counts — the Thursday sample must be excluded")
     }
 
     @MainActor

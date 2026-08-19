@@ -35,11 +35,15 @@ final class DashboardViewModel: ObservableObject {
     }
 
     func loadThisWeek() throws {
-        let interval = calendar.dateInterval(of: .weekOfYear, for: now())!
+        let currentDate = now()
+        let interval = calendar.dateInterval(of: .weekOfYear, for: currentDate)!
         thisWeek = try summary(from: interval.start, to: interval.end)
 
+        // Comparaison à période écoulée égale : mercredi 15h se compare au
+        // mercredi 15h de la semaine passée, pas à sa semaine complète.
         if let lastWeekStart = calendar.date(byAdding: .weekOfYear, value: -1, to: interval.start) {
-            lastWeek = try summary(from: lastWeekStart, to: interval.start)
+            let elapsed = currentDate.timeIntervalSince(interval.start)
+            lastWeek = try summary(from: lastWeekStart, to: lastWeekStart.addingTimeInterval(elapsed))
         }
     }
 
@@ -95,7 +99,10 @@ final class DashboardViewModel: ObservableObject {
         var inputs = InsightInputs()
         inputs.restingHRMean7 = mean(hrDaily.filter { $0.date >= d7 }.map(\.value))
         inputs.restingHRMean30 = mean(hrDaily.map(\.value))
-        inputs.sleepHoursMean7 = mean(sleepNights.filter { $0.date >= d7 }.map(\.value))
+        // Au moins 3 nuits trackées, sinon la moyenne ne veut rien dire
+        // (une seule sieste enregistrée déclencherait « dette de sommeil »).
+        let recentNights = sleepNights.filter { $0.date >= d7 }
+        inputs.sleepHoursMean7 = recentNights.count >= 3 ? mean(recentNights.map(\.value)) : nil
         inputs.stepsThisWeek = thisWeek?.steps
         inputs.stepsLastWeek = lastWeek?.steps
         let vo2Daily = try dailyAverages(type: "HKQuantityTypeIdentifierVO2Max", from: d90, to: end)
