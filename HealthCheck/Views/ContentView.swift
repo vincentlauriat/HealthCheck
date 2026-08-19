@@ -14,23 +14,27 @@ struct ContentView: View {
     var body: some View {
         NavigationSplitView {
             List(selection: $selection) {
-                Label("Dashboard", systemImage: "chart.bar")
+                Label("Dashboard", systemImage: "square.grid.2x2.fill")
                     .tag(SidebarSelection.dashboard)
                 Label("Tendances", systemImage: "chart.line.uptrend.xyaxis")
                     .tag(SidebarSelection.trends)
             }
+            .navigationSplitViewColumnWidth(min: 170, ideal: 200)
         } detail: {
             switch selection {
             case .trends:
                 TrendsView(viewModel: trendsViewModel)
+                    .navigationTitle("Tendances")
             case .dashboard, .none:
                 VStack(spacing: 0) {
                     ImportView(viewModel: importViewModel)
                     Divider()
                     DashboardView(viewModel: dashboardViewModel)
                 }
+                .navigationTitle("Dashboard")
             }
         }
+        .frame(minWidth: 880, minHeight: 620)
         .onChange(of: importViewModel.lastSummary?.recordsInserted) { _, _ in
             try? dashboardViewModel.loadToday()
             try? dashboardViewModel.loadThisWeek()
