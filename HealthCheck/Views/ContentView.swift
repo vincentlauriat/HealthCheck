@@ -4,6 +4,7 @@ enum SidebarSelection: Hashable {
     case home
     case sleep
     case activity
+    case body
     case trends
     case data
 }
@@ -14,6 +15,7 @@ struct ContentView: View {
     @ObservedObject var trendsViewModel: TrendsViewModel
     @ObservedObject var sleepViewModel: SleepViewModel
     @ObservedObject var activityViewModel: ActivityViewModel
+    @ObservedObject var bodyViewModel: BodyViewModel
     @State private var selection: SidebarSelection? = .home
 
     var body: some View {
@@ -26,6 +28,8 @@ struct ContentView: View {
                         .tag(SidebarSelection.sleep)
                     Label("Effort", systemImage: "flame.fill")
                         .tag(SidebarSelection.activity)
+                    Label("Corps", systemImage: "scalemass.fill")
+                        .tag(SidebarSelection.body)
                     Label("Tendances", systemImage: "chart.line.uptrend.xyaxis")
                         .tag(SidebarSelection.trends)
                 }
@@ -43,6 +47,9 @@ struct ContentView: View {
             case .activity:
                 ActivityView(viewModel: activityViewModel)
                     .navigationTitle("Effort")
+            case .body:
+                BodyView(viewModel: bodyViewModel)
+                    .navigationTitle("Corps")
             case .trends:
                 TrendsView(viewModel: trendsViewModel)
                     .navigationTitle("Tendances")
@@ -67,6 +74,7 @@ struct ContentView: View {
             try? dashboardViewModel.loadWellness()
             try? sleepViewModel.load()
             try? activityViewModel.load()
+            try? bodyViewModel.load(period: .oneYear)
         }
     }
 }

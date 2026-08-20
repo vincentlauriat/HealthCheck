@@ -17,6 +17,9 @@ struct MetricStyle {
     static let weight = MetricStyle(title: "Poids", unit: "kg", systemImage: "scalemass.fill", tint: .purple)
     static let vo2Max = MetricStyle(title: "VO₂ max", unit: "ml/kg/min", systemImage: "lungs.fill", tint: .mint)
     static let sleep = MetricStyle(title: "Sommeil", unit: "h/nuit", systemImage: "moon.zzz.fill", tint: .indigo)
+    static let bodyFat = MetricStyle(title: "Masse grasse", unit: "kg", systemImage: "chart.pie.fill", tint: .orange)
+    static let leanMass = MetricStyle(title: "Masse maigre", unit: "kg", systemImage: "figure.arms.open", tint: .cyan)
+    static let bmi = MetricStyle(title: "IMC", unit: "", systemImage: "gauge.with.needle", tint: .brown)
 }
 
 /// Carte de métrique du dashboard : icône teintée, valeur en grand,
