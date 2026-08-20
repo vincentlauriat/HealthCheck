@@ -85,6 +85,7 @@ struct ContentView: View {
             }
         }
         .frame(minWidth: 900, minHeight: 640)
+        .task { withingsViewModel.autoSyncIfNeeded() }
         .onChange(of: importViewModel.lastSummary?.recordsInserted) { _, _ in
             try? dashboardViewModel.loadToday()
             try? dashboardViewModel.loadThisWeek()

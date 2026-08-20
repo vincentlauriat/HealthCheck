@@ -46,6 +46,10 @@ struct WithingsCard: View {
             }
             if let summary = viewModel.lastSyncSummary {
                 Text(summary).font(.caption).foregroundStyle(.secondary)
+            } else if let last = viewModel.lastSyncDate {
+                Text("Dernière synchro : \(last.formatted(.relative(presentation: .named).locale(Locale(identifier: "fr_FR"))))")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
         }
         .padding(16)

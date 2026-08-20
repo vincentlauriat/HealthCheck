@@ -63,6 +63,15 @@ final class WithingsMapperTests: XCTestCase {
     }
 }
 
+final class WithingsAutoSyncTests: XCTestCase {
+    func test_shouldAutoSync_firstLaunchAndStaleness() {
+        let now = Date(timeIntervalSince1970: 1_760_000_000)
+        XCTAssertTrue(WithingsViewModel.shouldAutoSync(lastSync: nil, now: now), "jamais synchronisé → oui")
+        XCTAssertFalse(WithingsViewModel.shouldAutoSync(lastSync: now.addingTimeInterval(-3600), now: now), "il y a 1 h → non")
+        XCTAssertTrue(WithingsViewModel.shouldAutoSync(lastSync: now.addingTimeInterval(-13 * 3600), now: now), "il y a 13 h → oui")
+    }
+}
+
 final class WithingsCallbackParsingTests: XCTestCase {
     func test_parseCallback_extractsCodeAndState() {
         let request = "GET /callback?code=abc123&state=xyz HTTP/1.1\r\nHost: localhost:8723\r\n"
