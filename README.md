@@ -36,5 +36,6 @@ santé »), transféré ensuite au Mac. Voir `ARCHITECTURE.md` pour le détail.
 - [x] Score de forme + insights + redesign (passe « niveau Withings/Bevel »)
 - [x] Piliers Sommeil (phases, score de nuit) et Effort (zones FC, strain)
 - [x] Pilier Corps — composition corporelle (poids, graisse, maigre, IMC)
+- [x] Synchro API Withings — muscle, eau, os, graisse viscérale en direct
 - [ ] Spec 3 — suivi d'entraînement détaillé
 - [ ] Spec 4 — corrélations santé
