@@ -9,6 +9,8 @@ struct TrendsView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
                 Picker("Période", selection: $period) {
+                    Text("1 semaine").tag(TrendPeriod.oneWeek)
+                    Text("1 mois").tag(TrendPeriod.oneMonth)
                     Text("3 mois").tag(TrendPeriod.threeMonths)
                     Text("6 mois").tag(TrendPeriod.sixMonths)
                     Text("1 an").tag(TrendPeriod.oneYear)

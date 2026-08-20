@@ -6,6 +6,8 @@ struct TrendPoint: Equatable {
 }
 
 enum TrendPeriod: Hashable {
+    case oneWeek
+    case oneMonth
     case threeMonths
     case sixMonths
     case oneYear
@@ -13,6 +15,10 @@ enum TrendPeriod: Hashable {
 
     func startDate(now: Date, calendar: Calendar) -> Date {
         switch self {
+        case .oneWeek:
+            return calendar.date(byAdding: .day, value: -7, to: now) ?? .distantPast
+        case .oneMonth:
+            return calendar.date(byAdding: .month, value: -1, to: now) ?? .distantPast
         case .threeMonths:
             return calendar.date(byAdding: .month, value: -3, to: now) ?? .distantPast
         case .sixMonths:
