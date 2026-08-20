@@ -1,7 +1,0 @@
-{
-  "tool_name": "Bash",
-  "tool_input_preview": "{\"command\":\"cd HealthCheck && python3 << 'EOF'\\nimport re\\nfiles = {\\n  \\\"ViewModels/SleepViewModel.swift\\\": \\\"func load() throws {\\\",\\n  \\\"ViewModels/ActivityViewModel.swift\\\": \\\"func load() throws {...",
-  "error": "Exit code 1\n(eval):cd:1: no such file or directory: HealthCheck",
-  "timestamp": "2026-08-20T13:06:49.841Z",
-  "retry_count": 1
-}
