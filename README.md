@@ -37,5 +37,6 @@ santé »), transféré ensuite au Mac. Voir `ARCHITECTURE.md` pour le détail.
 - [x] Piliers Sommeil (phases, score de nuit) et Effort (zones FC, strain)
 - [x] Pilier Corps — composition corporelle (poids, graisse, maigre, IMC)
 - [x] Synchro API Withings — muscle, eau, os, graisse viscérale en direct
-- [ ] Spec 3 — suivi d'entraînement détaillé
+- [x] Spec 3 (phase 1) — écran Séances : volume hebdo, dernières séances
+- [ ] Spec 3 (phase 2) — traces GPX des séances sur carte
 - [ ] Spec 4 — corrélations santé
