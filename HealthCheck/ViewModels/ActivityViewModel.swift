@@ -20,7 +20,12 @@ final class ActivityViewModel: ObservableObject {
         self.now = now
     }
 
+    /// Vrai après le premier chargement — les vues ne rechargent pas à
+    /// chaque passage de section, seulement via les onChange d'import/synchro.
+    @Published private(set) var hasLoaded = false
+
     func load() throws {
+        hasLoaded = true
         let end = now()
         guard
             let d14 = calendar.date(byAdding: .day, value: -14, to: end),

@@ -33,13 +33,14 @@ struct BodyView: View {
                     .labelsHidden()
 
                     compositionChart
+                    compositionLegend
                     fatShareChart
                 }
             }
             .padding(24)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .task { try? viewModel.load(period: period) }
+        .task { if !viewModel.hasLoaded { try? viewModel.load(period: period) } }
         .onChange(of: period) { _, newPeriod in
             try? viewModel.load(period: newPeriod)
         }
@@ -174,22 +175,49 @@ struct BodyView: View {
 
     // MARK: - Graphiques
 
-    /// Aires empilées masse maigre + masse grasse : la ligne de crête est le
-    /// poids total, la répartition se lit dans l'épaisseur des bandes.
+    /// Courbe du poids total et courbe de la masse maigre, bande de graisse
+    /// entre les deux. Pas d'empilement depuis 0 : l'axe est resserré sur la
+    /// zone utile (une variation de 2 kg doit se voir).
     private var compositionChart: some View {
         chartCard(title: "Composition corporelle") {
             Chart {
                 ForEach(composedPoints, id: \.day) { point in
-                    AreaMark(x: .value("Date", point.day), y: .value("kg", point.lean), stacking: .standard)
-                        .foregroundStyle(by: .value("Masse", "Maigre"))
-                        .interpolationMethod(.monotone)
-                    AreaMark(x: .value("Date", point.day), y: .value("kg", point.fat), stacking: .standard)
-                        .foregroundStyle(by: .value("Masse", "Graisse"))
-                        .interpolationMethod(.monotone)
+                    AreaMark(
+                        x: .value("Date", point.day),
+                        yStart: .value("Maigre", point.lean),
+                        yEnd: .value("Poids", point.lean + point.fat)
+                    )
+                    .foregroundStyle(Self.fatColor.opacity(0.28))
+                    .interpolationMethod(.monotone)
+
+                    LineMark(
+                        x: .value("Date", point.day),
+                        y: .value("kg", point.lean + point.fat),
+                        series: .value("Série", "Poids")
+                    )
+                    .foregroundStyle(Self.fatColor)
+                    .interpolationMethod(.monotone)
+                    .lineStyle(StrokeStyle(lineWidth: 2))
+
+                    LineMark(
+                        x: .value("Date", point.day),
+                        y: .value("kg", point.lean),
+                        series: .value("Série", "Maigre")
+                    )
+                    .foregroundStyle(Self.leanColor)
+                    .interpolationMethod(.monotone)
+                    .lineStyle(StrokeStyle(lineWidth: 2))
                 }
             }
-            .chartForegroundStyleScale(["Maigre": Self.leanColor.opacity(0.75), "Graisse": Self.fatColor.opacity(0.85)])
             .chartYScale(domain: .automatic(includesZero: false))
+        }
+    }
+
+    private var compositionLegend: some View {
+        HStack(spacing: 16) {
+            legendDot(color: Self.fatColor, text: "Poids total (bande = graisse)")
+            legendDot(color: Self.leanColor, text: "Masse maigre")
+            Spacer()
         }
     }
 

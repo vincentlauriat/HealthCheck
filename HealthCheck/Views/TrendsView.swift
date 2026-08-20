@@ -25,7 +25,7 @@ struct TrendsView: View {
             .padding(24)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .task { try? viewModel.load(period: period) }
+        .task { if !viewModel.hasLoaded { try? viewModel.load(period: period) } }
         .onChange(of: period) { _, newPeriod in
             try? viewModel.load(period: newPeriod)
         }
@@ -41,6 +41,15 @@ struct TrendChartCard: View {
     let valuePrecision: Int
 
     private var smoothed: [TrendPoint] { TrendsViewModel.movingAverage(points) }
+
+    /// Plancher de l'aire : légèrement sous le minimum de la série. Une aire
+    /// ancrée à 0 forcerait l'axe à inclure 0 — illisible pour un poids qui
+    /// varie entre 88 et 91 kg.
+    private var areaFloor: Double {
+        let values = points.map(\.value)
+        guard let min = values.min(), let max = values.max() else { return 0 }
+        return max > min ? min - (max - min) * 0.08 : min - 1
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -74,7 +83,8 @@ struct TrendChartCard: View {
                     ForEach(points, id: \.date) { point in
                         AreaMark(
                             x: .value("Date", point.date),
-                            y: .value(style.title, point.value)
+                            yStart: .value("Plancher", areaFloor),
+                            yEnd: .value(style.title, point.value)
                         )
                         .interpolationMethod(.catmullRom)
                         .foregroundStyle(

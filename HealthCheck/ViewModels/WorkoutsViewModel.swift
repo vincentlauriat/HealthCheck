@@ -33,7 +33,12 @@ final class WorkoutsViewModel: ObservableObject {
         self.now = now
     }
 
+    /// Vrai après le premier chargement — les vues ne rechargent pas à
+    /// chaque passage de section, seulement via les onChange d'import/synchro.
+    @Published private(set) var hasLoaded = false
+
     func load() throws {
+        hasLoaded = true
         let end = now()
         guard let chartStart = calendar.date(byAdding: .weekOfYear, value: -12, to: end) else { return }
         let workouts = try store.workouts(from: chartStart, to: end)

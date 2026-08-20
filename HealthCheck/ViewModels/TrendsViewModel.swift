@@ -44,7 +44,12 @@ final class TrendsViewModel: ObservableObject {
         self.now = now
     }
 
+    /// Vrai après le premier chargement — les vues ne rechargent pas à
+    /// chaque passage de section, seulement via les onChange d'import/synchro.
+    @Published private(set) var hasLoaded = false
+
     func load(period: TrendPeriod) throws {
+        hasLoaded = true
         let start = period.startDate(now: now(), calendar: calendar)
         let end = now()
 

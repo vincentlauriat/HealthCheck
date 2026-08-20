@@ -23,7 +23,12 @@ final class SleepViewModel: ObservableObject {
 
     /// Charge les 14 dernières nuits (fenêtre de 21 jours pour absorber
     /// les nuits non trackées).
+    /// Vrai après le premier chargement — les vues ne rechargent pas à
+    /// chaque passage de section, seulement via les onChange d'import/synchro.
+    @Published private(set) var hasLoaded = false
+
     func load() throws {
+        hasLoaded = true
         let end = now()
         guard let start = calendar.date(byAdding: .day, value: -21, to: end) else { return }
         let resolved = resolver.resolve(try store.sleepRecords(from: start, to: end))

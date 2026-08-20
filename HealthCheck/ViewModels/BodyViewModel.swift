@@ -29,7 +29,12 @@ final class BodyViewModel: ObservableObject {
         self.now = now
     }
 
+    /// Vrai après le premier chargement — les vues ne rechargent pas à
+    /// chaque passage de section, seulement via les onChange d'import/synchro.
+    @Published private(set) var hasLoaded = false
+
     func load(period: TrendPeriod) throws {
+        hasLoaded = true
         let end = now()
         // L'historique complet reste petit (~4 000 pesées) : on le charge en
         // entier pour que la dernière pesée et les deltas ne dépendent pas de

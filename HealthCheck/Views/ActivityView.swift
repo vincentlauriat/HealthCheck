@@ -18,7 +18,7 @@ struct ActivityView: View {
             .padding(24)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .task { try? viewModel.load() }
+        .task { if !viewModel.hasLoaded { try? viewModel.load() } }
     }
 
     @ViewBuilder

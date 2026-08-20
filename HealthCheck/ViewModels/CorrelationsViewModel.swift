@@ -31,7 +31,12 @@ final class CorrelationsViewModel: ObservableObject {
         self.now = now
     }
 
+    /// Vrai après le premier chargement — les vues ne rechargent pas à
+    /// chaque passage de section, seulement via les onChange d'import/synchro.
+    @Published private(set) var hasLoaded = false
+
     func load() throws {
+        hasLoaded = true
         let end = now()
         guard let start = calendar.date(byAdding: .day, value: -Self.windowDays, to: end) else { return }
 
