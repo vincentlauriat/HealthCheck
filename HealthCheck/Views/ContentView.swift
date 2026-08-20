@@ -6,6 +6,7 @@ enum SidebarSelection: Hashable {
     case activity
     case workouts
     case body
+    case correlations
     case trends
     case data
 }
@@ -19,6 +20,7 @@ struct ContentView: View {
     @ObservedObject var bodyViewModel: BodyViewModel
     @ObservedObject var withingsViewModel: WithingsViewModel
     @ObservedObject var workoutsViewModel: WorkoutsViewModel
+    @ObservedObject var correlationsViewModel: CorrelationsViewModel
     @State private var selection: SidebarSelection? = .home
 
     var body: some View {
@@ -35,6 +37,8 @@ struct ContentView: View {
                         .tag(SidebarSelection.workouts)
                     Label("Corps", systemImage: "scalemass.fill")
                         .tag(SidebarSelection.body)
+                    Label("Corrélations", systemImage: "arrow.triangle.branch")
+                        .tag(SidebarSelection.correlations)
                     Label("Tendances", systemImage: "chart.line.uptrend.xyaxis")
                         .tag(SidebarSelection.trends)
                 }
@@ -58,6 +62,9 @@ struct ContentView: View {
             case .body:
                 BodyView(viewModel: bodyViewModel)
                     .navigationTitle("Corps")
+            case .correlations:
+                CorrelationsView(viewModel: correlationsViewModel)
+                    .navigationTitle("Corrélations")
             case .trends:
                 TrendsView(viewModel: trendsViewModel)
                     .navigationTitle("Tendances")
@@ -86,6 +93,7 @@ struct ContentView: View {
             try? activityViewModel.load()
             try? bodyViewModel.load(period: .oneYear)
             try? workoutsViewModel.load()
+            try? correlationsViewModel.load()
         }
         .onChange(of: withingsViewModel.syncGeneration) { _, _ in
             try? dashboardViewModel.loadToday()
