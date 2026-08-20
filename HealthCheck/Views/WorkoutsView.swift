@@ -1,8 +1,10 @@
 import SwiftUI
 import Charts
+import MapKit
 
 struct WorkoutsView: View {
     @ObservedObject var viewModel: WorkoutsViewModel
+    @State private var expandedWorkout: Date?
 
     var body: some View {
         ScrollView {
@@ -81,6 +83,21 @@ struct WorkoutsView: View {
 
     @ViewBuilder
     private func workoutRow(_ workout: WorkoutItem) -> some View {
+        VStack(spacing: 0) {
+            workoutRowHeader(workout)
+            if expandedWorkout == workout.startDate, let routeURL = workout.routeURL {
+                RouteMapView(routeURL: routeURL)
+                    .frame(height: 280)
+                    .clipShape(RoundedRectangle(cornerRadius: 10))
+                    .padding([.horizontal, .bottom], 12)
+            }
+        }
+        .background(.background, in: RoundedRectangle(cornerRadius: 12))
+        .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(.separator.opacity(0.4)))
+    }
+
+    @ViewBuilder
+    private func workoutRowHeader(_ workout: WorkoutItem) -> some View {
         HStack(spacing: 14) {
             Image(systemName: WorkoutStatsEngine.icon(for: workout.label))
                 .font(.body.weight(.semibold))
@@ -111,11 +128,22 @@ struct WorkoutsView: View {
                 if let hr = workout.averageHeartRate {
                     statText(hr.formatted(.number.precision(.fractionLength(0))) + " bpm", icon: "heart")
                 }
+                if workout.routeURL != nil {
+                    Image(systemName: expandedWorkout == workout.startDate ? "chevron.up" : "map")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.teal)
+                }
             }
         }
         .padding(12)
-        .background(.background, in: RoundedRectangle(cornerRadius: 12))
-        .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(.separator.opacity(0.4)))
+        .contentShape(Rectangle())
+        .onTapGesture {
+            guard workout.routeURL != nil else { return }
+            withAnimation(.snappy) {
+                expandedWorkout = expandedWorkout == workout.startDate ? nil : workout.startDate
+            }
+        }
+        .help(workout.routeURL != nil ? "Cliquer pour afficher la trace GPS" : "")
     }
 
     @ViewBuilder
@@ -125,5 +153,38 @@ struct WorkoutsView: View {
             Text(text).font(.caption).monospacedDigit()
         }
         .foregroundStyle(.secondary)
+    }
+}
+
+/// Carte de la trace GPS d'une séance : polyline sur fond standard, cadrage
+/// automatique sur le contenu. Le GPX est chargé hors du MainActor.
+struct RouteMapView: View {
+    let routeURL: URL
+    @State private var points: [RoutePoint] = []
+    @State private var failed = false
+
+    var body: some View {
+        Group {
+            if failed {
+                ContentUnavailableView("Trace illisible", systemImage: "map")
+            } else if points.isEmpty {
+                ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+                Map(initialPosition: .automatic, interactionModes: [.zoom, .pan]) {
+                    MapPolyline(coordinates: points.map {
+                        CLLocationCoordinate2D(latitude: $0.latitude, longitude: $0.longitude)
+                    })
+                    .stroke(.blue, style: StrokeStyle(lineWidth: 3, lineCap: .round, lineJoin: .round))
+                }
+            }
+        }
+        .task(id: routeURL) {
+            let url = routeURL
+            let loaded = await Task.detached(priority: .userInitiated) { () -> [RoutePoint] in
+                guard let data = try? Data(contentsOf: url) else { return [] }
+                return GPXParser.points(from: data)
+            }.value
+            if loaded.isEmpty { failed = true } else { points = loaded }
+        }
     }
 }

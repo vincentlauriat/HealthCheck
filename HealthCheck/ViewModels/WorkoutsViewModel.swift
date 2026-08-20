@@ -9,7 +9,8 @@ struct WorkoutItem: Equatable {
     let distanceKm: Double?
     let energyKcal: Double?
     let averageHeartRate: Double?
-    let hasRoute: Bool
+    /// URL locale de la trace GPX si elle a été copiée lors d'un import.
+    let routeURL: URL?
 }
 
 @MainActor
@@ -21,11 +22,13 @@ final class WorkoutsViewModel: ObservableObject {
     @Published private(set) var thisWeekKcal = 0.0
 
     private let store: HealthStore
+    private let routeStore: RouteStore
     private let calendar: Calendar
     private let now: () -> Date
 
-    init(store: HealthStore, calendar: Calendar = .current, now: @escaping () -> Date = Date.init) {
+    init(store: HealthStore, routeStore: RouteStore = RouteStore(), calendar: Calendar = .current, now: @escaping () -> Date = Date.init) {
         self.store = store
+        self.routeStore = routeStore
         self.calendar = calendar
         self.now = now
     }
@@ -58,7 +61,7 @@ final class WorkoutsViewModel: ObservableObject {
                     from: workout.startDate,
                     to: workout.endDate.addingTimeInterval(1)
                 ),
-                hasRoute: workout.routeFileName != nil
+                routeURL: workout.routeFileName.flatMap(routeStore.url(forRouteFileName:))
             )
         }
     }

@@ -32,6 +32,10 @@ final class HealthExportImporter {
         try extractor.extract(zipURL: url, to: workDir)
 
         let exportURL = try locateExportXML(under: workDir)
+        // Les traces GPX sont copiées vers un dossier persistant avant le
+        // nettoyage du répertoire temporaire — l'écran Séances les lit ensuite
+        // par leur routeFileName.
+        try RouteStore().importRoutes(from: workDir)
 
         var recordsSeen = 0
         var recordsInserted = 0
