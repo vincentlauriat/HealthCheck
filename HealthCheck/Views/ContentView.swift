@@ -16,6 +16,7 @@ struct ContentView: View {
     @ObservedObject var sleepViewModel: SleepViewModel
     @ObservedObject var activityViewModel: ActivityViewModel
     @ObservedObject var bodyViewModel: BodyViewModel
+    @ObservedObject var withingsViewModel: WithingsViewModel
     @State private var selection: SidebarSelection? = .home
 
     var body: some View {
@@ -54,9 +55,11 @@ struct ContentView: View {
                 TrendsView(viewModel: trendsViewModel)
                     .navigationTitle("Tendances")
             case .data:
-                VStack {
+                VStack(spacing: 20) {
                     Spacer()
                     ImportView(viewModel: importViewModel)
+                        .frame(maxWidth: 560)
+                    WithingsCard(viewModel: withingsViewModel)
                         .frame(maxWidth: 560)
                     Spacer()
                 }
@@ -75,6 +78,13 @@ struct ContentView: View {
             try? sleepViewModel.load()
             try? activityViewModel.load()
             try? bodyViewModel.load(period: .oneYear)
+        }
+        .onChange(of: withingsViewModel.syncGeneration) { _, _ in
+            try? dashboardViewModel.loadToday()
+            try? dashboardViewModel.loadThisWeek()
+            try? dashboardViewModel.loadWellness()
+            try? bodyViewModel.load(period: .oneYear)
+            try? trendsViewModel.load(period: .sixMonths)
         }
     }
 }

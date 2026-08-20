@@ -10,6 +10,12 @@ final class BodyViewModel: ObservableObject {
     @Published private(set) var fatMassDelta30d: Double?
     @Published private(set) var leanMassDelta30d: Double?
     @Published private(set) var weightDelta1y: Double?
+    /// Mesures Withings sans équivalent HealthKit (présentes uniquement après
+    /// une synchro API) : dernière valeur connue, nil si jamais synchronisé.
+    @Published private(set) var latestMuscleMass: Double?
+    @Published private(set) var latestHydration: Double?
+    @Published private(set) var latestBoneMass: Double?
+    @Published private(set) var latestVisceralFat: Double?
 
     private let store: HealthStore
     private let resolver: SourcePriorityResolver
@@ -50,6 +56,11 @@ final class BodyViewModel: ObservableObject {
         fatMassDelta30d = sub(latest.fatMass, ref30?.fatMass)
         leanMassDelta30d = sub(latest.leanMass, ref30?.leanMass)
         weightDelta1y = reference(in: all, daysBefore: 365, anchor: latest.day).map { latest.weight - $0.weight }
+
+        latestMuscleMass = try daily(WithingsMapper.muscleMassType, to: end).last?.value
+        latestHydration = try daily(WithingsMapper.hydrationType, to: end).last?.value
+        latestBoneMass = try daily(WithingsMapper.boneMassType, to: end).last?.value
+        latestVisceralFat = try daily(WithingsMapper.visceralFatType, to: end).last?.value
     }
 
     private func daily(_ type: String, to end: Date) throws -> [TrendPoint] {

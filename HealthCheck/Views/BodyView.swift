@@ -145,6 +145,30 @@ struct BodyView: View {
             if let bmi = latest.bmi {
                 MetricCard(style: .bmi, value: bmi.formatted(.number.precision(.fractionLength(1))))
             }
+            if let muscle = viewModel.latestMuscleMass {
+                MetricCard(
+                    style: MetricStyle(title: "Muscle", unit: "kg", systemImage: "figure.strengthtraining.traditional", tint: .red),
+                    value: muscle.formatted(.number.precision(.fractionLength(1)))
+                )
+            }
+            if let water = viewModel.latestHydration {
+                MetricCard(
+                    style: MetricStyle(title: "Eau", unit: "kg", systemImage: "drop.fill", tint: .blue),
+                    value: water.formatted(.number.precision(.fractionLength(1)))
+                )
+            }
+            if let bone = viewModel.latestBoneMass {
+                MetricCard(
+                    style: MetricStyle(title: "Os", unit: "kg", systemImage: "figure.stand", tint: .gray),
+                    value: bone.formatted(.number.precision(.fractionLength(1)))
+                )
+            }
+            if let visceral = viewModel.latestVisceralFat {
+                MetricCard(
+                    style: MetricStyle(title: "Graisse viscérale", unit: "", systemImage: "exclamationmark.circle", tint: .orange),
+                    value: visceral.formatted(.number.precision(.fractionLength(1)))
+                )
+            }
         }
     }
 
