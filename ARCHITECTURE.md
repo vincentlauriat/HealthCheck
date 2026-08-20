@@ -1,63 +1,192 @@
 # Architecture — HealthCheck
 
-Miroir français de `ARCHITECTURE_EN.md` (source de vérité) — à éditer
-dans le même tour que la version anglaise.
+Miroir français de `ARCHITECTURE_EN.md` (source de vérité) — éditer les
+deux dans le même tour.
 
 ## Vue d'ensemble
 
-Application macOS native (SwiftUI, macOS 15 Sequoia minimum) qui importe
-les données Apple Santé exportées manuellement depuis iOS et produit des
-analyses de santé/exercices. Aucun accès HealthKit natif n'existe sur
-macOS (même via Mac Catalyst) — vérifié empiriquement (pas d'app Santé
-sous `/System/Applications` ni `/Applications`). L'import est donc la
-seule voie viable en v1.
+App macOS native (SwiftUI, macOS 15+) d'analyse de santé personnelle.
+Deux chemins de données alimentent un store SQLite local ; des moteurs
+d'analyse purs calculent scores et statistiques ; les écrans SwiftUI
+les affichent. Tout tourne en local — les seules requêtes réseau vont
+vers l'API Withings quand l'utilisateur connecte son compte.
 
-## Couches
+**Contrainte fondatrice :** macOS n'a aucun accès HealthKit. Le
+framework se lie (le SDK le marque disponible depuis macOS 13) mais
+`HKHealthStore.isHealthDataAvailable()` renvoie `false` — vérifié
+empiriquement jusqu'à la beta macOS 27. Les données Apple Watch/iPhone
+ne peuvent venir que de l'export zip manuel de l'app Santé.
+
+## Flux de données
 
 ```
-Zip export Santé
-      │
-      ▼
-┌─────────────┐   HealthDataSource    ┌─────────────┐        ┌──────────────┐
-│  Importer   │ ─────protocole──────► │    Store    │ ◄────► │  Dashboard   │
-│ (zip+parse) │                       │  (SQLite)   │        │  (SwiftUI)   │
-└─────────────┘                       └─────────────┘        └──────────────┘
+Zip Apple Santé ──► ZipExtractor ──► HealthExportParser (SAX) ─┐
+                         │                                     │
+                         └──► RouteStore (fichiers GPX)        ▼
+                                                    ┌─────────────────┐
+Cloud Withings ──► WithingsClient (OAuth2) ────────►│   HealthStore   │
+                                                    │  (SQLite/GRDB)  │
+                                                    └────────┬────────┘
+                                                             │ lectures via
+                                                             ▼ SourcePriorityResolver
+                                            ┌────────────────────────────┐
+                                            │  Moteurs d'analyse (purs)  │
+                                            │  scores · zones · Pearson  │
+                                            └────────────┬───────────────┘
+                                                         ▼
+                                            ViewModels (@MainActor)
+                                                         ▼
+                                            Vues SwiftUI (8 sections)
 ```
 
-- **Importer** : extrait le `.zip`, parse `export.xml` en streaming SAX
-  (`XMLParser`), ne charge jamais le fichier complet (844 Mo+) en DOM. Les
-  types/attributs XML inconnus sont ignorés, pas fatals — Apple modifie ce
-  schéma d'une version d'iOS à l'autre sans préavis.
-- **Store** : SQLite via GRDB, transactions batchées (~5000 lignes/tx).
-  Choisi plutôt que SwiftData/Core Data après mesure de l'export réel de
-  l'utilisateur (844 Mo, 1,8M `<Record>`) — l'insertion bulk à cette
-  échelle est un risque de performance/fiabilité sur un store géré. Clé
-  primaire synthétique (hash type+source+device+dates+valeur+unité,
-  Apple ne fournissant aucun ID stable) rend le ré-import idempotent
-  (`INSERT OR IGNORE`).
-- **Dashboard** : SwiftUI + Swift Charts, lit via une couche de résolution
-  de priorité de source (Watch > iPhone pour les métriques mesurées en
-  continu) pour éviter le double comptage d'échantillons qui se
-  chevauchent — la donnée brute reste intacte en base pour les specs
-  futures.
+## Stockage
 
-## Volumes de données (mesurés, export utilisateur du 2026-08-19)
+SQLite via GRDB, retenu contre SwiftData/Core Data après mesure de
+l'export réel (844 Mo, 1,8 M de `<Record>`) : l'insertion bulk à cette
+échelle est un risque sur un store managé. Transactions batchées
+(5000 lignes/tx).
 
-- `export.xml` : 844 Mo, 1 806 362 `<Record>`, 23 672 `<Workout>`
-- `export_cda.xml` (ECG, format CDA) : 482 Mo — hors périmètre
-- `workout-routes/` : 413 fichiers GPX
-- Total dézippé : ~1,5 Go
+Trois tables, toutes avec une **clé primaire synthétique** = SHA256 de
+(type, source, device, dates, valeur, unité) car Apple ne fournit
+aucun ID stable. Combinée à `INSERT OR IGNORE`, chaque import et
+chaque synchro Withings est idempotent — vérifié à l'échelle réelle
+(réimport de 1,79 M d'enregistrements : 0 insertion).
 
-## Point d'extension
+| Table | Contenu | Notes |
+|---|---|---|
+| `health_record` | échantillons numériques (`type`, `value`, `unit`, dates, source) | index sur `(type, startDate)` — indispensable, les écrans interrogent par type+plage sur 2,2 M de lignes |
+| `sleep_record` | segments de sommeil catégoriels (`value` = phase) | nuits regroupées par jour calendaire décalé de −12 h |
+| `workout` | séances (type d'activité, durée+unité, distance, énergie, `routeFileName`) | fichiers GPX gérés à part par `RouteStore` |
 
-L'import passe par un protocole `HealthDataSource`. Aujourd'hui implémenté
-par le lecteur de fichier zip ; une future app compagnon iOS + flux
-CloudKit pourrait implémenter le même protocole sans toucher au Store ni
-à l'UI. Non construit en v1 — délibérément différé.
+Bornes de dates exclusives en haut (`startDate >= ? AND startDate < ?`) :
+un échantillon de minuit ne compte jamais deux fois.
 
-## Feuille de route des specs
+Les agrégats sur les séries à haute fréquence (FC continue : 388 k
+lignes) se font en SQL (`maxValue`, `averageValue`) — ces séries ne
+sont jamais chargées en mémoire.
 
-1. Import + dédoublonnage + stockage + dashboard quotidien (en cours)
-2. Tendances long terme
-3. Suivi d'entraînement détaillé (+ traces GPX)
-4. Corrélations santé croisées
+## Pipeline d'import (Apple Santé)
+
+1. `ZipExtractor` — `/usr/bin/unzip` via `Process` vers un dossier temp.
+2. `RouteStore.importRoutes` — copie tous les `.gpx` vers
+   `Application Support/HealthCheck/routes/` avant le nettoyage du
+   temp. Accès aux fichiers par dernier composant de chemin uniquement
+   (pas de traversée).
+3. `HealthExportParser` — SAX streaming (`XMLParser` sur
+   `InputStream`), jamais de DOM. Types/attributs inconnus ignorés,
+   jamais fatals : Apple change ce schéma entre versions d'iOS sans
+   préavis.
+4. `HealthExportImporter` — buffers de 5000, flush par lot. Les
+   erreurs de flush en cours de stream sont capturées et relancées
+   après le parsing (un `try?` les avalait silencieusement — testé en
+   régression depuis).
+
+## Résolution de priorité de source
+
+`SourcePriorityResolver` dédoublonne les échantillons chevauchants de
+plusieurs sources (Watch > iPhone) **à la lecture** — la donnée brute
+reste intacte en base. Implémentation : balayage sur les
+enregistrements triés par début avec fenêtre d'intervalles encore
+ouverts. Ne jamais revenir à un scan linéaire de tout `kept` : c'est
+O(n²) et ça gelait le MainActor plusieurs secondes sur 28 k
+échantillons d'énergie.
+
+Les mesures ponctuelles (FC continue) sautent la résolution : des
+intervalles de durée nulle ne se chevauchent jamais, les doublons
+pèsent 0 minute par construction.
+
+## Moteurs d'analyse (purs, tous testés)
+
+Tous les moteurs sont des fonctions pures `nonisolated` sur des types
+valeur — pas de SwiftUI, pas de store, testables au centième.
+
+| Moteur | Sortie | Formules clés |
+|---|---|---|
+| `HealthScoreEngine` | forme 0-100 | poids sommeil 0,35 / FC repos 0,30 / HRV 0,25 / activité 0,10, renormalisés sur les composantes disponibles ; baselines = moyennes 30 j, min 5 échantillons |
+| `SleepScoreEngine` | score de nuit 0-100 + `NightSummary` | durée 50 pts (cible 8 h), profond 20 (≥15 %), REM 20 (≥20 %), continuité 10 ; repli durée seule sans phases |
+| `StrainEngine` | `DayStrain` (minutes Z1-Z5 + score) | zones à 50-90 % de la FC max observée sur 2 ans (bornée 140-210) ; poids 1/2/4/7/10 ; trous entre échantillons plafonnés à 5 min ; 600 pts de charge = 100 |
+| `InsightsEngine` | phrases en français | règles : FC repos ±3 %, sommeil <7 h (garde-fou ≥3 nuits), pas ±20 % à période écoulée égale, VO₂ +1, poids ±1 kg/30 j |
+| `BodyCompositionEngine` | séries `BodySnapshot` + `WeightSankey` | masse grasse = poids × part ; snapshots joints sur les jours de pesée ; le niveau 2 du Sankey omet un reste incohérent (mesures de jours différents) |
+| `WorkoutStatsEngine` | volumes hebdo + libellés | durée normalisée par unité (min/s/h) ; 20 types traduits en français, repli sans préfixe |
+| `CorrelationEngine` | r de Pearson + paires | refuse <10 paires et variance nulle ; x du jour D apparié au y du jour D+décalage (la nuit étiquetée D influence le matin D+1) |
+| `GPXParser` | `[RoutePoint]` | SAX, seulement les `trkpt` lat/lon, sans MapKit |
+
+## Intégration Withings
+
+Comble ce que HealthKit ne peut pas : muscle, eau, os et graisse
+viscérale n'ont **aucun type HealthKit** — Withings les garde dans son
+cloud et ne synchronise vers Apple Santé que poids/% graisse/maigre/IMC.
+
+- **OAuth2** : autorisation navigateur sur `account.withings.com`,
+  callback capté par un `NWListener` éphémère sur `localhost:8723`
+  (l'URI enregistrée), code échangé sur `wbsapi.withings.net/v2/oauth2`.
+  Paramètre `state` vérifié.
+- **Jetons** : dans `Application Support/HealthCheck/` (`withings.json`
+  identifiants, `withings-tokens.json`, chmod 600, hors dépôt et hors
+  bundle). Le refresh token est à usage unique : réécrit après chaque
+  rafraîchissement.
+- **Synchro** : `getmeas` paginé (meastypes 1, 5, 6, 76, 77, 88, 170).
+  Valeur réelle = `value × 10^unit` ; le taux de graisse est divisé
+  par 100 pour suivre la convention en fraction de l'export. Les types
+  ayant un équivalent HealthKit reprennent les mêmes identifiants pour
+  que les écrans existants les voient ; les quatre autres utilisent
+  des types custom `Withings*`.
+- **Auto-synchro** : au lancement si connecté et dernière synchro
+  >12 h (`shouldAutoSync`, pur et testé).
+- Entitlements sandbox : `network.client` + `network.server`
+  (listener loopback).
+
+## Structure de l'interface
+
+`NavigationSplitView` à 8 sections (Accueil, Sommeil, Effort, Séances,
+Corps, Corrélations, Tendances, Données). Un ViewModel par section,
+tous `@MainActor`, injectés dans `HealthCheckApp`.
+
+**Chargement unique** : chaque ViewModel expose `hasLoaded` ; les vues
+chargent à la première visite seulement. Le rafraîchissement passe
+exclusivement par deux `onChange` dans `ContentView` : fin d'import et
+`syncGeneration` Withings. Tout nouveau ViewModel doit suivre ce motif.
+
+**Règles graphiques** : jamais d'`AreaMark` ancrée à 0 pour des
+grandeurs à faible amplitude relative (poids) — plancher à min − 8 %
+de l'amplitude plus `includesZero: false`. Le Sankey est dessiné
+maison (rubans de Bézier, barres de nœuds, épaisseur ∝ kg) — Swift
+Charts n'en a pas.
+
+Libellés et dates en français via locale `fr_FR` explicite (la locale
+du process n'est pas fiable).
+
+## Tests
+
+68 cas XCTest, moteurs d'abord : formules de score au 0,01 près,
+sémantique du résolveur, idempotence du dédoublonnage sur un vrai
+store `:memory:`, mapping Withings sur JSON de fixture, parsing du
+callback OAuth, parsing GPX, refus de traversée de chemin, ancrage des
+deltas sur la dernière pesée. L'UI se vérifie visuellement (Swift
+Charts est invisible pour l'outillage d'accessibilité).
+
+`xcodegen generate` est obligatoire après tout ajout/retrait de
+fichier — un pbxproj périmé produit des erreurs « cannot find in
+scope » trompeuses ou des runs de tests vides.
+
+## Release
+
+`Scripts/release.sh` : build Release non signé → staging `ditto
+--norsrc --noextattr --noacl` (les xattrs cassent `codesign`) →
+signature Developer ID avec Hardened Runtime (serveur de timestamp
+retenté ×5) → DMG (UDZO, alias /Applications) dans `release/` →
+`notarytool submit --wait` (profil trousseau `AppliMacVincentGithub`)
+→ staple → vérification `spctl`. La v1.0.0 est sortie ainsi (statut
+Accepted).
+
+## Journal des décisions
+
+| Décision | Pourquoi |
+|---|---|
+| Import zip manuel, pas d'app iOS en v1 | usage personnel informel ; le seam `HealthDataSource` reste pour un futur chemin CloudKit |
+| SQLite/GRDB plutôt que SwiftData | insertions bulk de 1,8 M de lignes mesurées sur l'export réel |
+| Résolution de source à la lecture | donnée brute préservée pour les analyses futures |
+| Sommeil dans sa propre table catégorielle | la valeur est une phase, pas un nombre |
+| API Withings plutôt qu'export CSV | fraîcheur en direct + les quatre métriques absentes de HealthKit + zéro geste manuel |
+| Eau hors de l'arbre du Sankey | l'eau corporelle est contenue dans muscle/organes ; en faire un compartiment frère double-compterait |
+| ECG (`export_cda.xml`) exclu | format clinique CDA, hors des quatre axes d'analyse |
