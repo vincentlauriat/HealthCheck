@@ -39,4 +39,4 @@ santé »), transféré ensuite au Mac. Voir `ARCHITECTURE.md` pour le détail.
 - [x] Synchro API Withings — muscle, eau, os, graisse viscérale en direct
 - [x] Spec 3 (phase 1) — écran Séances : volume hebdo, dernières séances
 - [x] Spec 3 (phase 2) — traces GPX des séances sur carte MapKit
-- [ ] Spec 4 — corrélations santé
+- [x] Spec 4 — corrélations santé (Pearson sur 180 j, 5 questions)
