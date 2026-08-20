@@ -14,6 +14,9 @@ struct BodyView: View {
                 if let latest = viewModel.latest {
                     latestCard(latest)
                     metricsRow(latest)
+                    if let sankey = viewModel.weightSankey {
+                        sankeyCard(sankey)
+                    }
                 } else {
                     ContentUnavailableView(
                         "Aucune pesée en base",
@@ -173,6 +176,32 @@ struct BodyView: View {
                 )
             }
         }
+    }
+
+    // MARK: - Sankey
+
+    @ViewBuilder
+    private func sankeyCard(_ sankey: WeightSankey) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Répartition du poids").font(.title2.bold())
+            WeightSankeyView(sankey: sankey)
+                .frame(height: 240)
+                .padding(.vertical, 8)
+            if let water = viewModel.latestHydration {
+                Label {
+                    Text("Eau corporelle : \(water.formatted(.number.precision(.fractionLength(1)))) kg (\((water / sankey.totalKg).formatted(.percent.precision(.fractionLength(0))))) — transversale : contenue dans le muscle et les organes, elle ne s'additionne pas aux compartiments ci-dessus.")
+                } icon: {
+                    Image(systemName: "drop.fill").foregroundStyle(.blue)
+                }
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            }
+        }
+        .padding(20)
+        .background(.background, in: RoundedRectangle(cornerRadius: 14))
+        .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(.separator.opacity(0.5)))
+        .shadow(color: .black.opacity(0.06), radius: 5, y: 2)
+        .frame(maxWidth: 640)
     }
 
     // MARK: - Graphiques

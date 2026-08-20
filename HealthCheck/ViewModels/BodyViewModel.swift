@@ -17,6 +17,17 @@ final class BodyViewModel: ObservableObject {
     @Published private(set) var latestBoneMass: Double?
     @Published private(set) var latestVisceralFat: Double?
 
+    /// Arbre de répartition du poids pour le Sankey (nil sans % de graisse).
+    var weightSankey: WeightSankey? {
+        guard let latest else { return nil }
+        return BodyCompositionEngine.weightSankey(
+            weight: latest.weight,
+            fatMass: latest.fatMass,
+            muscle: latestMuscleMass,
+            bone: latestBoneMass
+        )
+    }
+
     private let store: HealthStore
     private let resolver: SourcePriorityResolver
     private let calendar: Calendar

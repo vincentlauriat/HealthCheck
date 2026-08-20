@@ -46,4 +46,60 @@ enum BodyCompositionEngine {
     static func reference(in snapshots: [BodySnapshot], onOrBefore date: Date) -> BodySnapshot? {
         snapshots.last { $0.day <= date }
     }
+
+    /// Décomposition du poids en arbre pour un diagramme de Sankey :
+    /// Poids → Masse maigre + Masse grasse, puis Maigre → Muscle + Os +
+    /// Autres tissus. L'eau corporelle n'y figure pas : elle est
+    /// transversale (contenue dans le muscle et les organes) et ne
+    /// s'additionne pas aux autres compartiments.
+    static func weightSankey(weight: Double, fatMass: Double?, muscle: Double?, bone: Double?) -> WeightSankey? {
+        guard weight > 0, let fatMass, fatMass >= 0, fatMass < weight else { return nil }
+        let lean = weight - fatMass
+
+        var nodes: [WeightSankey.Node] = [
+            .init(id: "poids", label: "Poids total", kg: weight, column: 0),
+            .init(id: "maigre", label: "Masse maigre", kg: lean, column: 1),
+            .init(id: "graisse", label: "Masse grasse", kg: fatMass, column: 1)
+        ]
+        var links: [WeightSankey.Link] = [
+            .init(from: "poids", to: "maigre", kg: lean),
+            .init(from: "poids", to: "graisse", kg: fatMass)
+        ]
+
+        // Niveau 2 : uniquement si la balance fournit au moins un compartiment
+        // de la masse maigre. « Autres tissus » = le reste (organes, peau…),
+        // omis s'il est négligeable ou incohérent (muscle + os > maigre).
+        var leanChildren: [(id: String, label: String, kg: Double)] = []
+        if let muscle, muscle > 0 { leanChildren.append(("muscle", "Muscle", muscle)) }
+        if let bone, bone > 0 { leanChildren.append(("os", "Os", bone)) }
+        if !leanChildren.isEmpty {
+            let rest = lean - leanChildren.reduce(0) { $0 + $1.kg }
+            if rest > 0.05 { leanChildren.append(("autres", "Autres tissus", rest)) }
+            for child in leanChildren {
+                nodes.append(.init(id: child.id, label: child.label, kg: child.kg, column: 2))
+                links.append(.init(from: "maigre", to: child.id, kg: child.kg))
+            }
+        }
+        return WeightSankey(nodes: nodes, links: links, totalKg: weight)
+    }
+}
+
+/// Arbre de répartition du poids, indépendant de SwiftUI pour rester testable.
+struct WeightSankey: Equatable {
+    struct Node: Equatable {
+        let id: String
+        let label: String
+        let kg: Double
+        let column: Int
+    }
+
+    struct Link: Equatable {
+        let from: String
+        let to: String
+        let kg: Double
+    }
+
+    let nodes: [Node]
+    let links: [Link]
+    let totalKg: Double
 }

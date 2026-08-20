@@ -37,6 +37,39 @@ final class BodyCompositionEngineTests: XCTestCase {
     }
 }
 
+final class WeightSankeyTests: XCTestCase {
+    func test_weightSankey_fullBreakdownSumsCorrectly() {
+        let sankey = BodyCompositionEngine.weightSankey(weight: 90.0, fatMass: 19.0, muscle: 65.0, bone: 3.5)!
+
+        let lean = sankey.nodes.first { $0.id == "maigre" }!
+        XCTAssertEqual(lean.kg, 71.0, accuracy: 0.001)
+        let others = sankey.nodes.first { $0.id == "autres" }!
+        XCTAssertEqual(others.kg, 2.5, accuracy: 0.001, "autres tissus = maigre − muscle − os")
+
+        // Chaque colonne re-somme au poids d'où elle vient.
+        let level2 = sankey.nodes.filter { $0.column == 2 }.reduce(0) { $0 + $1.kg }
+        XCTAssertEqual(level2, 71.0, accuracy: 0.001)
+        let outOfLean = sankey.links.filter { $0.from == "maigre" }.reduce(0) { $0 + $1.kg }
+        XCTAssertEqual(outOfLean, 71.0, accuracy: 0.001)
+    }
+
+    func test_weightSankey_skipsIncoherentRest() {
+        // Muscle Withings mesuré un autre jour que le poids : muscle + os
+        // peuvent dépasser la masse maigre — pas de « autres » négatif.
+        let sankey = BodyCompositionEngine.weightSankey(weight: 90.0, fatMass: 25.0, muscle: 64.0, bone: 3.5)!
+        XCTAssertNil(sankey.nodes.first { $0.id == "autres" })
+        XCTAssertEqual(sankey.nodes.filter { $0.column == 2 }.count, 2, "muscle et os restent affichés")
+    }
+
+    func test_weightSankey_requiresFatMass_andStopsAtLevelOneWithoutSegments() {
+        XCTAssertNil(BodyCompositionEngine.weightSankey(weight: 90, fatMass: nil, muscle: 65, bone: 3.5))
+
+        let simple = BodyCompositionEngine.weightSankey(weight: 90, fatMass: 19, muscle: nil, bone: nil)!
+        XCTAssertTrue(simple.nodes.allSatisfy { $0.column < 2 }, "pas de niveau 2 sans muscle ni os")
+        XCTAssertEqual(simple.links.count, 2)
+    }
+}
+
 @MainActor
 final class BodyViewModelTests: XCTestCase {
     private func record(_ type: String, value: Double, date: Date) -> HealthRecord {
