@@ -10,6 +10,7 @@ struct HealthCheckApp: App {
     @StateObject private var activityViewModel: ActivityViewModel
     @StateObject private var bodyViewModel: BodyViewModel
     @StateObject private var withingsViewModel: WithingsViewModel
+    @StateObject private var workoutsViewModel: WorkoutsViewModel
 
     init() {
         let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
@@ -27,6 +28,7 @@ struct HealthCheckApp: App {
         _activityViewModel = StateObject(wrappedValue: ActivityViewModel(store: store, resolver: resolver))
         _bodyViewModel = StateObject(wrappedValue: BodyViewModel(store: store, resolver: resolver))
         _withingsViewModel = StateObject(wrappedValue: WithingsViewModel(store: store))
+        _workoutsViewModel = StateObject(wrappedValue: WorkoutsViewModel(store: store))
     }
 
     var body: some Scene {
@@ -38,7 +40,8 @@ struct HealthCheckApp: App {
                 sleepViewModel: sleepViewModel,
                 activityViewModel: activityViewModel,
                 bodyViewModel: bodyViewModel,
-                withingsViewModel: withingsViewModel
+                withingsViewModel: withingsViewModel,
+                workoutsViewModel: workoutsViewModel
             )
         }
     }

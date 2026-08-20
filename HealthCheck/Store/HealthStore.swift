@@ -174,6 +174,45 @@ final class HealthStore {
         return insertedCount
     }
 
+    func workouts(from: Date, to: Date) throws -> [Workout] {
+        try dbQueue.read { db in
+            let rows = try Row.fetchAll(
+                db,
+                sql: """
+                    SELECT * FROM workout
+                    WHERE startDate >= ? AND startDate < ?
+                    ORDER BY startDate
+                    """,
+                arguments: [Self.isoFormatter.string(from: from), Self.isoFormatter.string(from: to)]
+            )
+            return rows.map { row in
+                Workout(
+                    activityType: row["activityType"],
+                    sourceName: row["sourceName"],
+                    duration: row["duration"],
+                    durationUnit: row["durationUnit"],
+                    totalDistance: row["totalDistance"],
+                    totalDistanceUnit: row["totalDistanceUnit"],
+                    totalEnergyBurned: row["totalEnergyBurned"],
+                    totalEnergyBurnedUnit: row["totalEnergyBurnedUnit"],
+                    startDate: Self.isoFormatter.date(from: row["startDate"])!,
+                    endDate: Self.isoFormatter.date(from: row["endDate"])!,
+                    routeFileName: row["routeFileName"]
+                )
+            }
+        }
+    }
+
+    func averageValue(type: String, from: Date, to: Date) throws -> Double? {
+        try dbQueue.read { db in
+            try Double.fetchOne(
+                db,
+                sql: "SELECT AVG(value) FROM health_record WHERE type = ? AND startDate >= ? AND startDate < ?",
+                arguments: [type, Self.isoFormatter.string(from: from), Self.isoFormatter.string(from: to)]
+            )
+        }
+    }
+
     /// Agrégat SQL — indispensable pour les types à très haute fréquence
     /// (FC continue : centaines de milliers de lignes) qu'on ne charge
     /// jamais en mémoire.
