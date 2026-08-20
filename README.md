@@ -1,7 +1,16 @@
 # HealthCheck
 
+![Release](https://img.shields.io/github/v/release/vincentlauriat/HealthCheck)
+
 Application macOS native qui importe les données Apple Santé (export
-manuel depuis iOS) pour produire des analyses de santé et d'exercices.
+manuel depuis iOS) et lit l'API Withings en direct pour produire des
+analyses de santé et d'exercices.
+
+## Installation
+
+Télécharger le DMG signé et notarisé depuis les
+[releases GitHub](https://github.com/vincentlauriat/HealthCheck/releases),
+puis glisser HealthCheck.app dans Applications.
 
 ## État du projet
 
