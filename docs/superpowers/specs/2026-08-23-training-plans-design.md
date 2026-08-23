@@ -110,26 +110,32 @@ ACWR, matching). Workouts with a real distance always use it.
 
 - `chronicWeeklyKm` = total km (with fallback) of the last 28 days
   before the current week's Monday, divided by 4.
-- `startVolume` = `max(chronicWeeklyKm, 10.0)` km — the floor keeps a
-  returning runner on a meaningful base; the chronic reading keeps an
-  already-trained runner from being reset to beginner volume.
+- `acuteKm` = total km of the last 7 days (the week actually being run).
+- `startVolume` = `max(chronicWeeklyKm, acuteKm, 10.0)` km — the floor
+  keeps a returning runner on a meaningful base, the acute reading
+  credits the comeback week already underway, and the chronic reading
+  keeps an already-trained runner from being reset to beginner volume.
 - Weeks are Monday-based (French convention). `weeksToRace` = number of
   Mondays from the current week's Monday to race week's Monday,
   inclusive of both.
 - Volume progression, week by week starting from the current base:
-  `W1 = startVolume × 1.10`, then `next = previous × 1.10`, capped so
-  the **peak week** (race week − 2… see below) never exceeds
-  `raceDistance × 1.5` km (25.5 km for 17 km).
+  `W1 = startVolume × f`, then `next = previous × f`, where
+  `f = 1.15` while `startVolume < raceDistance` (comeback ramp — a
+  returning runner rebuilding toward a known level tolerates slightly
+  faster progression) and `f = 1.10` otherwise; capped so the **peak
+  week** (race week − 2… see below) never exceeds `raceDistance × 1.5`
+  km (25.5 km for 17 km). The ACWR guard (§6) remains the runtime
+  safety net either way.
 - **Taper**: race week − 1 = peak × 0.75; race week = peak × 0.5,
   race excluded (the race is not a planned session).
 - If `weeksToRace <= 2` (goal created very late) all remaining weeks
   are taper weeks at `startVolume × 0.75` — never ramp into a race.
 
-Worked example (Vincent today: chronic ≈ 12.6/4 → floor 10 → start
-max(3.15, 10) = 10 — note the 28-day window catches only this first
-week back, hence the floor doing its job; 5 weeks):
-W1 11 km → W2 12.1 → W3 13.3 (peak) → W4 10.0 (taper 0.75) →
-W5 6.7 + race. Values are illustrative of the formulas, not constants
+Worked example (Vincent today: chronic ≈ 3.15, acute 12.6 → start
+max(3.15, 12.6, 10) = 12.6; comeback factor 1.15; 5 weeks):
+W1 14.5 km (long ≈ 8.1) → W2 16.7 (long ≈ 10) → W3 19.2 (peak,
+long ≈ 11.5 — two-thirds of race distance) → W4 14.4 (taper 0.75) →
+W5 9.6 + race. Values are illustrative of the formulas, not constants
 in code; tests pin the formulas.
 
 *(Peak is always `raceWeek − 2`; with 5 weeks that makes 3 build weeks.)*
@@ -140,9 +146,9 @@ Every non-taper week has 3 core sessions plus 1 optional:
 
 | Session | Share of week volume | Prescription |
 |---|---|---|
-| Long run | 45 %, growth capped at +2 km/week, absolute cap `min(14, raceDistance × 0.8)` km | Endurance zone, "la séance qui fait le 17 km" |
+| Long run | up to 60 % of week volume, growth capped at +2.5 km/week from the longest run of the last 14 days (default base 5 km), absolute cap `min(14, raceDistance × 0.8)` km | Endurance zone, "la séance qui fait le 17 km" — the 60 % share is deliberate on 3-session weeks: at comeback volumes a 45 % share would peak the long run near 6 km, useless for a 17 km objective |
 | Hills | 25 % | Rolling/hilly route; weekly climb target from 100 m (W1) growing linearly to `min(300, raceElevation × 0.75)` m at peak week |
-| Base endurance | remainder (≈30 %) | Easy zone |
+| Base endurance | remainder (volume − long − hills, minimum 3 km) | Easy zone |
 | Optional short run | 30 min easy, **not counted in the week's target volume** (once executed it counts in *executed* load like any workout, §6) | Only shown when the week's 3 core sessions are all done or ahead of schedule |
 
 Taper weeks: long run capped at `raceDistance × 0.4`, no hill session
