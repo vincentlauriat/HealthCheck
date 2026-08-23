@@ -134,6 +134,40 @@ Estimated distance for any such workout:
 used consistently everywhere a workout distance is read (chronic load,
 ACWR, matching). Workouts with a real distance always use it.
 
+### 5.2bis What is anchored, and what tracks reality
+
+**This section exists because the first implementation got it wrong in three
+ways at once, all with the same root: a quantity that should be fixed once was
+recomputed from `today` on every rebuild.** The plan is recomputed on every
+load (§3) — that is what keeps plan and reality in step — but recomputation
+must reproduce the plan's history, not rewrite it.
+
+| Quantity | Anchored to | Why |
+|---|---|---|
+| The week sequence (which Mondays the plan spans) | `goal.createdAt`'s week, applying the §5.2 start-week rule **at creation time** | Otherwise the horizon shrinks as the race nears and the plan falls into the ≤2-week maintenance branch, destroying the taper (see below) |
+| A week's role (build / peak / taper / raceWeek) | position relative to `raceMonday` | Peak is always race−2; roles must not depend on how many weeks remain to be *rebuilt* |
+| A week's target volume | the load measured **strictly before that week's Monday** | A target must not move while the week is being run |
+| The ≤2-week maintenance branch | the horizon **at creation** | It exists for a goal genuinely created inside two weeks, not for the tail of a longer plan |
+
+Consequences that are requirements, not side effects:
+
+- **A week's target is fixed for the duration of that week.** Computing the
+  ramp base from a window that includes the current week makes the target chase
+  what was executed: each run raises the same week's target, so the plan moves
+  daily with no user action, and — worse — `executed > target × 1.25` becomes
+  arithmetically unreachable, disabling the over-training alert entirely. That
+  alert is the feature's whole purpose (§1's asymmetry: under-training costs
+  comfort, over-training costs the race).
+- **Past weeks must reproduce their historical targets.** Computing the arc
+  means folding forward from the first build week, each week's target derived
+  from load as of that week's start and capped at `× f` against the previous
+  week's target. This is deterministic from the goal plus the workout history —
+  no new persistence — and it is what makes `peakVolume` still available when
+  the peak week is in the past and the taper needs it.
+- **Re-anchoring happens at week boundaries, not continuously.** That is what
+  §2's "continuous re-anchoring" and §6's no-catch-up rule ("re-bases the
+  *next* weeks") both actually describe.
+
 ### 5.2 Starting point and weekly volumes
 
 - **One chronic definition, used by both engines** (§6 reads the same
