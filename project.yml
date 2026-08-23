@@ -30,6 +30,7 @@ targets:
         excludes:
           - "**/*.entitlements"
           - "Info.plist"
+      - path: HealthCheckShared
     dependencies:
       - package: GRDB
         product: GRDB
