@@ -60,6 +60,9 @@ final class HKMapperTests: XCTestCase {
         XCTAssertEqual(mapped.type, "HKCategoryTypeIdentifierSleepAnalysis")
         XCTAssertEqual(mapped.value, "HKCategoryValueSleepAnalysisAsleepDeep")
 
+        // Tests the wrong-category guard clause (sleepAnalysis type check).
+        // The unknown-phase clause (sleepValues dict miss) cannot be tested: HealthKit
+        // validates raw values at construction, making it unreachable via public API.
         let otherCategory = HKCategorySample(type: HKCategoryType(.mindfulSession),
             value: 0, start: start, end: start.addingTimeInterval(60))
         XCTAssertNil(HKMapper.sleep(from: otherCategory))

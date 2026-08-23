@@ -46,6 +46,10 @@ enum HKMapper {
 
     static func sleep(from sample: HKCategorySample) -> ExchangeSleep? {
         guard sample.categoryType.identifier == HKCategoryTypeIdentifier.sleepAnalysis.rawValue,
+              // Défensif : le lookup du dictionnaire protège contre des valeurs inconnues.
+              // HealthKit valide déjà les rawValue à la construction, rendant ce cas
+              // inaccessible via l'API publique aujourd'hui, mais forward-compatible si
+              // une nouvelle HKCategoryValueSleepAnalysis est ajoutée.
               let phase = sleepValues[sample.value] else { return nil }
         return ExchangeSleep(
             type: "HKCategoryTypeIdentifierSleepAnalysis",
