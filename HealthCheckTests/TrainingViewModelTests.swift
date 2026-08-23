@@ -51,7 +51,64 @@ final class TrainingViewModelTests: XCTestCase {
         XCTAssertNil(vm.goal)
         XCTAssertNil(vm.plan)
         XCTAssertNil(vm.progress)
-        XCTAssertNil(vm.assessment)
+        // Pas d'objectif, mais le moniteur de charge tourne quand même —
+        // il fonctionne comme un simple suivi entre deux courses.
+        XCTAssertNotNil(vm.assessment)
+        XCTAssertNil(vm.assessment?.acwr)
+        XCTAssertEqual(vm.assessment?.acuteKm, 0)
+        XCTAssertEqual(vm.assessment?.chronicWeeklyKm, 0)
+        XCTAssertTrue(vm.assessment?.alerts.contains { $0.message.contains("Reprise en cours") } ?? false)
+    }
+
+    /// Carry-over de revue : sans objectif actif, `load` court-circuitait avant
+    /// d'appeler `TrainingLoadMonitor.assess`, rendant la branche « sans plan »
+    /// (alertes ACWR brutes) inatteignable depuis l'app bien que testée au
+    /// niveau du moteur. Ce test pince cette branche via le view model.
+    func test_load_withoutGoal_computesRawAcwrAssessment() throws {
+        let store = try HealthStore(path: ":memory:")
+        try store.insertWorkouts([
+            run("2026-07-29", km: 5.0),
+            run("2026-08-05", km: 5.0),
+            run("2026-08-12", km: 5.0),
+            run("2026-08-20", km: 20.0)
+        ])
+        let vm = TrainingViewModel(store: store, calendar: calendar, now: { self.date("2026-08-23") })
+
+        try vm.load()
+
+        XCTAssertNil(vm.goal)
+        XCTAssertNil(vm.plan)
+        XCTAssertNotNil(vm.assessment?.acwr)
+        XCTAssertTrue(vm.assessment?.alerts.contains { $0.message.contains("progressez trop vite") } ?? false)
+    }
+
+    /// Carry-over de revue : aucun test existant ne distinguait la fenêtre
+    /// d'historique de 90 jours d'une fenêtre plus courte, puisque toutes les
+    /// séances des fixtures tombent à quelques jours d'aujourd'hui. Ce test
+    /// place une séance à J-25 — dans la fenêtre chronique de 28 jours que
+    /// lisent `TrainingPlanner`/`TrainingLoadMonitor`, mais hors d'une
+    /// fenêtre d'historique trop courte pour la couvrir — et vérifie qu'elle
+    /// change bien le plan. (Aucune séance plus ancienne que 28 jours n'a
+    /// d'effet observable : ni le planificateur ni le moniteur ne lisent
+    /// au-delà de cette fenêtre glissante ; les 90 jours de marge du view
+    /// model garantissent seulement de couvrir ces 28 jours, pas davantage.)
+    func test_load_historyWindow_coversTheTwentyEightDayChronicWindow() throws {
+        let today = date("2026-08-24") // lundi : la semaine en cours reçoit des cibles
+        let g = goal("2026-09-27")
+
+        let storeWith = try HealthStore(path: ":memory:")
+        try storeWith.saveRaceGoal(g)
+        try storeWith.insertWorkouts([run("2026-07-30", km: 40.0), run("2026-08-19", km: 3.0)])
+        let vmWith = TrainingViewModel(store: storeWith, calendar: calendar, now: { today })
+        try vmWith.load()
+
+        let storeWithout = try HealthStore(path: ":memory:")
+        try storeWithout.saveRaceGoal(g)
+        try storeWithout.insertWorkouts([run("2026-08-19", km: 3.0)])
+        let vmWithout = TrainingViewModel(store: storeWithout, calendar: calendar, now: { today })
+        try vmWithout.load()
+
+        XCTAssertNotEqual(vmWith.plan, vmWithout.plan)
     }
 
     func test_load_pastGoalOnly_isEmptyState() throws {

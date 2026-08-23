@@ -43,15 +43,21 @@ final class TrainingViewModel: ObservableObject {
         let activeGoal = RaceGoal.active(in: goals, today: end, calendar: calendar)
         goal = activeGoal
 
+        let historyStart = calendar.date(byAdding: .day, value: -Self.historyWindowDays, to: end)!
+        let history = try store.workouts(from: historyStart, to: end)
+
+        // Sans objectif actif, le plan et la progression n'ont pas de sens,
+        // mais le moniteur de charge, lui, reste pertinent : la branche
+        // « sans plan » (alertes ACWR brutes) fonctionne comme un simple
+        // suivi de charge entre deux courses — elle ne doit pas dépendre
+        // d'un objectif pour s'exécuter.
         guard let activeGoal else {
             plan = nil
             progress = nil
-            assessment = nil
+            assessment = TrainingLoadMonitor.assess(history: history, plan: nil, readiness: readiness,
+                                                     today: end, calendar: calendar)
             return
         }
-
-        let historyStart = calendar.date(byAdding: .day, value: -Self.historyWindowDays, to: end)!
-        let history = try store.workouts(from: historyStart, to: end)
 
         // Agrégat SQL indexé — jamais un join ni un chargement des
         // échantillons de FC continue (des millions de lignes).
