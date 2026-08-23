@@ -2,7 +2,7 @@
 
 ![Release](https://img.shields.io/github/v/release/vincentlauriat/HealthCheck)
 ![Platform](https://img.shields.io/badge/platform-macOS%2015%2B-blue)
-![Tests](https://img.shields.io/badge/tests-105%2F105-brightgreen)
+![Tests](https://img.shields.io/badge/tests-106%2F106-brightgreen)
 
 Application macOS native (SwiftUI) d'analyse de santé personnelle :
 elle importe l'export Apple Santé, lit l'API Withings en direct, et
@@ -66,11 +66,14 @@ HealthKit et ne seront jamais dans l'export Apple. Auto-synchro au
 lancement (au plus une fois par 12 h). Configuration :
 [docs/withings-setup.md](docs/withings-setup.md).
 
-**iPhone (compagnon)** — *en cours (récepteur Mac livré)* :
-synchronisation directe depuis l'iPhone en réseau local, sans passer
-par l'export zip. Le récepteur côté Mac (serveur, appairage par code à
-6 chiffres, ingestion idempotente) est livré ; l'app compagnon iOS qui
-s'y connecte reste à construire.
+**iPhone (compagnon)** — *app iOS livrée (validation sur iPhone en
+cours)* : synchronisation directe depuis l'iPhone en réseau local,
+sans passer par l'export zip. Le récepteur côté Mac (serveur,
+appairage par code à 6 chiffres, ingestion idempotente) et l'app
+compagnon iOS (lecture HealthKit, appairage, synchro manuelle et en
+arrière-plan) sont tous les deux livrés et testés unitairement ; la
+validation sur un iPhone physique reste à faire. Voir
+[docs/companion-setup.md](docs/companion-setup.md).
 
 ## Compiler depuis les sources
 
@@ -81,7 +84,7 @@ Prérequis : Xcode 16+, [XcodeGen](https://github.com/yonaskolb/XcodeGen)
 git clone https://github.com/vincentlauriat/HealthCheck.git
 cd HealthCheck
 xcodegen generate          # obligatoire après tout ajout/retrait de fichier
-open HealthCheck.xcodeproj # scheme HealthCheck
+open HealthCheck.xcodeproj # scheme HealthCheck (macOS) ou HealthCheckCompanion (iOS)
 ```
 
 La dépendance GRDB (SQLite) est résolue par SPM à la première ouverture.
@@ -90,13 +93,18 @@ La dépendance GRDB (SQLite) est résolue par SPM à la première ouverture.
 
 ```bash
 xcodebuild -scheme HealthCheck -destination 'platform=macOS' test
+xcodebuild -scheme HealthCheckCompanion -destination 'platform=iOS Simulator,name=iPhone 17' test
 ```
 
-105 tests, tous sur les moteurs purs (scores, zones, corrélations,
-mapping Withings, parsing GPX, dédoublonnage), le store et la synchro
-compagnon (appairage, routeur HTTP, ingestion idempotente). Les
-moteurs d'analyse sont volontairement découplés de SwiftUI pour rester
-testables au centième près.
+106 tests côté Mac, tous sur les moteurs purs (scores, zones,
+corrélations, mapping Withings, parsing GPX, dédoublonnage), le store
+et la synchro compagnon (appairage, routeur HTTP, ingestion
+idempotente). Les moteurs d'analyse sont volontairement découplés de
+SwiftUI pour rester testables au centième près. Côté iOS, 26 tests
+(mapping HealthKit, ancres, moteur de synchro, client Mac, view
+model) ; la découverte Bonjour et la livraison en arrière-plan ne
+sont validables que sur appareil (voir
+[docs/companion-setup.md](docs/companion-setup.md)).
 
 ## Release
 
@@ -121,7 +129,9 @@ HealthCheck/
 │   ├── ViewModels/      # Un par section, @MainActor, chargement unique
 │   └── Views/           # SwiftUI + Swift Charts + Sankey maison
 ├── HealthCheckShared/    # DTO d'échange + protocole compagnon, partagés Mac/iOS
-├── HealthCheckTests/    # 105 tests (moteurs + store + mapping + synchro compagnon)
+├── HealthCheckTests/    # 106 tests (moteurs + store + mapping + synchro compagnon)
+├── Companion/            # App iOS (HealthKit, synchro, appairage, UI)
+├── CompanionTests/       # 26 tests (mapping HealthKit, ancres, synchro, view model)
 ├── Scripts/release.sh   # Release signée + notarisée
 ├── docs/                # Guides + specs de conception
 └── project.yml          # Source de vérité XcodeGen (le .xcodeproj est généré)
@@ -133,6 +143,8 @@ HealthCheck/
   français ([version anglaise](ARCHITECTURE_EN.md), source de vérité)
 - [docs/withings-setup.md](docs/withings-setup.md) — configurer la
   synchro Withings
+- [docs/companion-setup.md](docs/companion-setup.md) — installer et
+  appairer l'app compagnon iOS
 - [docs/superpowers/specs/](docs/superpowers/specs/) — specs de
   conception d'origine (import/dashboard, tendances)
 
@@ -155,4 +167,4 @@ les identifiants et jetons vivent hors du dépôt.
 - [x] Spec 3 — écran Séances + traces GPX sur carte MapKit
 - [x] Spec 4 — corrélations santé (Pearson sur 180 j, 5 questions)
 - [x] Release v1.0.0 signée et notarisée
-- [ ] (Optionnel) App compagnon iOS pour supprimer l'export manuel — en cours (récepteur Mac livré : serveur + appairage + ingestion), app iOS à construire
+- [x] (Optionnel) App compagnon iOS pour supprimer l'export manuel — récepteur Mac + app iOS livrés (serveur, appairage, ingestion, lecture HealthKit, synchro manuelle/arrière-plan) ; validation sur iPhone physique restante

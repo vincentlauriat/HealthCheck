@@ -85,3 +85,5 @@ final class MacClient {
         }
     }
 }
+
+extension MacClient: BatchPushing {}

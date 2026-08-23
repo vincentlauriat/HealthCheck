@@ -202,6 +202,66 @@ le récepteur côté Mac — pas encore de client iOS.
   ajouté pour le listener loopback OAuth Withings — aucun changement
   requis.
 
+## App compagnon (iOS)
+
+La cible `HealthCheckCompanion` (iOS 17+) est le client qui parle au
+récepteur Mac ci-dessus — HealthKit sur le téléphone, sans export
+manuel.
+
+- **Mapper** : `HKMapper` convertit `HKQuantitySample`/
+  `HKCategorySample`/`HKWorkout` vers les DTO d'échange partagés, avec
+  les unités épinglées relevées sur la base Mac réelle (spec §4, ex.
+  km pour la distance, mL/min·kg pour le VO₂ max) — le Mac les ingère
+  sans aucune conversion.
+- **Ancres à avancement conditionné à l'ack** : `SyncEngine` lit un
+  `TypeDelta` par type via `DeltaReading` (`HealthKitReaderLive`,
+  adossé à `HKAnchoredObjectQuery`), le pousse en batchs
+  ≤ `batchLimit`, et n'appelle `AnchorStore.save` qu'une fois TOUS les
+  batchs de ce delta ackés — livraison at-least-once ; l'ingestion
+  idempotente du Mac absorbe toute relivraison après un échec en cours
+  de delta. Un 401 positionne `needsPairing` et arrête la boucle :
+  inutile d'insister sans jeton valide.
+- **Découverte Bonjour** : `BonjourEndpointProvider` parcourt
+  `_healthcheck._tcp`, puis résout l'endpoint en ouvrant une connexion
+  TCP éphémère et en lisant `host`/`port` sur son chemin « prêt ». Le
+  port du listener Mac est lui-même éphémère et change à chaque
+  lancement de l'app Mac, donc le provider refait une découverte à
+  chaque tentative de synchro plutôt que de mettre en cache une
+  adresse.
+- **Jeton Keychain** : `KeychainTokenStore` détient le jeton Bearer
+  (compte `mac-token`) dans le trousseau iOS. Une réponse `401`/
+  `needsPairing` l'efface et fait basculer le view model en
+  « non appairé » — seul un nouvel appairage permet de récupérer.
+- **Livraison en arrière-plan** : `BackgroundSync` enregistre une
+  `HKObserverQuery` par type plus `enableBackgroundDelivery` —
+  `.immediate` pour les métriques quotidiennes (sommeil, FC repos,
+  HRV, VO₂ max), `.hourly` pour les flux denses (pas, distance,
+  énergie active, minutes d'exercice, FC). La livraison est
+  opportuniste — iOS ne garantit aucun horaire — donc le bouton manuel
+  « Synchroniser » de `CompanionRootView` reste le recours fiable.
+- **Règle de dédoublonnage `device: nil`** : `HKMapper` émet toujours
+  `device: nil` sur les records/sommeil d'échange — les métadonnées
+  HealthKit par appareil ne se mappent pas de façon fiable sur les
+  clés de dédoublonnage de l'export zip. `sourceName` reste le nom de
+  source HealthKit verbatim, donc le chemin compagnon produit
+  exactement les mêmes clés synthétiques et la même résolution de
+  priorité que l'import zip.
+- **Répartition simulateur/appareil des tests** : les 26 cas XCTest du
+  compagnon (mapper, persistance, moteur de synchro, stub client Mac,
+  protocole partagé, view model) tournent entièrement sur le
+  simulateur iPhone 17. La vraie découverte Bonjour sur le réseau
+  local et le timing de réveil en arrière-plan ne peuvent pas s'y
+  exercer (pas de pairs sur le réseau local, pas de vrai réveil
+  arrière-plan) et sont validés manuellement sur un iPhone physique —
+  voir [docs/companion-setup.md](docs/companion-setup.md) et la liste
+  de validation sur appareil qu'il documente.
+- **Interface** : un seul écran, `CompanionRootView` (`Form` SwiftUI)
+  — une section d'appairage (saisie du code à 6 chiffres) tant que non
+  appairé, une section de synchro (date de dernière synchro, résumé du
+  rapport, bouton manuel) une fois appairé. `CompanionViewModel` est
+  l'unique porteur d'état, entièrement injecté par protocole
+  (`Syncing`/`Pairing`) pour se tester sans HealthKit ni réseau.
+
 ## Structure de l'interface
 
 `NavigationSplitView` à 8 sections (Accueil, Sommeil, Effort, Séances,
@@ -236,15 +296,23 @@ de nouveaux appels.
 
 ## Tests
 
-105 cas XCTest, moteurs d'abord : formules de score au 0,01 près,
-sémantique du résolveur, idempotence du dédoublonnage sur un vrai
-store `:memory:`, mapping Withings sur JSON de fixture, parsing du
-callback OAuth, parsing GPX, refus de traversée de chemin, ancrage des
-deltas sur la dernière pesée, synchro compagnon (fenêtre/tentatives
-d'appairage, persistance du jeton, parsing HTTP, codes de statut du
-routeur, ingestion idempotente des batchs, auto-cicatrisation GPX).
-L'UI se vérifie visuellement (Swift Charts est invisible pour
+Mac : 106 cas XCTest, moteurs d'abord : formules de score au 0,01
+près, sémantique du résolveur, idempotence du dédoublonnage sur un
+vrai store `:memory:`, mapping Withings sur JSON de fixture, parsing
+du callback OAuth, parsing GPX, refus de traversée de chemin, ancrage
+des deltas sur la dernière pesée, synchro compagnon (fenêtre/
+tentatives d'appairage, persistance du jeton, parsing HTTP, codes de
+statut du routeur, ingestion idempotente des batchs, auto-cicatrisation
+GPX). L'UI se vérifie visuellement (Swift Charts est invisible pour
 l'outillage d'accessibilité).
+
+iOS (`HealthCheckCompanion`) : 26 cas XCTest — mapping HealthKit avec
+unités épinglées, persistance des ancres/du trousseau, découpage en
+batchs et avancement des ancres conditionné à l'ack du moteur de
+synchro, stub HTTP du client Mac, aller-retour du protocole partagé,
+et le view model compagnon (appairage, synchro, états d'erreur). Voir
+la répartition simulateur/appareil ci-dessus — la découverte Bonjour
+et la livraison en arrière-plan sont réservées à l'appareil.
 
 `xcodegen generate` est obligatoire après tout ajout/retrait de
 fichier — un pbxproj périmé produit des erreurs « cannot find in
@@ -264,7 +332,7 @@ Accepted).
 
 | Décision | Pourquoi |
 |---|---|
-| L'import zip manuel reste le chemin principal ; récepteur compagnon Mac livré, client iOS pas encore construit | usage personnel informel ; le côté Mac (listener, appairage, ingestion) est fait, l'app iOS est un chantier séparé pas encore démarré |
+| L'import zip manuel reste le chemin principal ; récepteur compagnon Mac ET app compagnon iOS tous deux livrés, validation sur appareil en attente | usage personnel informel ; les deux côtés (listener/appairage/ingestion côté Mac, lecture HealthKit + UI de synchro côté iOS) sont finis et testés unitairement, mais le chemin pair-à-pair (Bonjour sur un vrai réseau, livraison en arrière-plan) n'a pas encore été exercé sur un iPhone physique |
 | SQLite/GRDB plutôt que SwiftData | insertions bulk de 1,8 M de lignes mesurées sur l'export réel |
 | Résolution de source à la lecture | donnée brute préservée pour les analyses futures |
 | Sommeil dans sa propre table catégorielle | la valeur est une phase, pas un nombre |
