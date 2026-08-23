@@ -83,4 +83,59 @@ final class CompanionRouterTests: XCTestCase {
         XCTAssertEqual(status(of: router.handle(request("GET", "/status")).response), 401)
         XCTAssertEqual(status(of: router.handle(request("GET", "/nope", token: "goodtoken")).response), 404)
     }
+
+    func test_pair_malformedJSON_is400() throws {
+        _ = pairing.openWindow()
+        let result = router.handle(request("POST", "/pair", body: Data("{oops".utf8)))
+        XCTAssertEqual(status(of: result.response), 400)
+        // Window should still be open — malformed body doesn't consume attempt
+        let body = try ExchangeCoding.encoder.encode(PairRequest(code: "123456"))
+        let goodResult = router.handle(request("POST", "/pair", body: body))
+        XCTAssertEqual(status(of: goodResult.response), 200)
+    }
+
+    func test_batch_ingestThrow_is500() throws {
+        try tokenStore.save(token: "goodtoken")
+        let unavailableRouter = CompanionRouter(
+            pairing: pairing,
+            tokenStore: tokenStore,
+            importer: CompanionImporter(
+                store: HealthStore(unavailable: ()),
+                routeStore: RouteStore(directory: tempDir)
+            ),
+            appVersion: "1.0.0"
+        )
+        let start = Date(timeIntervalSince1970: 1_755_900_000)
+        let batch = ExchangeBatch(records: [ExchangeRecord(
+            type: "HKQuantityTypeIdentifierStepCount", sourceName: "Watch", device: nil,
+            unit: "count", value: 500, startDate: start, endDate: start.addingTimeInterval(300),
+            creationDate: nil)], sleep: [], workouts: [])
+        let body = try ExchangeCoding.encoder.encode(batch)
+        let result = unavailableRouter.handle(request("POST", "/batch", token: "goodtoken", body: body))
+        XCTAssertEqual(status(of: result.response), 500)
+        XCTAssertEqual(result.insertedRows, 0)
+    }
+
+    func test_batch_and_status_responses_decodeAsJSON() throws {
+        try tokenStore.save(token: "goodtoken")
+        let start = Date(timeIntervalSince1970: 1_755_900_000)
+        let batch = ExchangeBatch(records: [ExchangeRecord(
+            type: "HKQuantityTypeIdentifierStepCount", sourceName: "Watch", device: nil,
+            unit: "count", value: 500, startDate: start, endDate: start.addingTimeInterval(300),
+            creationDate: nil)], sleep: [], workouts: [])
+        let batchBody = try ExchangeCoding.encoder.encode(batch)
+
+        // Test /batch response body
+        let batchResult = router.handle(request("POST", "/batch", token: "goodtoken", body: batchBody))
+        let batchJsonStart = batchResult.response.range(of: Data("\r\n\r\n".utf8))!.upperBound
+        let batchPayload = try ExchangeCoding.decoder.decode(BatchResponse.self, from: batchResult.response[batchJsonStart...])
+        XCTAssertEqual(batchPayload.inserted, 1)
+
+        // Test /status response body
+        let statusResult = router.handle(request("GET", "/status", token: "goodtoken"))
+        let statusJsonStart = statusResult.response.range(of: Data("\r\n\r\n".utf8))!.upperBound
+        let statusPayload = try ExchangeCoding.decoder.decode(StatusResponse.self, from: statusResult.response[statusJsonStart...])
+        XCTAssertEqual(statusPayload.app, "HealthCheck")
+        XCTAssertEqual(statusPayload.version, "1.0.0")
+    }
 }
