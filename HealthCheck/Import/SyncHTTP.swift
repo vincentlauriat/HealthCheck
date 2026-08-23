@@ -18,11 +18,11 @@ struct SyncHTTPRequest {
         guard let headerRange = data.range(of: headerTerminator) else { return nil }
         let headerData = data[data.startIndex..<headerRange.upperBound]
         guard let head = String(data: headerData, encoding: .utf8) else { return nil }
-        let contentLength = head
+        let contentLength = max(0, head
             .components(separatedBy: "\r\n")
             .first { $0.lowercased().hasPrefix("content-length:") }
             .flatMap { Int($0.split(separator: ":", maxSplits: 1)[1].trimmingCharacters(in: .whitespaces)) }
-            ?? 0
+            ?? 0)
         return headerData.count + contentLength
     }
 
@@ -45,7 +45,7 @@ struct SyncHTTPRequest {
             if name == "authorization", value.hasPrefix("Bearer ") {
                 token = String(value.dropFirst("Bearer ".count))
             } else if name == "content-length" {
-                contentLength = Int(value) ?? 0
+                contentLength = max(0, Int(value) ?? 0)
             }
         }
 

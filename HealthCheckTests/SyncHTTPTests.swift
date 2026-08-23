@@ -43,4 +43,40 @@ final class SyncHTTPTests: XCTestCase {
         XCTAssertTrue(resp.hasSuffix("\r\n\r\n{\"ok\":true}"))
         XCTAssertTrue(String(data: SyncHTTPResponse.make(status: 401), encoding: .utf8)!.hasPrefix("HTTP/1.1 401 Unauthorized\r\n"))
     }
+
+    // Edge-case regression tests (critical security fix)
+    func test_parse_negativeContentLength_doesNotCrash() {
+        // Content-Length: -1 must not crash; body should be empty.
+        let req = SyncHTTPRequest.parse(raw("POST /sync HTTP/1.1\nContent-Length: -1\n\nhello"))
+        XCTAssertEqual(req?.method, "POST")
+        XCTAssertEqual(req?.body.count, 0) // negative length clamped to 0
+    }
+
+    func test_expectedTotalLength_negativeContentLength_clamped() {
+        let partial = raw("POST /sync HTTP/1.1\nContent-Length: -5\n\nhello")
+        let expected = SyncHTTPRequest.expectedTotalLength(partial)
+        let headerLength = raw("POST /sync HTTP/1.1\nContent-Length: -5\n\n").count
+        XCTAssertEqual(expected, headerLength) // negative clamped to 0
+    }
+
+    func test_parse_missingContentLength_defaultsToEmpty() {
+        // POST without Content-Length → body empty (not EOF)
+        let req = SyncHTTPRequest.parse(raw("POST /pair HTTP/1.1\n\n{\"code\":\"123456\"}"))
+        XCTAssertEqual(req?.method, "POST")
+        XCTAssertEqual(req?.body.count, 0)
+    }
+
+    func test_parse_contentLengthZeroWithTrailingBytes() {
+        // Content-Length: 0 → body empty, even if bytes follow
+        let req = SyncHTTPRequest.parse(raw("POST /pair HTTP/1.1\nContent-Length: 0\n\nextra"))
+        XCTAssertEqual(req?.method, "POST")
+        XCTAssertEqual(req?.body.count, 0)
+    }
+
+    func test_parse_nonNumericContentLength_defaultsToEmpty() {
+        // Content-Length: abc → treated as absent/invalid, body empty
+        let req = SyncHTTPRequest.parse(raw("POST /pair HTTP/1.1\nContent-Length: abc\n\n{\"code\":\"123456\"}"))
+        XCTAssertEqual(req?.method, "POST")
+        XCTAssertEqual(req?.body.count, 0)
+    }
 }
