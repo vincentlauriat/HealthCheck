@@ -65,7 +65,7 @@ enum TrainingLoadMonitor {
                 alerts.append(LoadAlert(severity: .info,
                     message: "Forme du jour basse — intervertissez avec une séance facile."))
             }
-        } else if let acwr {
+        } else if plan == nil, let acwr {
             if acwr > highRatio {
                 alerts.append(LoadAlert(severity: .warning,
                     message: "Vous progressez trop vite — réduisez cette semaine."))
