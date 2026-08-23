@@ -3,6 +3,7 @@ import SwiftUI
 @main
 struct HealthCheckApp: App {
     private let store: HealthStore
+    private let storeError: Error?
     @StateObject private var importViewModel: ImportViewModel
     @StateObject private var dashboardViewModel: DashboardViewModel
     @StateObject private var trendsViewModel: TrendsViewModel
@@ -14,13 +15,27 @@ struct HealthCheckApp: App {
     @StateObject private var correlationsViewModel: CorrelationsViewModel
 
     init() {
-        let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("HealthCheck", isDirectory: true)
-        try? FileManager.default.createDirectory(at: appSupport, withIntermediateDirectories: true)
-        let dbPath = appSupport.appendingPathComponent("health.sqlite").path
+        // Base illisible, disque plein, droits refusés : on ne crashe pas au
+        // lancement. Le store de repli n'a pas de base sous-jacente et n'est
+        // jamais interrogé — `body` affiche l'écran d'erreur à la place de
+        // `ContentView`, ce qui garde aussi l'import hors de portée : un
+        // export de 844 Mo ne doit pas atterrir dans un store jetable.
+        var store: HealthStore
+        var failure: Error?
+        do {
+            guard let appSupportRoot = FileManager.default
+                .urls(for: .applicationSupportDirectory, in: .userDomainMask).first
+            else { throw StoreStartupError.noApplicationSupportDirectory }
 
-        let store = try! HealthStore(path: dbPath)
+            let directory = appSupportRoot.appendingPathComponent("HealthCheck", isDirectory: true)
+            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+            store = try HealthStore(path: directory.appendingPathComponent("health.sqlite").path)
+        } catch {
+            store = HealthStore(unavailable: ())
+            failure = error
+        }
         self.store = store
+        self.storeError = failure
         let resolver = SourcePriorityResolver(priority: ["Watch", "iPhone"])
         _importViewModel = StateObject(wrappedValue: ImportViewModel(importer: HealthExportImporter(store: store)))
         _dashboardViewModel = StateObject(wrappedValue: DashboardViewModel(store: store, resolver: resolver))
@@ -35,17 +50,33 @@ struct HealthCheckApp: App {
 
     var body: some Scene {
         WindowGroup {
-            ContentView(
-                importViewModel: importViewModel,
-                dashboardViewModel: dashboardViewModel,
-                trendsViewModel: trendsViewModel,
-                sleepViewModel: sleepViewModel,
-                activityViewModel: activityViewModel,
-                bodyViewModel: bodyViewModel,
-                withingsViewModel: withingsViewModel,
-                workoutsViewModel: workoutsViewModel,
-                correlationsViewModel: correlationsViewModel
-            )
+            if let storeError {
+                StoreErrorView(error: storeError)
+            } else {
+                ContentView(
+                    importViewModel: importViewModel,
+                    dashboardViewModel: dashboardViewModel,
+                    trendsViewModel: trendsViewModel,
+                    sleepViewModel: sleepViewModel,
+                    activityViewModel: activityViewModel,
+                    bodyViewModel: bodyViewModel,
+                    withingsViewModel: withingsViewModel,
+                    workoutsViewModel: workoutsViewModel,
+                    correlationsViewModel: correlationsViewModel
+                )
+            }
+        }
+        .environment(\.locale, Locale(identifier: "fr_FR"))
+    }
+}
+
+enum StoreStartupError: LocalizedError {
+    case noApplicationSupportDirectory
+
+    var errorDescription: String? {
+        switch self {
+        case .noApplicationSupportDirectory:
+            return "Dossier Application Support introuvable."
         }
     }
 }

@@ -15,6 +15,27 @@ final class HealthStoreTests: XCTestCase {
         )
     }
 
+    /// Un fichier qui n'est pas une base SQLite doit lever, pas crasher :
+    /// `HealthCheckApp` compte dessus pour basculer sur son écran d'erreur.
+    func test_init_throwsOnNonDatabaseFile() throws {
+        let url = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("healthcheck-junk-\(UUID().uuidString).sqlite")
+        try Data("ceci n'est pas une base SQLite".utf8).write(to: url)
+        defer { try? FileManager.default.removeItem(at: url) }
+
+        XCTAssertThrowsError(try HealthStore(path: url.path))
+    }
+
+    /// Le store de repli n'a pas de base : toute requête lève au lieu de
+    /// déballer un `nil`.
+    func test_unavailableStore_throwsOnEveryAccess() {
+        let store = HealthStore(unavailable: ())
+        let start = Date(timeIntervalSince1970: 1_700_000_000)
+
+        XCTAssertThrowsError(try store.records(type: "HKQuantityTypeIdentifierStepCount", from: start, to: start.addingTimeInterval(3600)))
+        XCTAssertThrowsError(try store.insertRecords([makeRecord(sourceName: "Watch", value: 10, start: start)]))
+    }
+
     func test_insertRecords_isIdempotentOnReimport() throws {
         let store = try HealthStore(path: ":memory:")
         let start = Date(timeIntervalSince1970: 1_700_000_000)

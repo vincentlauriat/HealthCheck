@@ -49,6 +49,7 @@ targets:
     info:
       path: HealthCheck/Info.plist
       properties:
+        CFBundleDevelopmentRegion: fr
         CFBundleName: HealthCheck
         CFBundleDisplayName: HealthCheck
         CFBundleIdentifier: fr.vincentlauriat.healthcheck

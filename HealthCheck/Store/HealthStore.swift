@@ -1,12 +1,18 @@
 import Foundation
 import GRDB
 
+enum HealthStoreError: Error {
+    /// Le store n'a pas pu s'ouvrir : aucune lecture ni écriture n'est possible.
+    case unavailable
+}
+
 final class HealthStore {
-    private let dbQueue: DatabaseQueue
+    private let dbQueue: DatabaseQueue?
 
     init(path: String) throws {
-        dbQueue = try DatabaseQueue(path: path)
-        try dbQueue.write { db in
+        let queue = try DatabaseQueue(path: path)
+        dbQueue = queue
+        try queue.write { db in
             try db.execute(sql: """
                 CREATE TABLE IF NOT EXISTS health_record (
                     id TEXT PRIMARY KEY,
@@ -59,6 +65,19 @@ final class HealthStore {
         }
     }
 
+    /// Store inutilisable, sans base sous-jacente : toute lecture ou écriture
+    /// lève `HealthStoreError.unavailable`. `HealthCheckApp` s'en sert comme
+    /// repli quand la base ne s'ouvre pas, le temps d'afficher son écran
+    /// d'erreur — aucune vue ne l'interroge dans ce cas.
+    init(unavailable: Void) {
+        dbQueue = nil
+    }
+
+    private func queue() throws -> DatabaseQueue {
+        guard let dbQueue else { throw HealthStoreError.unavailable }
+        return dbQueue
+    }
+
     private static let isoFormatter: ISO8601DateFormatter = {
         let f = ISO8601DateFormatter()
         f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
@@ -69,7 +88,7 @@ final class HealthStore {
     func insertRecords(_ records: [HealthRecord], batchSize: Int = 5000) throws -> Int {
         var insertedCount = 0
         for batch in stride(from: 0, to: records.count, by: batchSize).map({ Array(records[$0..<min($0 + batchSize, records.count)]) }) {
-            try dbQueue.write { db in
+            try queue().write { db in
                 for record in batch {
                     try db.execute(
                         sql: """
@@ -96,7 +115,7 @@ final class HealthStore {
     func insertWorkouts(_ workouts: [Workout], batchSize: Int = 5000) throws -> Int {
         var insertedCount = 0
         for batch in stride(from: 0, to: workouts.count, by: batchSize).map({ Array(workouts[$0..<min($0 + batchSize, workouts.count)]) }) {
-            try dbQueue.write { db in
+            try queue().write { db in
                 for workout in batch {
                     try db.execute(
                         sql: """
@@ -123,7 +142,7 @@ final class HealthStore {
     }
 
     func records(type: String, from: Date, to: Date) throws -> [HealthRecord] {
-        try dbQueue.read { db in
+        try queue().read { db in
             let rows = try Row.fetchAll(
                 db,
                 sql: """
@@ -152,7 +171,7 @@ final class HealthStore {
     func insertSleepRecords(_ records: [SleepRecord], batchSize: Int = 5000) throws -> Int {
         var insertedCount = 0
         for batch in stride(from: 0, to: records.count, by: batchSize).map({ Array(records[$0..<min($0 + batchSize, records.count)]) }) {
-            try dbQueue.write { db in
+            try queue().write { db in
                 for record in batch {
                     try db.execute(
                         sql: """
@@ -175,7 +194,7 @@ final class HealthStore {
     }
 
     func workouts(from: Date, to: Date) throws -> [Workout] {
-        try dbQueue.read { db in
+        try queue().read { db in
             let rows = try Row.fetchAll(
                 db,
                 sql: """
@@ -204,7 +223,7 @@ final class HealthStore {
     }
 
     func averageValue(type: String, from: Date, to: Date) throws -> Double? {
-        try dbQueue.read { db in
+        try queue().read { db in
             try Double.fetchOne(
                 db,
                 sql: "SELECT AVG(value) FROM health_record WHERE type = ? AND startDate >= ? AND startDate < ?",
@@ -217,7 +236,7 @@ final class HealthStore {
     /// (FC continue : centaines de milliers de lignes) qu'on ne charge
     /// jamais en mémoire.
     func maxValue(type: String, from: Date, to: Date) throws -> Double? {
-        try dbQueue.read { db in
+        try queue().read { db in
             try Double.fetchOne(
                 db,
                 sql: "SELECT MAX(value) FROM health_record WHERE type = ? AND startDate >= ? AND startDate < ?",
@@ -227,7 +246,7 @@ final class HealthStore {
     }
 
     func sleepRecords(from: Date, to: Date) throws -> [SleepRecord] {
-        try dbQueue.read { db in
+        try queue().read { db in
             let rows = try Row.fetchAll(
                 db,
                 sql: """

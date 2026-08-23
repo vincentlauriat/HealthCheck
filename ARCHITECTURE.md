@@ -61,6 +61,15 @@ chaque synchro Withings est idempotent — vérifié à l'échelle réelle
 Bornes de dates exclusives en haut (`startDate >= ? AND startDate < ?`) :
 un échantillon de minuit ne compte jamais deux fois.
 
+**Ouverture au lancement.** Une base illisible (corrompue, disque plein,
+droits refusés) ne fait plus crasher l'app : `HealthCheckApp` capture
+l'erreur, retient un `HealthStore(unavailable:)` sans base sous-jacente
+— toutes ses méthodes lèvent `HealthStoreError.unavailable` — et
+`body` affiche `StoreErrorView` **à la place de** `ContentView`. Le
+remplacement est délibéré plutôt qu'une bannière superposée : l'import
+doit rester inatteignable, un export de 844 Mo ne doit pas atterrir
+dans un store jetable.
+
 Les agrégats sur les séries à haute fréquence (FC continue : 388 k
 lignes) se font en SQL (`maxValue`, `averageValue`) — ces séries ne
 sont jamais chargées en mémoire.
@@ -153,12 +162,23 @@ de l'amplitude plus `includesZero: false`. Le Sankey est dessiné
 maison (rubans de Bézier, barres de nœuds, épaisseur ∝ kg) — Swift
 Charts n'en a pas.
 
-Libellés et dates en français via locale `fr_FR` explicite (la locale
-du process n'est pas fiable).
+**Langue.** Deux mécanismes distincts, à ne pas confondre :
+
+- `CFBundleDevelopmentRegion: fr` (littéral dans `project.yml`, pas
+  `$(DEVELOPMENT_LANGUAGE)`) pilote les **menus système** d'AppKit —
+  l'environnement SwiftUI ne peut rien pour eux.
+- `.environment(\.locale, Locale(identifier: "fr_FR"))` sur la `Scene`
+  pilote tout ce que SwiftUI formate, **axes Swift Charts compris** :
+  sans lui les axes affichaient « Jun/Jul/Aug » au milieu d'une
+  interface française.
+
+Les `Locale(identifier: "fr_FR")` posés site par site sur certains
+`formatted()` sont depuis redondants — conservés, mais inutiles pour
+de nouveaux appels.
 
 ## Tests
 
-68 cas XCTest, moteurs d'abord : formules de score au 0,01 près,
+70 cas XCTest, moteurs d'abord : formules de score au 0,01 près,
 sémantique du résolveur, idempotence du dédoublonnage sur un vrai
 store `:memory:`, mapping Withings sur JSON de fixture, parsing du
 callback OAuth, parsing GPX, refus de traversée de chemin, ancrage des

@@ -2,7 +2,7 @@
 
 ![Release](https://img.shields.io/github/v/release/vincentlauriat/HealthCheck)
 ![Platform](https://img.shields.io/badge/platform-macOS%2015%2B-blue)
-![Tests](https://img.shields.io/badge/tests-68%2F68-brightgreen)
+![Tests](https://img.shields.io/badge/tests-70%2F70-brightgreen)
 
 Application macOS native (SwiftUI) d'analyse de santé personnelle :
 elle importe l'export Apple Santé, lit l'API Withings en direct, et
@@ -86,7 +86,7 @@ La dépendance GRDB (SQLite) est résolue par SPM à la première ouverture.
 xcodebuild -scheme HealthCheck -destination 'platform=macOS' test
 ```
 
-68 tests, tous sur les moteurs purs (scores, zones, corrélations,
+70 tests, tous sur les moteurs purs (scores, zones, corrélations,
 mapping Withings, parsing GPX, dédoublonnage) et le store. Les moteurs
 d'analyse sont volontairement découplés de SwiftUI pour rester
 testables au centième près.
@@ -113,7 +113,7 @@ HealthCheck/
 │   ├── Analysis/        # Moteurs purs : scores, zones FC, corrélations, Sankey…
 │   ├── ViewModels/      # Un par section, @MainActor, chargement unique
 │   └── Views/           # SwiftUI + Swift Charts + Sankey maison
-├── HealthCheckTests/    # 68 tests (moteurs + store + mapping)
+├── HealthCheckTests/    # 70 tests (moteurs + store + mapping)
 ├── Scripts/release.sh   # Release signée + notarisée
 ├── docs/                # Guides + specs de conception
 └── project.yml          # Source de vérité XcodeGen (le .xcodeproj est généré)

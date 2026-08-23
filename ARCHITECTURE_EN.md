@@ -60,6 +60,14 @@ of 1.79M records inserts 0).
 Date bounds are exclusive on the upper end (`startDate >= ? AND
 startDate < ?`) so a midnight sample never counts twice.
 
+**Opening at launch.** An unreadable database (corrupt, disk full,
+permissions denied) no longer crashes the app: `HealthCheckApp` catches
+the error, keeps a `HealthStore(unavailable:)` with no underlying
+database — every method throws `HealthStoreError.unavailable` — and
+`body` renders `StoreErrorView` **instead of** `ContentView`. Replacing
+rather than overlaying is deliberate: import must stay unreachable, an
+844 MB export must not land in a throwaway store.
+
 Aggregates over high-frequency series (continuous heart rate: 388k
 rows) are computed in SQL (`maxValue`, `averageValue`) — those series
 are never loaded into memory.
@@ -147,12 +155,22 @@ min − 8 % of amplitude plus `includesZero: false`. The Sankey diagram
 is custom-drawn (bezier ribbons, node bars, width ∝ kg) — Swift Charts
 has none.
 
-Charts render French labels/dates via explicit `fr_FR` locale (the
-process locale is not trusted).
+**Language.** Two distinct mechanisms, not to be conflated:
+
+- `CFBundleDevelopmentRegion: fr` (a literal in `project.yml`, not
+  `$(DEVELOPMENT_LANGUAGE)`) drives AppKit's **system menus** — the
+  SwiftUI environment cannot reach them.
+- `.environment(\.locale, Locale(identifier: "fr_FR"))` on the `Scene`
+  drives everything SwiftUI formats, **Swift Charts axes included**:
+  without it the axes read "Jun/Jul/Aug" inside a French interface.
+
+The per-call `Locale(identifier: "fr_FR")` arguments on some
+`formatted()` sites are now redundant — kept, but unnecessary for new
+call sites.
 
 ## Testing
 
-68 XCTest cases, engine-first: score formulas checked to 0.01,
+70 XCTest cases, engine-first: score formulas checked to 0.01,
 resolver semantics, dedup idempotence through a real `:memory:` store,
 Withings mapping against fixture JSON, OAuth callback parsing, GPX
 parsing, path-traversal refusal, delta anchoring on last weigh-in.
