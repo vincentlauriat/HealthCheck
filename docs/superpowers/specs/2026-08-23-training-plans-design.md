@@ -115,9 +115,17 @@ ACWR, matching). Workouts with a real distance always use it.
   keeps a returning runner on a meaningful base, the acute reading
   credits the comeback week already underway, and the chronic reading
   keeps an already-trained runner from being reset to beginner volume.
-- Weeks are Monday-based (French convention). `weeksToRace` = number of
-  Mondays from the current week's Monday to race week's Monday,
-  inclusive of both.
+- Weeks are Monday-based (French convention).
+- **Start week rule.** The current week is always *displayed* (executed
+  sessions, so the user sees where they stand) but receives new targets
+  only if at least 3 days remain in it (enough for the 3 core sessions).
+  Otherwise it is shown as `.currentWeekClosing` — executed only, no
+  targets — and the ramp's first build week is the following Monday.
+  This matters on the very first plan: created on a Sunday, a
+  "week 1" with zero remaining days would be a target nobody can hit
+  and would poison the ×f chain.
+- `weeksToRace` = number of Mondays from the **first build week's**
+  Monday to race week's Monday, inclusive of both.
 - Volume progression, week by week starting from the current base:
   `W1 = startVolume × f`, then `next = previous × f`, where
   `f = 1.15` while `startVolume < raceDistance` (comeback ramp — a
@@ -131,12 +139,23 @@ ACWR, matching). Workouts with a real distance always use it.
 - If `weeksToRace <= 2` (goal created very late) all remaining weeks
   are taper weeks at `startVolume × 0.75` — never ramp into a race.
 
-Worked example (Vincent today: chronic ≈ 3.15, acute 12.6 → start
-max(3.15, 12.6, 10) = 12.6; comeback factor 1.15; 5 weeks):
-W1 14.5 km (long ≈ 8.1) → W2 16.7 (long ≈ 10) → W3 19.2 (peak,
-long ≈ 11.5 — two-thirds of race distance) → W4 14.4 (taper 0.75) →
-W5 9.6 + race. Values are illustrative of the formulas, not constants
-in code; tests pin the formulas.
+Worked example — the real case, pinned as a golden test. Today
+Sunday 2026-08-23, race Sunday 2026-09-27, 17 km / +400 m. The current
+week (Mon 08-17) has 0 days left → `.currentWeekClosing`; the ramp
+starts Mon 08-24, giving 5 planned weeks. chronic ≈ 3.15, acute 12.6 →
+`startVolume` = max(3.15, 12.6, 10) = 12.6; `f` = 1.15 (12.6 < 17);
+longest run of the last 14 days = 5.6 km.
+
+| Week (Monday) | Volume | Long run | Role |
+|---|---|---|---|
+| 08-24 | 14.5 | 8.1 | build |
+| 08-31 | 16.7 | 10.0 | build |
+| 09-07 | 19.2 | 11.5 | **peak** (race − 2) |
+| 09-14 | 14.4 | 6.8 | taper ×0.75 |
+| 09-21 | 9.6 | 6.8 | race week ×0.5, race 09-27 |
+
+Long-run chain: min(60 % of volume, previous + 2.5, cap 13.6).
+Values illustrate the formulas; the test pins them to ±0.05 km.
 
 *(Peak is always `raceWeek − 2`; with 5 weeks that makes 3 build weeks.)*
 
