@@ -2,7 +2,7 @@
 
 ![Release](https://img.shields.io/github/v/release/vincentlauriat/HealthCheck)
 ![Platform](https://img.shields.io/badge/platform-macOS%2015%2B-blue)
-![Tests](https://img.shields.io/badge/tests-106%2F106-brightgreen)
+![Tests](https://img.shields.io/badge/tests-168%2F168-brightgreen)
 
 Application macOS native (SwiftUI) d'analyse de santé personnelle :
 elle importe l'export Apple Santé, lit l'API Withings en direct, et
@@ -25,7 +25,7 @@ tiers.
 
 ## Fonctionnalités
 
-L'app est organisée en huit sections :
+L'app est organisée en neuf sections :
 
 | Section | Contenu |
 |---|---|
@@ -33,6 +33,7 @@ L'app est organisée en huit sections :
 | **Sommeil** | Score de nuit 0-100 (durée vs cible 8 h, % profond, % REM, continuité), phases empilées sur 14 nuits, moyennes. |
 | **Effort** | Minutes par zone cardiaque Z1-Z5 (bornées sur la FC max réellement observée), score d'effort quotidien pondéré, historique 14 j coloré par intensité. |
 | **Séances** | Volume hebdomadaire par activité sur 12 semaines, 25 dernières séances (durée, distance, kcal, FC moyenne), trace GPS dépliable sur carte MapKit. |
+| **Entraînement** | Objectif de course (nom, date, distance, dénivelé) → plan hebdomadaire généré (volume, sortie longue, côtes, endurance), rapprochement automatique des séances courues, moniteur de charge aiguë/chronique avec alertes relatives au plan. |
 | **Corps** | Composition corporelle complète : poids, masses grasse/maigre, muscle, eau, os, graisse viscérale ; deltas 30 j / 1 an ancrés sur la dernière pesée ; diagramme de Sankey de la répartition du poids ; courbes poids/maigre avec bande de graisse. |
 | **Corrélations** | 5 questions sur 180 j (ex. « mieux dormir améliore-t-il ta HRV du lendemain ? ») — Pearson avec garde-fous : minimum 10 paires, variance nulle refusée, avertissement corrélation ≠ causalité. |
 | **Tendances** | FC repos, poids, VO₂ max, sommeil — aire + moyenne mobile 7 j, périodes 1 sem → tout. |
@@ -96,8 +97,9 @@ xcodebuild -scheme HealthCheck -destination 'platform=macOS' test
 xcodebuild -scheme HealthCheckCompanion -destination 'platform=iOS Simulator,name=iPhone 17' test
 ```
 
-106 tests côté Mac, tous sur les moteurs purs (scores, zones,
-corrélations, mapping Withings, parsing GPX, dédoublonnage), le store
+168 tests côté Mac, tous sur les moteurs purs (scores, zones,
+corrélations, mapping Withings, parsing GPX, dédoublonnage, plan
+d'entraînement/rapprochement des séances/moniteur de charge), le store
 et la synchro compagnon (appairage, routeur HTTP, ingestion
 idempotente). Les moteurs d'analyse sont volontairement découplés de
 SwiftUI pour rester testables au centième près. Côté iOS, 41 tests
@@ -129,7 +131,7 @@ HealthCheck/
 │   ├── ViewModels/      # Un par section, @MainActor, chargement unique
 │   └── Views/           # SwiftUI + Swift Charts + Sankey maison
 ├── HealthCheckShared/    # DTO d'échange + protocole compagnon, partagés Mac/iOS
-├── HealthCheckTests/    # 106 tests (moteurs + store + mapping + synchro compagnon)
+├── HealthCheckTests/    # 168 tests (moteurs + store + mapping + synchro compagnon + entraînement)
 ├── Companion/            # App iOS (HealthKit, synchro, appairage, UI)
 ├── CompanionTests/       # 41 tests (mapping HealthKit, ancres, synchro, view model)
 ├── Scripts/release.sh   # Release signée + notarisée
@@ -168,3 +170,4 @@ les identifiants et jetons vivent hors du dépôt.
 - [x] Spec 4 — corrélations santé (Pearson sur 180 j, 5 questions)
 - [x] Release v1.0.0 signée et notarisée
 - [x] (Optionnel) App compagnon iOS pour supprimer l'export manuel — récepteur Mac + app iOS livrés (serveur, appairage, ingestion, lecture HealthKit, synchro manuelle/arrière-plan) ; validation sur iPhone physique restante
+- [x] Écran Entraînement — objectif de course, plan hebdomadaire (`TrainingPlanner`), rapprochement des séances (`SessionMatcher`), moniteur de charge relatif au plan (`TrainingLoadMonitor`)

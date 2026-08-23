@@ -20,6 +20,9 @@ struct MetricStyle {
     static let bodyFat = MetricStyle(title: "Masse grasse", unit: "kg", systemImage: "chart.pie.fill", tint: .orange)
     static let leanMass = MetricStyle(title: "Masse maigre", unit: "kg", systemImage: "figure.arms.open", tint: .cyan)
     static let bmi = MetricStyle(title: "IMC", unit: "", systemImage: "gauge.with.needle", tint: .brown)
+    static let acuteLoad = MetricStyle(title: "Charge aiguë (7 j)", unit: "km", systemImage: "bolt.heart.fill", tint: .orange)
+    static let chronicLoad = MetricStyle(title: "Charge chronique (4 sem)", unit: "km/sem", systemImage: "chart.bar.fill", tint: .blue)
+    static let loadRatio = MetricStyle(title: "Ratio ACWR", unit: "", systemImage: "gauge.with.needle", tint: .purple)
 }
 
 /// Carte de métrique du dashboard : icône teintée, valeur en grand,

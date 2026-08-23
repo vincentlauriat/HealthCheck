@@ -6,6 +6,7 @@ enum SidebarSelection: Hashable {
     case activity
     case workouts
     case body
+    case training
     case correlations
     case trends
     case data
@@ -22,6 +23,7 @@ struct ContentView: View {
     @ObservedObject var workoutsViewModel: WorkoutsViewModel
     @ObservedObject var correlationsViewModel: CorrelationsViewModel
     @ObservedObject var companionViewModel: CompanionViewModel
+    @ObservedObject var trainingViewModel: TrainingViewModel
     @State private var selection: SidebarSelection? = .home
 
     var body: some View {
@@ -36,6 +38,8 @@ struct ContentView: View {
                         .tag(SidebarSelection.activity)
                     Label("Séances", systemImage: "figure.run")
                         .tag(SidebarSelection.workouts)
+                    Label("Entraînement", systemImage: "target")
+                        .tag(SidebarSelection.training)
                     Label("Corps", systemImage: "scalemass.fill")
                         .tag(SidebarSelection.body)
                     Label("Corrélations", systemImage: "arrow.triangle.branch")
@@ -63,6 +67,9 @@ struct ContentView: View {
             case .body:
                 BodyView(viewModel: bodyViewModel)
                     .navigationTitle("Corps")
+            case .training:
+                TrainingView(viewModel: trainingViewModel)
+                    .navigationTitle("Entraînement")
             case .correlations:
                 CorrelationsView(viewModel: correlationsViewModel)
                     .navigationTitle("Corrélations")
@@ -94,6 +101,7 @@ struct ContentView: View {
             try? dashboardViewModel.loadToday()
             try? dashboardViewModel.loadThisWeek()
             try? dashboardViewModel.loadWellness()
+            try? trainingViewModel.load(readiness: dashboardViewModel.readiness)
             try? sleepViewModel.load()
             try? activityViewModel.load()
             try? bodyViewModel.load(period: .oneYear)
@@ -111,6 +119,7 @@ struct ContentView: View {
             try? dashboardViewModel.loadToday()
             try? dashboardViewModel.loadThisWeek()
             try? dashboardViewModel.loadWellness()
+            try? trainingViewModel.load(readiness: dashboardViewModel.readiness)
             try? sleepViewModel.load()
             try? activityViewModel.load()
             try? workoutsViewModel.load()
