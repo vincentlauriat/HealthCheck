@@ -100,7 +100,7 @@ xcodebuild -scheme HealthCheckCompanion -destination 'platform=iOS Simulator,nam
 corrélations, mapping Withings, parsing GPX, dédoublonnage), le store
 et la synchro compagnon (appairage, routeur HTTP, ingestion
 idempotente). Les moteurs d'analyse sont volontairement découplés de
-SwiftUI pour rester testables au centième près. Côté iOS, 26 tests
+SwiftUI pour rester testables au centième près. Côté iOS, 41 tests
 (mapping HealthKit, ancres, moteur de synchro, client Mac, view
 model) ; la découverte Bonjour et la livraison en arrière-plan ne
 sont validables que sur appareil (voir
@@ -131,7 +131,7 @@ HealthCheck/
 ├── HealthCheckShared/    # DTO d'échange + protocole compagnon, partagés Mac/iOS
 ├── HealthCheckTests/    # 106 tests (moteurs + store + mapping + synchro compagnon)
 ├── Companion/            # App iOS (HealthKit, synchro, appairage, UI)
-├── CompanionTests/       # 26 tests (mapping HealthKit, ancres, synchro, view model)
+├── CompanionTests/       # 41 tests (mapping HealthKit, ancres, synchro, view model)
 ├── Scripts/release.sh   # Release signée + notarisée
 ├── docs/                # Guides + specs de conception
 └── project.yml          # Source de vérité XcodeGen (le .xcodeproj est généré)
