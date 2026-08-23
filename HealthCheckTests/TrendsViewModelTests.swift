@@ -13,7 +13,12 @@ final class TrendsViewModelTests: XCTestCase {
     @MainActor
     func test_load_averagesRestingHeartRatePerDayAfterSourceResolution() throws {
         let store = try HealthStore(path: ":memory:")
-        let now = Date()
+        // 23:00 aujourd'hui plutôt que l'horloge réelle : ces tests posent leurs
+        // données à des heures fixes de la journée (01:00, 14:00). Avec un `now`
+        // pris sur l'horloge, ces heures sont dans le futur tant que la journée
+        // n'est pas assez avancée, les données sortent de la fenêtre lue et le
+        // test échoue — une heure par nuit, tous les jours.
+        let now = Calendar.current.startOfDay(for: Date()).addingTimeInterval(23 * 3600)
         let day1 = Calendar.current.startOfDay(for: now).addingTimeInterval(3600)
 
         try store.insertRecords([
@@ -31,7 +36,12 @@ final class TrendsViewModelTests: XCTestCase {
     @MainActor
     func test_load_sumsSleepDurationPerNightAcrossMidnight() throws {
         let store = try HealthStore(path: ":memory:")
-        let now = Date()
+        // 23:00 aujourd'hui plutôt que l'horloge réelle : ces tests posent leurs
+        // données à des heures fixes de la journée (01:00, 14:00). Avec un `now`
+        // pris sur l'horloge, ces heures sont dans le futur tant que la journée
+        // n'est pas assez avancée, les données sortent de la fenêtre lue et le
+        // test échoue — une heure par nuit, tous les jours.
+        let now = Calendar.current.startOfDay(for: Date()).addingTimeInterval(23 * 3600)
         let calendar = Calendar.current
         let startOfToday = calendar.startOfDay(for: now)
         // A session from 23:00 the previous day to 01:00 today must count as ONE night.
