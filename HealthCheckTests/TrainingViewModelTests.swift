@@ -27,6 +27,12 @@ final class TrainingViewModelTests: XCTestCase {
                 routeFileName: nil)
     }
 
+    func hrRecord(_ day: String, value: Double) -> HealthRecord {
+        HealthRecord(type: "HKQuantityTypeIdentifierHeartRate", sourceName: "Watch", device: nil,
+                    unit: "count/min", value: value, startDate: date(day), endDate: date(day),
+                    creationDate: date(day))
+    }
+
     func goal(_ raceDay: String, km: Double = 17, climb: Double = 400) -> RaceGoal {
         RaceGoal(id: "g1", name: "Paris-Versailles", raceDate: date(raceDay, "10:00"),
                  distanceKm: km, elevationGainM: climb,
@@ -124,6 +130,24 @@ final class TrainingViewModelTests: XCTestCase {
 
         let longRunMatch = vm.progress?.matched.first { $0.session.kind == .longRun }
         XCTAssertEqual(longRunMatch?.isDone, true)
+        XCTAssertEqual(longRunMatch?.executed?.totalDistance, 15.0)
+    }
+
+    // MARK: - FC max
+
+    func test_load_hrMax_usesTheIndexedAggregateWithinTheHundredEightyDayWindow() throws {
+        let store = try HealthStore(path: ":memory:")
+        try store.saveRaceGoal(goal("2026-09-27"))
+        let today = date("2026-08-23")
+        try store.insertRecords([
+            hrRecord("2026-08-01", value: 201),   // dans la fenêtre de 180 jours
+            hrRecord("2026-01-01", value: 250)    // hors fenêtre : doit être ignoré
+        ])
+        let vm = TrainingViewModel(store: store, calendar: calendar, now: { today })
+
+        try vm.load()
+
+        XCTAssertEqual(vm.plan?.hrMax, 201)
     }
 
     // MARK: - Forme du jour
