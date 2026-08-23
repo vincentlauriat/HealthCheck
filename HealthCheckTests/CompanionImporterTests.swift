@@ -70,4 +70,40 @@ final class CompanionImporterTests: XCTestCase {
         let workout = try store.workouts(from: start.addingTimeInterval(-1), to: start.addingTimeInterval(1)).first
         XCTAssertNil(workout?.routeFileName)
     }
+
+    func test_ingest_selfHealing_routeWriteFailThenSucceed() throws {
+        // Phase 1: Ingest with a blocked directory (file instead of directory)
+        let blockedDir = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("blocked-route-\(UUID().uuidString)")
+        try Data().write(to: blockedDir) // Create a FILE, not a directory
+        let blockedImporter = CompanionImporter(store: store, routeStore: RouteStore(directory: blockedDir))
+
+        // First delivery: routeFileName is stored despite write failure (self-healing setup)
+        XCTAssertEqual(try blockedImporter.ingest(sampleBatch), 3)
+        let from = Date(timeIntervalSince1970: 1_755_800_000)
+        let to = Date(timeIntervalSince1970: 1_756_000_000)
+        let workoutPhase1 = try XCTUnwrap(try store.workouts(from: from, to: to).first)
+        let fileName = try XCTUnwrap(workoutPhase1.routeFileName)
+
+        // File is absent: url(forRouteFileName:) returns nil with blocked directory
+        XCTAssertNil(RouteStore(directory: blockedDir).url(forRouteFileName: fileName))
+
+        try FileManager.default.removeItem(at: blockedDir)
+
+        // Phase 2: Re-ingest with a good directory
+        let goodDir = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("good-route-\(UUID().uuidString)", isDirectory: true)
+        let healingImporter = CompanionImporter(store: store, routeStore: RouteStore(directory: goodDir))
+
+        // Idempotent: no new rows (same dedupKey, routeFileName already set)
+        XCTAssertEqual(try healingImporter.ingest(sampleBatch), 0)
+
+        // Now file exists and resolves via the deterministic name
+        let goodRouteStore = RouteStore(directory: goodDir)
+        let url = try XCTUnwrap(goodRouteStore.url(forRouteFileName: fileName))
+        let points = GPXParser.points(from: try Data(contentsOf: url))
+        XCTAssertEqual(points.count, 2)
+
+        try FileManager.default.removeItem(at: goodDir)
+    }
 }

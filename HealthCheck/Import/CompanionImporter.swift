@@ -30,14 +30,16 @@ struct CompanionImporter {
         })
 
         // GPX écrit avant la ligne workout (même ordre que le pipeline zip) ;
-        // un échec d'écriture n'invalide pas la séance, elle arrive sans carte.
+        // routeFileName stocké toujours quand routePoints non-vide (self-healing) :
+        // échec d'écriture → nom stocké mais fichier absent → RouteStore.url retourne nil ;
+        // relivraison réussie → même nom déterministe → fichier créé → url(forRouteFileName:) résout.
         let workouts = batch.workouts.map { exchange -> Workout in
             var routeFileName: String?
             if let points = exchange.routePoints, !points.isEmpty {
-                let name = Self.routeFileName(for: exchange)
-                if (try? writeGPX(points: points, fileName: name)) != nil {
-                    routeFileName = name
-                }
+                let rawName = Self.routeFileName(for: exchange)
+                let name = (rawName as NSString).lastPathComponent
+                _ = try? writeGPX(points: points, fileName: name)
+                routeFileName = name
             }
             return Workout(activityType: exchange.activityType, sourceName: exchange.sourceName,
                            duration: exchange.duration, durationUnit: exchange.durationUnit,
