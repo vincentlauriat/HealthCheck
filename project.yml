@@ -125,13 +125,10 @@ targets:
     deploymentTarget: "17.0"
     sources:
       - path: CompanionTests
-        excludes:
-          - "Info.plist"
     dependencies:
       - target: HealthCheckCompanion
     settings:
       base:
         SWIFT_VERSION: "5.9"
-    info:
-      path: CompanionTests/Info.plist
-      properties: {}
+        CODE_SIGNING_REQUIRED: NO
+        CODE_SIGNING_ALLOWED: NO
