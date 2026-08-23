@@ -146,7 +146,8 @@ must reproduce the plan's history, not rewrite it.
 |---|---|---|
 | The week sequence (which Mondays the plan spans) | `goal.createdAt`'s week, applying the §5.2 start-week rule **at creation time** | Otherwise the horizon shrinks as the race nears and the plan falls into the ≤2-week maintenance branch, destroying the taper (see below) |
 | A week's role (build / peak / taper / raceWeek) | position relative to `raceMonday` | Peak is always race−2; roles must not depend on how many weeks remain to be *rebuilt* |
-| A week's target volume | the load measured **strictly before that week's Monday** | A target must not move while the week is being run |
+| A **past or current** week's target volume | the load measured **strictly before that week's Monday**, capped at `× f` against the previous week's determined target | A target must not move while the week is being run |
+| A **future** week's target volume | pure projection: previous week's target `× f`, **no load read at all** | For a week that has not started, no "load before its Monday" exists yet; reading today's load instead would make the whole forward preview move every time the user runs — the original defect, relocated to « Semaines suivantes » |
 | The ≤2-week maintenance branch | the horizon **at creation** | It exists for a goal genuinely created inside two weeks, not for the tail of a longer plan |
 
 Consequences that are requirements, not side effects:
@@ -167,6 +168,20 @@ Consequences that are requirements, not side effects:
 - **Re-anchoring happens at week boundaries, not continuously.** That is what
   §2's "continuous re-anchoring" and §6's no-catch-up rule ("re-bases the
   *next* weeks") both actually describe.
+- **The history window is derived from the goal, not from a constant.** The
+  fold needs load from 28 days before `firstBuildMonday` through today, so the
+  view model must fetch `firstBuildMonday − 28 days … today`, not a fixed 90
+  days. A 90-day constant silently truncates the early weeks of any plan longer
+  than about nine weeks, which makes their targets wrong, which makes
+  `peakVolume` wrong, which breaks the taper again by a second route.
+- **The golden chain is the check that the cap semantics are right.** For a
+  runner executing the plan exactly, the fold must still produce
+  14.49 / 16.66 / 19.16 — week 2 being `min(load-based, 14.49 × 1.15)`. If the
+  fold does not reproduce those numbers, the cap is implemented wrongly.
+- **Stated consequence:** anchoring on `goal.createdAt` means deleting and
+  recreating a goal restarts the whole arc from the current load. That is
+  acceptable — recreating a goal is an explicit user act — but it is a
+  consequence to know, not a surprise to discover.
 
 ### 5.2 Starting point and weekly volumes
 
