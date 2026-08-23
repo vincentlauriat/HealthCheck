@@ -12,13 +12,14 @@ final class SessionMatcherTests: XCTestCase {
                     targetKm: sessions.reduce(0) { $0 + $1.targetKm }, sessions: sessions)
     }
 
-    private func run(km: Double, offsetDays: Int = 0) -> Workout {
+    private func run(km: Double? = nil, minutes: Double? = nil, offsetDays: Int = 0) -> Workout {
         let start = Date(timeIntervalSince1970: TimeInterval(offsetDays) * 86_400)
+        let duration = minutes ?? 30
         return Workout(activityType: "HKWorkoutActivityTypeRunning", sourceName: "Watch",
-                       duration: 30, durationUnit: "min", totalDistance: km,
-                       totalDistanceUnit: "km", totalEnergyBurned: nil,
+                       duration: duration, durationUnit: "min", totalDistance: km,
+                       totalDistanceUnit: km != nil ? "km" : nil, totalEnergyBurned: nil,
                        totalEnergyBurnedUnit: nil, startDate: start,
-                       endDate: start.addingTimeInterval(1800), routeFileName: nil)
+                       endDate: start.addingTimeInterval(duration * 60), routeFileName: nil)
     }
 
     func test_match_pairsLargestExecutedWithLargestTarget() {
@@ -74,9 +75,28 @@ final class SessionMatcherTests: XCTestCase {
     }
 
     func test_match_preservesTheWeeksSessionOrder() {
-        let w = week([session(.longRun, km: 8), session(.hills, km: 4),
-                      session(.baseEndurance, km: 3), session(.optionalEasy, minutes: 30)])
-        let p = SessionMatcher.match(week: w, executed: [run(km: 4.0)])
-        XCTAssertEqual(p.matched.map(\.session.kind), [.longRun, .hills, .baseEndurance, .optionalEasy])
+        // Declare sessions in order: baseEndurance (4.5), longRun (2.9), hills (4.1)
+        // Distance order (descending): baseEndurance (4.5), hills (4.1), longRun (2.9)
+        // This fixture FAILS if the implementation returns distance-sorted order.
+        let w = week([session(.baseEndurance, km: 4.5), session(.longRun, km: 2.9), session(.hills, km: 4.1)])
+        let p = SessionMatcher.match(week: w, executed: [run(km: 4.5), run(km: 4.1), run(km: 2.9)])
+
+        // Assert returned order is DECLARED order, not distance-sorted order
+        XCTAssertEqual(p.matched.map(\.session.kind), [.baseEndurance, .longRun, .hills])
+        // Verify each session got the run its distance deserves
+        XCTAssertEqual(p.matched[0].executed?.totalDistance, 4.5)  // baseEndurance gets largest
+        XCTAssertEqual(p.matched[1].executed?.totalDistance, 2.9)  // longRun gets smallest
+        XCTAssertEqual(p.matched[2].executed?.totalDistance, 4.1)  // hills gets middle
+        XCTAssertTrue(p.matched.allSatisfy(\.isDone))
+    }
+
+    func test_match_exercisesDurationFallbackThroughMatcher() {
+        // A workout with no distance recorded (old Strava row) should use
+        // TrainingPlanner.distanceKm's fallback: duration / 7.0 minutes per km.
+        // 35 minutes ÷ 7.0 = 5.0 km, which meets a 5.0 km target at ≥70% threshold.
+        let p = SessionMatcher.match(week: week([session(.longRun, km: 5.0)]),
+                                     executed: [run(minutes: 35)])
+        XCTAssertTrue(p.matched[0].isDone)
+        XCTAssertEqual(p.executedKm, 5.0, accuracy: 0.001)
     }
 }

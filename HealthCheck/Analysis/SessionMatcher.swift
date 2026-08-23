@@ -23,22 +23,30 @@ enum SessionMatcher {
         let executedKm = runs.reduce(0) { $0 + TrainingPlanner.distanceKm($1) }
         var pool = runs.sorted { TrainingPlanner.distanceKm($0) > TrainingPlanner.distanceKm($1) }
 
-        var byKind: [SessionKind: MatchedSession] = [:]
+        var matched = Array<MatchedSession?>(repeating: nil, count: week.sessions.count)
 
         // D'abord les séances définies en distance, appariées par taille.
-        for session in week.sessions.filter({ $0.targetKm > 0 }).sorted(by: { $0.targetKm > $1.targetKm }) {
+        let distanceIndexSessions = week.sessions.enumerated()
+            .filter { $0.element.targetKm > 0 }
+            .sorted { $0.element.targetKm > $1.element.targetKm }
+
+        for (index, session) in distanceIndexSessions {
             let run = pool.isEmpty ? nil : pool.removeFirst()
             let done = run.map { TrainingPlanner.distanceKm($0) >= session.targetKm * doneThreshold } ?? false
-            byKind[session.kind] = MatchedSession(session: session, executed: run, isDone: done)
-        }
-        // Les séances définies en durée ne prennent jamais un créneau dans
-        // ce tri : elles se contentent d'une sortie restante s'il y en a une.
-        for session in week.sessions where session.targetKm == 0 {
-            let run = pool.isEmpty ? nil : pool.removeFirst()
-            byKind[session.kind] = MatchedSession(session: session, executed: run, isDone: run != nil)
+            matched[index] = MatchedSession(session: session, executed: run, isDone: done)
         }
 
-        return WeekProgress(matched: week.sessions.compactMap { byKind[$0.kind] },
+        // Les séances définies en durée ne prennent jamais un créneau dans
+        // ce tri : elles se contentent d'une sortie restante s'il y en a une.
+        let durationIndexSessions = week.sessions.enumerated()
+            .filter { $0.element.targetKm <= 0 }
+
+        for (index, session) in durationIndexSessions {
+            let run = pool.isEmpty ? nil : pool.removeFirst()
+            matched[index] = MatchedSession(session: session, executed: run, isDone: run != nil)
+        }
+
+        return WeekProgress(matched: matched.compactMap { $0 },
                             offPlan: pool, executedKm: executedKm)
     }
 }
