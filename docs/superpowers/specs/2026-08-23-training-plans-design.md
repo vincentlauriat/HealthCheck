@@ -44,6 +44,8 @@ how much is too much) and the daily decision (is today a hard day).
 - Multi-sport plans (cycling, swimming). Running only.
 - Calendar/reminder integration, notifications.
 - Editing individual planned sessions by hand.
+- Capturing elevation (altitude in the exchange protocol, `<ele>` in
+  GPX, ascent computation with GPS smoothing) — see §6.1.
 - More than one active goal at a time (nearest future race wins;
   others are ignored until it passes).
 
@@ -108,9 +110,11 @@ ACWR, matching). Workouts with a real distance always use it.
 
 ### 5.2 Starting point and weekly volumes
 
-- `chronicWeeklyKm` = total km (with fallback) of the last 28 days
-  before the current week's Monday, divided by 4.
-- `acuteKm` = total km of the last 7 days (the week actually being run).
+- **One chronic definition, used by both engines** (§6 reads the same
+  numbers — divergent windows would let the planner prescribe what the
+  monitor flags): `chronicWeeklyKm` = total km (with fallback) of the
+  **last 28 days ending today, inclusive**, divided by 4.
+  `acuteKm` = total km of the last 7 days ending today, inclusive.
 - `startVolume` = `max(chronicWeeklyKm, acuteKm, 10.0)` km — the floor
   keeps a returning runner on a meaningful base, the acute reading
   credits the comeback week already underway, and the chronic reading
@@ -176,9 +180,18 @@ week of the race.
 
 ### 5.4 Heart-rate zones
 
-`hrMax` = highest heart-rate **sample** recorded during any running
-workout interval in the last 180 days (join `health_record`
-HeartRate rows to workout intervals); fallback if none: 190.
+`hrMax` = highest heart-rate sample of the last 180 days, read with a
+**single indexed query, no join** — the store holds ~1.8 M rows and a
+range-join of HeartRate against workout intervals on screen load is
+exactly the class of problem the recent perf pass removed:
+
+```sql
+SELECT MAX(value) FROM health_record
+WHERE type = 'HKQuantityTypeIdentifierHeartRate'
+  AND startDate >= :cutoff;
+```
+
+Fallback if the query returns NULL: 190.
 Zones: easy = 60–75 % of hrMax, endurance = 70–80 %, hills hard
 effort = 85–92 %. Prescriptions are phrased as bpm ranges in the UI.
 No pace targets in v1 (objective is comfort, not time).
@@ -187,14 +200,29 @@ No pace targets in v1 (objective is comfort, not time).
 
 `TrainingLoadMonitor.assess(history:readiness:today:) -> LoadAssessment`
 
-- `acute` = km of the last 7 days (fallback rule §5.1);
-  `chronic` = km of the last 28 days / 4.
-- `acwr = acute / chronic` (nil when chronic < 3 km — too little data,
-  no ratio shown).
-- Alerts: `acwr > 1.3` → « Vous progressez trop vite — réduisez cette
-  semaine » (severity: warning). `acwr < 0.8` with a goal active and
-  ≥ 2 build weeks remaining → « Vous pouvez en faire un peu plus »
-  (severity: info).
+- `acute` and `chronic`: the §5.2 definitions, verbatim — one reading
+  shared by both engines.
+- `acwr = acute / chronic`, **nil unless the history is meaningful**:
+  at least 3 of the last 4 weeks contain a run, or `chronic >= 8` km.
+  A comeback mechanically shows a huge ratio (12.6 / 3.15 ≈ 4.0 for
+  Vincent on day one) — that is arithmetic, not danger, and showing it
+  as a warning next to a plan card prescribing a ramp would be
+  self-contradictory. Below the gate the card reads « Reprise en cours
+  — l'indicateur de charge s'activera après 3 semaines régulières ».
+- **Alerts follow the plan when a goal is active.** The planner already
+  caps progression at `f` per week; a ramp that respects the plan is by
+  construction safe, so raw ACWR must not fire against it. With an
+  active goal, alerts compare executed against *planned* week volume:
+  - executed > 125 % of the week's target → « Vous dépassez le plan —
+    tenez-vous-en aux séances prévues » (warning);
+  - executed < 50 % of target with ≤ 2 days left in the week →
+    « Semaine en retard — elle ne sera pas rattrapée la semaine
+    suivante » (info, restating the no-catch-up rule).
+  The ACWR value is still *displayed* when the gate above passes
+  (informative), but it does not drive the alert.
+- **Without an active goal** (feature used as a plain load monitor),
+  raw ACWR drives the alerts: `> 1.3` → « Vous progressez trop vite »
+  (warning); `< 0.8` → « Vous pouvez en faire un peu plus » (info).
 - Day suggestion: if today's planned session is Hills or Long run and
   the readiness score (existing engine) is `< 50`, suggest swapping
   with an easy day: « Forme du jour basse — intervertissez avec une
@@ -203,14 +231,35 @@ No pace targets in v1 (objective is comfort, not time).
   re-bases the next weeks from the *executed* chronic load, never
   inflates a following week beyond the ×1.10 cap.
 
+### 6.1 Climb is prescriptive only (verified against the data)
+
+Checked on the real store before writing this: the `workout` table has
+no elevation column, `ExchangeRoutePoint` carries lat/lon/timestamp
+only, and the GPX files written by the companion contain **no `<ele>`
+element**. No elevation figure exists anywhere in the pipeline, and the
+companion is the primary data path from now on.
+
+Therefore the hills session **prescribes** a climb target and nothing
+ever verifies it: its done-check uses distance (§7), like any other
+session, and the climb figure is displayed as a coaching instruction
+(« parcours vallonné, visez ~200 m de D+ »). No test asserts on climb
+data, because no real workout can reach such a branch — the exact trap
+that cost a review round in the companion project.
+
+Capturing altitude is a worthwhile follow-up but is **not** in this
+scope: `CLLocation.altitude` is already in hand on the iOS side, so the
+transport is trivial, but a naive sum of positive deltas over noisy GPS
+inflates ascent by 2-3×. Doing it right needs a smoothing pass with its
+own tests — a task of its own, later.
+
 ## 7. Matching planned vs executed
 
 Within the current week (Monday-based), executed running workouts are
 matched to planned sessions greedily: sort executed by distance
 descending, planned by target distance descending, pair in order. A
 session is « done » when its matched workout's distance is ≥ 70 % of
-target (or ≥ 70 % of target climb for the hills session when route
-elevation data exists; distance rule otherwise). Unmatched extra
+target. This is the rule for every session type including hills — see
+§6.1: no elevation data exists to check a climb against. Unmatched extra
 workouts count toward week volume but are labeled « hors plan ». The
 remaining days of the week redistribute nothing — undone sessions just
 stay visible as « à faire ».
@@ -281,8 +330,8 @@ Engine-first, mirroring the project:
 
 ## 12. Known limitations (accepted)
 
-- The hills « done » check uses distance when no route elevation is
-  available (most non-GPX workouts).
+- Climb is never verified, only prescribed (§6.1). Vincent knows
+  whether he ran hills; the app does not.
 - hrMax from observed samples underestimates true max for a runner who
   never pushed hard in the window — zones err on the easy side, which
   matches the objective.
