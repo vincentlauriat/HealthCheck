@@ -87,18 +87,40 @@ final class TrainingLoadMonitorTests: XCTestCase {
 
     // MARK: - Régime avec plan actif (relatif à la cible)
 
+    /// Fixture round 1 (post-review) : la version originale ne pinnait rien,
+    /// car son historique (une seule semaine de reprise) fermait la porte de
+    /// signifiance (`weeksWithARun == 2`, `chronic == 6.77 < 8`) — `acwr`
+    /// valait donc `nil`, et le ratio brut de 3,26 n'était jamais atteignable.
+    /// Supprimer la branche du plan ne changeait alors rien : le test passait
+    /// pour de mauvaises raisons.
+    ///
+    /// Ici les trois conditions tiennent en même temps à la date d'évaluation
+    /// (2026-08-28) :
+    /// - la porte de signifiance est ouverte : 4 semaines sur 4 (03, 10, 17,
+    ///   24 août) contiennent une sortie → `acwr` n'est pas `nil` ;
+    /// - le ratio brut est réellement élevé : aigu = 10 km (les deux sorties
+    ///   de la semaine en cours), chronique = (5+5+5+10)/4 = 6,25 →
+    ///   ratio = 10 / 6,25 = 1,6, bien au-dessus du seuil de 1,3 ;
+    /// - le volume exécuté cette semaine (10 km) reste sous 125 % de la
+    ///   cible du plan (≈ 11,5 km × 1,25 = 14,375 km), donc la branche
+    ///   relative au plan n'a elle-même aucune raison d'alerter.
     func test_assess_withPlan_rampWithinPlanDoesNotWarnDespiteHighRatio() {
         let g = goal()  // Paris-Versailles, 17 km, 400 m, 2026-09-27
-        let comeback = [run("2026-08-18", km: 5.0), run("2026-08-22", km: 2.0), run("2026-08-23", km: 5.6)]
-        let plan = TrainingPlanner.plan(goal: g, history: comeback, hrMax: 190,
+        // Trois semaines régulières avant la semaine en cours.
+        let baseline = [run("2026-08-03", km: 5.0), run("2026-08-10", km: 5.0), run("2026-08-17", km: 5.0)]
+        let plan = TrainingPlanner.plan(goal: g, history: baseline, hrMax: 190,
                                         today: date("2026-08-24"), calendar: calendar)
         let target = plan.weeks.first { $0.role != .currentWeekClosing }!.targetKm
-        // Semaine conforme au plan : on court exactement la cible.
-        let onPlan = [run("2026-08-25", km: target * 0.55), run("2026-08-27", km: target * 0.45)]
-        let a = TrainingLoadMonitor.assess(history: comeback + onPlan, plan: plan, readiness: nil,
+        // Semaine conforme au plan : 10 km, sous la cible × 1,25.
+        let onPlan = [run("2026-08-25", km: 6.0), run("2026-08-27", km: 4.0)]
+        let a = TrainingLoadMonitor.assess(history: baseline + onPlan, plan: plan, readiness: nil,
                                            today: date("2026-08-28"), calendar: calendar)
-        // Le ratio brut est énorme (reprise), mais rien ne doit alerter :
-        // la montée respecte le plan, qui plafonne déjà la progression.
+        // Le ratio brut (1,6) dépasse le seuil (1,3), mais rien ne doit
+        // alerter : la montée respecte le plan, qui plafonne déjà la
+        // progression.
+        XCTAssertNotNil(a.acwr)
+        XCTAssertGreaterThan(a.acwr ?? 0, 1.3)
+        XCTAssertLessThanOrEqual(onPlan.reduce(0) { $0 + ($1.totalDistance ?? 0) }, target * 1.25)
         XCTAssertFalse(a.alerts.contains { $0.severity == .warning },
                        "une montée conforme au plan ne doit jamais déclencher d'avertissement")
     }
@@ -170,5 +192,59 @@ final class TrainingLoadMonitorTests: XCTestCase {
         let a = TrainingLoadMonitor.assess(history: comeback + done, plan: plan, readiness: readiness,
                                            today: date("2026-08-27"), calendar: calendar)
         XCTAssertFalse(a.alerts.contains { $0.message.contains("Forme du jour basse") })
+    }
+
+    // MARK: - Garde-fous du branchement plan (fix round 1)
+
+    /// La semaine en cours peut être `.currentWeekClosing` (cible à 0, trop
+    /// tard pour recevoir des consignes). Sans le garde `week.role !=
+    /// .currentWeekClosing`, n'importe quelle sortie dépasserait
+    /// mécaniquement `0 × 1,25`, et un avertissement « dépassez le plan »
+    /// se déclencherait à tort.
+    func test_assess_withPlan_currentWeekClosing_producesNoOvershootWarning() {
+        let g = goal()
+        // 2026-08-23 est un dimanche : il ne reste qu'un jour à la semaine
+        // du 08-17, qui devient donc `.currentWeekClosing` (cible à 0).
+        let plan = TrainingPlanner.plan(goal: g, history: comebackHistory, hrMax: 190,
+                                        today: date("2026-08-23"), calendar: calendar)
+        XCTAssertEqual(plan.weeks.first?.role, .currentWeekClosing)
+        XCTAssertEqual(plan.weeks.first?.targetKm, 0)
+        let a = TrainingLoadMonitor.assess(history: comebackHistory, plan: plan, readiness: nil,
+                                           today: date("2026-08-23"), calendar: calendar)
+        XCTAssertFalse(a.alerts.contains { $0.severity == .warning })
+    }
+
+    /// Quand `today` ne correspond à aucune semaine du plan (avant la
+    /// première semaine construite, ou après la semaine de course), le code
+    /// doit se comporter exactement comme en l'absence de plan — pas de
+    /// branchement plan « fantôme », pas de crash.
+    func test_assess_todayOutsideEveryPlanWeek_behavesLikeNoPlan() {
+        let g = goal()  // course le 2026-09-27
+        let comeback = [run("2026-08-18", km: 5.0), run("2026-08-22", km: 2.0), run("2026-08-23", km: 5.6)]
+        let plan = TrainingPlanner.plan(goal: g, history: comeback, hrMax: 190,
+                                        today: date("2026-08-24"), calendar: calendar)
+        // La dernière semaine du plan commence le 2026-09-21 (semaine de
+        // course) ; le 2026-10-15 n'appartient à aucune semaine du plan.
+        XCTAssertFalse(plan.weeks.contains { $0.monday == TrainingPlanner.monday(of: date("2026-10-15"), calendar: calendar) })
+        let laterHistory = (0..<28).map { run(dayString(from: "2026-10-15", offsetDays: -$0), km: 10.0 / 7.0) }
+            + [run("2026-10-15", km: 20.0)]
+        let withPlan = TrainingLoadMonitor.assess(history: laterHistory, plan: plan, readiness: nil,
+                                                   today: date("2026-10-15"), calendar: calendar)
+        let withoutPlan = TrainingLoadMonitor.assess(history: laterHistory, plan: nil, readiness: nil,
+                                                      today: date("2026-10-15"), calendar: calendar)
+        XCTAssertEqual(withPlan, withoutPlan)
+        XCTAssertTrue(withPlan.alerts.contains { $0.severity == .warning && $0.message.contains("trop vite") })
+    }
+
+    // MARK: - Frontière des 28 jours de weeksWithARun
+
+    /// Une sortie exactement 28 jours avant `today` compte (fenêtre
+    /// inclusive) ; une sortie 29 jours avant ne compte pas.
+    func test_weeksWithARun_includesExactlyTwentyEightDaysAgoButExcludesTwentyNine() {
+        let today = date("2026-08-28")
+        let boundary = run(dayString(from: "2026-08-28", offsetDays: -28), km: 5.0)
+        let justOutside = run(dayString(from: "2026-08-28", offsetDays: -29), km: 5.0)
+        XCTAssertEqual(TrainingLoadMonitor.weeksWithARun([boundary], today: today, calendar: calendar), 1)
+        XCTAssertEqual(TrainingLoadMonitor.weeksWithARun([justOutside], today: today, calendar: calendar), 0)
     }
 }
