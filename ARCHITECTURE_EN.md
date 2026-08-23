@@ -173,14 +173,18 @@ current week is present in `plan.weeks` and carries targets (`role !=
 week's target* instead of the raw ratio — over target by 25 % warns,
 under target by 50 % with ≤2 days left in the week notes it won't be
 caught up, and a low readiness score suggests swapping a still-pending
-long run or hilly session for an easy one. The raw-ratio fallback is
-meant to run only between races or before the current week takes
-targets; **known limitation** — because the plan branch's guard is the
-same three-day threshold `TrainingPlanner` uses to decide whether the
-current week carries targets at all, the fallback also fires on the
-last day or two before Monday (Saturday/Sunday under the default
-`firstWeekday`) even with an active, on-plan goal, since that week is
-`currentWeekClosing` for both engines alike.
+long run or hilly session for an easy one. The raw-ratio fallback is gated on
+the **absence of a plan** (`plan == nil`), not on the outcome of the
+week lookup. That distinction is anything but academic:
+`TrainingPlanner` marks the current week `currentWeekClosing` as soon
+as fewer than three days remain in it, so a guard keyed on the week
+would have brought "you're progressing too fast" back every Saturday
+and Sunday, beside a plan being followed exactly — the very
+contradiction this design removes. When a plan exists but the current
+week carries no targets, `assess` still publishes acute load, chronic
+load and the ratio for display, but raises no alert: there is no target
+to compare against, and the raw ratio is precisely the number that must
+not drive an alert while a plan is active.
 
 **Climb is prescribed, never verified.** Every `PlannedSession` carries
 a `targetClimbM`, ramped toward `goal.elevationGainM` the same way

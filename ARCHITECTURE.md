@@ -187,15 +187,19 @@ cible de cette semaine* plutôt qu'au ratio brut — dépasser la cible de
 25 % alerte, être en retard de 50 % avec ≤2 jours restants dans la
 semaine signale qu'elle ne sera pas rattrapée, et une forme du jour
 basse suggère d'intervertir une sortie longue ou de côtes encore en
-attente avec une séance facile. Le repli sur le ratio brut n'est censé
-tourner qu'entre deux courses ou avant que la semaine en cours ne
-porte des cibles ; **limite connue** — comme la garde de la branche
-« plan » utilise le même seuil de trois jours que `TrainingPlanner`
-pour décider si la semaine en cours porte des cibles, le repli se
-déclenche aussi les un ou deux derniers jours avant lundi (samedi/
-dimanche avec le `firstWeekday` par défaut) même avec un objectif actif
-et un plan respecté, puisque cette semaine est `currentWeekClosing`
-pour les deux moteurs à la fois.
+attente avec une séance facile. Le repli sur le ratio brut est
+conditionné à l'**absence de plan** (`plan == nil`), et non au résultat
+de la recherche de semaine. La distinction est tout sauf théorique :
+`TrainingPlanner` marque la semaine en cours `currentWeekClosing` dès
+qu'il y reste moins de trois jours, donc une garde portant sur la
+semaine aurait fait réapparaître « vous progressez trop vite » chaque
+samedi et dimanche, à côté d'un plan respecté — exactement la
+contradiction que cette conception élimine. Quand un plan existe mais
+que la semaine en cours ne porte pas de cibles, `assess` publie
+toujours charge aiguë, chronique et ratio pour l'affichage, mais
+n'émet aucune alerte : il n'y a pas de cible à laquelle comparer, et le
+ratio brut est précisément le nombre qui ne doit pas piloter d'alerte
+tant qu'un plan est actif.
 
 **Le dénivelé est prescrit, jamais vérifié.** Chaque `PlannedSession`
 porte un `targetClimbM`, monté vers `goal.elevationGainM` de la même
