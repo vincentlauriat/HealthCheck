@@ -65,6 +65,11 @@ final class TrainingViewModelTests: XCTestCase {
     /// (alertes ACWR brutes) inatteignable depuis l'app bien que testée au
     /// niveau du moteur. Ce test pince cette branche via le view model.
     func test_load_withoutGoal_computesRawAcwrAssessment() throws {
+        // Charge chronique = (5+5+5+20)/4 = 8.75 km/sem, juste au-dessus du
+        // seuil meaningfulChronicKm (8.0) : c'est ce qui rend l'ACWR non-nil
+        // ici sans dépendre du nombre de semaines actives. Un fixture plus
+        // maigre ferait passer `meaningful` à faux et `acwr` à nil, faisant
+        // échouer ce test sans pointer vers la bonne cause.
         let store = try HealthStore(path: ":memory:")
         try store.insertWorkouts([
             run("2026-07-29", km: 5.0),

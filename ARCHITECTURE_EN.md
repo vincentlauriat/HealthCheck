@@ -128,8 +128,9 @@ engines would produce for the same inputs.
 - **`TrainingPlanner`** builds a deterministic `TrainingPlan` from a
   `RaceGoal`, the running history, and `hrMax`. The starting weekly
   volume is the greater of the chronic load, the acute load, and a
-  10 km floor; it ramps geometrically — ×1.15/week from a comeback
-  baseline below goal distance, ×1.10/week once at or above it —
+  10 km floor; it ramps geometrically — ×1.15/week while that starting
+  weekly volume is below the goal distance, ×1.10/week once at or
+  above it —
   capped at 1.5× the goal distance, peaks two weeks before the race,
   then tapers ×0.75 and ×0.5 into race week. Each week's target splits
   into a long run (60 % share, grown at most 2.5 km/week off the

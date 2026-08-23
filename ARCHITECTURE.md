@@ -135,8 +135,9 @@ pour les mêmes entrées.
   partir d'un `RaceGoal`, de l'historique de course et de `hrMax`. Le
   volume hebdomadaire de départ est le plus grand de la charge
   chronique, de la charge aiguë et d'un plancher à 10 km ; il monte
-  géométriquement — ×1,15/semaine depuis une reprise sous la distance
-  de l'objectif, ×1,10/semaine une fois à son niveau ou au-delà —
+  géométriquement — ×1,15/semaine tant que ce volume hebdomadaire de
+  départ est sous la distance de l'objectif, ×1,10/semaine une fois à
+  son niveau ou au-delà —
   plafonné à 1,5× la distance de l'objectif, culmine deux semaines
   avant la course, puis redescend par ×0,75 puis ×0,5 jusqu'à la
   semaine de course. La cible de chaque semaine se répartit en sortie
