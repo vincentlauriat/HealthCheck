@@ -84,6 +84,31 @@ Companion → Réseau local**.
   sur le même réseau local** (Wi-Fi domestique). Aucune synchro n'est
   possible via le réseau cellulaire ou un VPN.
 
+## Validation sur appareil
+
+Les 26 tests XCTest du compagnon tournent en simulateur ; la découverte
+Bonjour sur un vrai réseau et le timing du réveil en arrière-plan ne
+s'y exercent pas. Après une installation ou une modification touchant
+Bonjour, HealthKit ou le réveil en arrière-plan, coche cette liste sur
+un iPhone physique :
+
+- [ ] Installation réussie via Xcode (étape 1) sur un iPhone physique.
+- [ ] Autorisation Santé accordée (étape 2) — toutes les données
+      demandées apparaissent dans **Réglages → Santé → Accès aux
+      données et à l'appareil → HealthCheck Companion**.
+- [ ] Invite « Réseau local » acceptée (étape 3).
+- [ ] Appairage réussi avec le code affiché sur le Mac (étape 4) —
+      badge « Appairé » visible dans l'app.
+- [ ] Première synchro manuelle effectuée — le compteur d'échantillons
+      insérés augmente côté Mac (écran **Données** → carte iPhone).
+- [ ] Redémarrage du Mac (nouveau port éphémère) suivi d'une synchro —
+      la découverte Bonjour retrouve le Mac sans ré-appairage.
+- [ ] Le lendemain matin, sans avoir rouvert l'app au premier plan, la
+      date de dernière synchro a avancé toute seule (réveil en
+      arrière-plan effectif).
+- [ ] Le score de forme du jour est calculable sur le Mac à partir des
+      seules données compagnon (sans export zip fait entre-temps).
+
 ## Dépannage
 
 | Symptôme | Cause probable |

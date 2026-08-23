@@ -69,12 +69,27 @@ final class CompanionViewModel: ObservableObject {
             errorMessage = "Le Mac ne reconnaît plus cet iPhone. Refaites l'appairage."
             return
         }
-        if !report.failedTypes.isEmpty && report.pushedSamples == 0 {
-            errorMessage = "Mac injoignable — vos données attendent, rien n'est perdu."
+        guard !report.failedTypes.isEmpty else {
+            // Succès complet : tous les types ont réussi (y compris le cas
+            // trivial d'un delta vide).
+            lastSyncDate = Date()
+            defaults.set(lastSyncDate, forKey: Self.lastSyncKey)
+            lastReportSummary = "\(report.pushedSamples) échantillons envoyés, \(report.insertedRows) nouveaux"
             return
         }
-        lastSyncDate = Date()
-        defaults.set(lastSyncDate, forKey: Self.lastSyncKey)
-        lastReportSummary = "\(report.pushedSamples) échantillons envoyés, \(report.insertedRows) nouveaux"
+        if report.pushedSamples == 0 {
+            // Échec complet : Mac injoignable (réseau) vs Mac joignable mais
+            // requête refusée (serveur) sont deux causes distinctes, donc
+            // deux messages distincts.
+            errorMessage = report.hadServerError
+                ? "Le Mac a refusé l'envoi (erreur serveur). Nouvel essai à la prochaine synchronisation."
+                : "Mac injoignable — vos données attendent, rien n'est perdu."
+            return
+        }
+        // Échec partiel : certains types ont réussi, d'autres non. Pas de
+        // tampon « synchro propre » tant que tout n'est pas passé — l'ancre
+        // des types en échec n'a pas avancé, ils seront relivrés.
+        lastReportSummary = "\(report.pushedSamples) échantillons envoyés, \(report.insertedRows) nouveaux — \(report.failedTypes.count) type(s) en échec, nouvel essai à la prochaine synchronisation"
+        errorMessage = "Synchronisation partielle : certaines données n'ont pas pu être envoyées. Nouvel essai à la prochaine synchronisation."
     }
 }

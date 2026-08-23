@@ -118,4 +118,28 @@ final class SyncEngineTests: XCTestCase {
         XCTAssertEqual(report.pushedSamples, 0)
         XCTAssertTrue(pusher.pushedBatches.isEmpty)
     }
+
+    // MARK: - C2 — distinguer Mac injoignable (réseau) de requête refusée (serveur)
+
+    func test_serverErrorFailure_setsHadServerError() async throws {
+        let type = "HKQuantityTypeIdentifierStepCount"
+        reader.deltas[type] = TypeDelta(typeIdentifier: type, records: [record(1)],
+                                        sleep: [], workouts: [], newAnchor: HKQueryAnchor(fromValue: 1))
+        pusher.results = [.failure(MacClientError.serverError(500))]
+
+        let report = await engine(types: [type]).syncAll()
+        XCTAssertEqual(report.failedTypes, [type])
+        XCTAssertTrue(report.hadServerError)
+    }
+
+    func test_unreachableFailure_doesNotSetHadServerError() async throws {
+        let type = "HKQuantityTypeIdentifierStepCount"
+        reader.deltas[type] = TypeDelta(typeIdentifier: type, records: [record(1)],
+                                        sleep: [], workouts: [], newAnchor: HKQueryAnchor(fromValue: 1))
+        pusher.results = [.failure(MacClientError.unreachable)]
+
+        let report = await engine(types: [type]).syncAll()
+        XCTAssertEqual(report.failedTypes, [type])
+        XCTAssertFalse(report.hadServerError)
+    }
 }

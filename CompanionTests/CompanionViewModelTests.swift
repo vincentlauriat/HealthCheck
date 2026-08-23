@@ -78,4 +78,36 @@ final class CompanionViewModelTests: XCTestCase {
         XCTAssertFalse(vm.isPaired) // jeton invalidé côté Mac → ré-appairage requis
         XCTAssertNil(tokenStore.currentToken())
     }
+
+    // MARK: - C2 — succès partiel / échec complet réseau vs serveur
+
+    func test_syncNow_partialFailure_doesNotStampDate_summaryMentionsFailureCount_setsWarning() async {
+        engine.report = SyncReport(pushedSamples: 10, insertedRows: 8, failedTypes: ["sleep"], needsPairing: false)
+        await vm.syncNow()
+        XCTAssertNil(vm.lastSyncDate, "un échec partiel ne doit pas tamponner une synchro propre")
+        XCTAssertNotNil(vm.lastReportSummary)
+        XCTAssertTrue(vm.lastReportSummary?.contains("1") ?? false, "le résumé doit mentionner le nombre de types en échec")
+        XCTAssertTrue(vm.lastReportSummary?.contains("échec") ?? false)
+        XCTAssertNotNil(vm.errorMessage, "un état d'avertissement doit rester visible dans l'UI")
+    }
+
+    func test_syncNow_allFailed_unreachable_showsUnreachableMessage() async {
+        engine.report = SyncReport(pushedSamples: 0, insertedRows: 0, failedTypes: ["steps"],
+                                    needsPairing: false, hadServerError: false)
+        await vm.syncNow()
+        XCTAssertNil(vm.lastSyncDate)
+        XCTAssertNotNil(vm.errorMessage)
+        XCTAssertTrue(vm.errorMessage?.localizedCaseInsensitiveContains("injoignable") ?? false)
+    }
+
+    func test_syncNow_allFailed_serverRejected_showsRejectedMessage_notUnreachable() async {
+        engine.report = SyncReport(pushedSamples: 0, insertedRows: 0, failedTypes: ["steps"],
+                                    needsPairing: false, hadServerError: true)
+        await vm.syncNow()
+        XCTAssertNil(vm.lastSyncDate)
+        XCTAssertNotNil(vm.errorMessage)
+        XCTAssertFalse(vm.errorMessage?.localizedCaseInsensitiveContains("injoignable") ?? true,
+                        "un rejet serveur n'est pas un Mac injoignable")
+        XCTAssertTrue(vm.errorMessage?.localizedCaseInsensitiveContains("refusé") ?? false)
+    }
 }

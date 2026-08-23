@@ -7,6 +7,7 @@ struct CompanionApp: App {
     private let reader: HealthKitReaderLive
     private let engine: SyncEngine
     private let client: MacClient
+    private let backgroundSyncCoalescer = SyncCoalescer()
     @StateObject private var viewModel: CompanionViewModel
 
     init() {
@@ -30,8 +31,10 @@ struct CompanionApp: App {
                 .task {
                     guard reader.isAvailable else { return }
                     try? await reader.requestAuthorization()
-                    BackgroundSync.register(store: healthStore) { [engine] in
-                        _ = await engine.syncAll()
+                    BackgroundSync.register(store: healthStore) { [engine, backgroundSyncCoalescer] in
+                        await backgroundSyncCoalescer.run {
+                            _ = await engine.syncAll()
+                        }
                     }
                 }
         }

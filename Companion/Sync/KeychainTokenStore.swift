@@ -30,6 +30,11 @@ final class KeychainTokenStore {
         clear()
         var query = baseQuery
         query[kSecValueData as String] = Data(token.utf8)
+        // Accessible dès le premier déverrouillage post-redémarrage (pas
+        // seulement appareil déverrouillé) : un réveil HealthKit en
+        // arrière-plan avant le premier déverrouillage doit pouvoir lire le
+        // jeton pour synchroniser.
+        query[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlock
         let status = SecItemAdd(query as CFDictionary, nil)
         guard status == errSecSuccess else {
             throw NSError(domain: NSOSStatusErrorDomain, code: Int(status))

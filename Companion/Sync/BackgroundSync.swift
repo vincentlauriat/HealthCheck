@@ -1,5 +1,6 @@
 import Foundation
 import HealthKit
+import os
 import os.log
 
 /// Réveil automatique : une HKObserverQuery par type + background delivery.
@@ -14,8 +15,19 @@ enum BackgroundSync {
     private static let immediateTypes: [HKQuantityTypeIdentifier] = [
         .restingHeartRate, .heartRateVariabilitySDNN, .vo2Max
     ]
+    /// Un seul enregistrement d'observateurs par process : un re-run du
+    /// `.task` de la vue racine (ex. changement de scène SwiftUI) ne doit
+    /// pas enregistrer une seconde fois les mêmes `HKObserverQuery`, ce qui
+    /// multiplierait les réveils pour un même changement HealthKit.
+    private static let registered = OSAllocatedUnfairLock(initialState: false)
 
     static func register(store: HKHealthStore, onWake: @escaping () async -> Void) {
+        let alreadyRegistered = registered.withLock { flag -> Bool in
+            defer { flag = true }
+            return flag
+        }
+        guard !alreadyRegistered else { return }
+
         var configs: [(HKSampleType, HKUpdateFrequency)] =
             hourlyTypes.map { (HKQuantityType($0), .hourly) } +
             immediateTypes.map { (HKQuantityType($0), .immediate) }

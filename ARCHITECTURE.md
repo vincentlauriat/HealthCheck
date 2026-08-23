@@ -223,11 +223,16 @@ manuel.
   inutile d'insister sans jeton valide.
 - **Découverte Bonjour** : `BonjourEndpointProvider` parcourt
   `_healthcheck._tcp`, puis résout l'endpoint en ouvrant une connexion
-  TCP éphémère et en lisant `host`/`port` sur son chemin « prêt ». Le
-  port du listener Mac est lui-même éphémère et change à chaque
-  lancement de l'app Mac, donc le provider refait une découverte à
-  chaque tentative de synchro plutôt que de mettre en cache une
-  adresse.
+  TCP éphémère et en lisant `host`/`port` sur son chemin « prêt » —
+  formaté immédiatement en hôte compatible URL (`BonjourEndpointProvider
+  .urlHost(for:)` met les adresses IPv6 entre crochets et
+  percent-encode le scope `%iface` d'un lien local). Le port du
+  listener Mac est lui-même éphémère et change à chaque lancement de
+  l'app Mac, donc `MacClient` mémorise l'endpoint résolu pour la durée
+  d'une synchro et l'invalide dès qu'une requête échoue en
+  `.unreachable` — la découverte n'a lieu qu'une fois par tentative de
+  synchro dans le cas nominal (davantage seulement si l'adresse
+  mémorisée devient invalide en cours de route).
 - **Jeton Keychain** : `KeychainTokenStore` détient le jeton Bearer
   (compte `mac-token`) dans le trousseau iOS. Une réponse `401`/
   `needsPairing` l'efface et fait basculer le view model en
@@ -242,10 +247,17 @@ manuel.
 - **Règle de dédoublonnage `device: nil`** : `HKMapper` émet toujours
   `device: nil` sur les records/sommeil d'échange — les métadonnées
   HealthKit par appareil ne se mappent pas de façon fiable sur les
-  clés de dédoublonnage de l'export zip. `sourceName` reste le nom de
-  source HealthKit verbatim, donc le chemin compagnon produit
-  exactement les mêmes clés synthétiques et la même résolution de
-  priorité que l'import zip.
+  clés de dédoublonnage de l'export zip. Conséquence : la clé
+  synthétique du chemin compagnon (qui inclut `device`, voir
+  `HealthRecord.dedupKey`) DIVERGE de celle du même échantillon importé
+  via zip (qui porte le `device` réel) — `INSERT OR IGNORE` ne les
+  fusionne donc jamais au niveau clé. Le chevauchement de 30 jours
+  entre les deux sources n'est pas absorbé à l'insertion mais à la
+  LECTURE, par `SourcePriorityResolver`
+  (`HealthCheck/Store/SourcePriorityResolver.swift`), qui ne garde
+  qu'une source par fenêtre temporelle qui se chevauche selon
+  `sourceName` et l'ordre de priorité configuré. `creationDate` n'entre
+  pas dans la clé de dédoublonnage.
 - **Répartition simulateur/appareil des tests** : les 26 cas XCTest du
   compagnon (mapper, persistance, moteur de synchro, stub client Mac,
   protocole partagé, view model) tournent entièrement sur le

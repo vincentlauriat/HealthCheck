@@ -22,6 +22,10 @@ struct SyncReport: Equatable {
     var insertedRows = 0
     var failedTypes: [String] = []
     var needsPairing = false
+    /// `true` dès qu'au moins un type a échoué avec un `.serverError` (Mac
+    /// joignable mais requête refusée) plutôt qu'un `.unreachable` (Mac
+    /// injoignable) — distingue les deux messages d'échec côté VM.
+    var hadServerError = false
 }
 
 /// Orchestration de la synchro : par type, lire le delta depuis l'ancre,
@@ -98,6 +102,9 @@ final class SyncEngine {
                 break // sans jeton valide, les types suivants échoueraient pareil
             } catch {
                 report.failedTypes.append(type) // ancre intacte, relivraison au prochain passage
+                if let macClientError = error as? MacClientError, case .serverError = macClientError {
+                    report.hadServerError = true
+                }
             }
         }
         return report

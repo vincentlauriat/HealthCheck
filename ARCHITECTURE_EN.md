@@ -207,9 +207,14 @@ to the Mac receiver above — HealthKit on the phone, no manual export.
 - **Bonjour discovery**: `BonjourEndpointProvider` browses
   `_healthcheck._tcp`, then resolves the endpoint by opening an
   ephemeral TCP connection and reading `host`/`port` off its ready
-  path. The Mac's listener port is itself ephemeral and changes on
-  every Mac app launch, so the provider re-discovers on every sync
-  attempt rather than caching an address.
+  path — formatted immediately into a URL-safe host
+  (`BonjourEndpointProvider.urlHost(for:)` brackets IPv6 addresses and
+  percent-encodes a link-local `%iface` scope). The Mac's listener
+  port is itself ephemeral and changes on every Mac app launch, so
+  `MacClient` caches the resolved endpoint for the lifetime of one sync
+  and invalidates it as soon as a request fails with `.unreachable` —
+  discovery happens only once per sync attempt in the common case
+  (more only if the cached address goes stale mid-sync).
 - **Keychain token**: `KeychainTokenStore` holds the Bearer token
   (`mac-token` account) in the iOS Keychain. A `401`/`needsPairing`
   response clears it and flips the view model back to unpaired —
@@ -223,9 +228,17 @@ to the Mac receiver above — HealthKit on the phone, no manual export.
   `CompanionRootView` stays the reliable fallback.
 - **`device: nil` dedup ruling**: `HKMapper` always emits `device: nil`
   on exchange records/sleep — HealthKit's per-device metadata doesn't
-  map reliably onto the zip-export dedup keys. `sourceName` is kept as
-  the verbatim HealthKit source name, so the companion path produces
-  the exact same synthetic keys and priority resolution as zip import.
+  map reliably onto the zip-export dedup keys. Consequence: the
+  companion path's synthetic key (which includes `device`, see
+  `HealthRecord.dedupKey`) DIVERGES from the same sample's key when
+  imported via zip (which carries the real `device`) — `INSERT OR
+  IGNORE` therefore never merges them at the key level. The 30-day
+  overlap between the two sources is not absorbed at insert time but
+  at READ time, by `SourcePriorityResolver`
+  (`HealthCheck/Store/SourcePriorityResolver.swift`), which keeps only
+  one source per overlapping time window based on `sourceName` and the
+  configured priority order. `creationDate` is not part of the dedup
+  key.
 - **Sim-vs-device test split**: the 26 companion XCTest cases (mapper,
   persistence, sync engine, Mac client stub, shared protocol,
   view model) run fully on the iPhone 17 simulator. Real Bonjour

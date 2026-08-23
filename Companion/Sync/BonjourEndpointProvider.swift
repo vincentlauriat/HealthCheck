@@ -62,10 +62,7 @@ final class BonjourEndpointProvider: MacEndpointProviding {
                 switch state {
                 case .ready:
                     if case let .hostPort(host, port)? = connection.currentPath?.remoteEndpoint {
-                        // Nettoyer l'éventuel scope (%en0) des adresses IPv6 link-local.
-                        let raw = "\(host)"
-                        let cleaned = raw.split(separator: "%").first.map(String.init) ?? raw
-                        finish((cleaned, port.rawValue))
+                        finish((Self.urlHost(for: host), port.rawValue))
                     } else {
                         finish(nil)
                     }
@@ -77,6 +74,31 @@ final class BonjourEndpointProvider: MacEndpointProviding {
             }
             connection.start(queue: .global(qos: .utility))
             DispatchQueue.global().asyncAfter(deadline: .now() + timeout) { finish(nil) }
+        }
+    }
+
+    /// Formate un `NWEndpoint.Host` pour interpolation directe dans un
+    /// gabarit d'URL `http://\(host):\(port)`. Un littéral IPv6 sans
+    /// crochets rend `URL(string:)` nil (RFC 3986 §3.2.2) ; le scope d'une
+    /// adresse link-local (`%en0`) doit en plus être percent-encodé (`%25`)
+    /// une fois à l'intérieur des crochets.
+    static func urlHost(for host: NWEndpoint.Host) -> String {
+        switch host {
+        case .ipv4(let address):
+            let raw = "\(address)"
+            return raw.split(separator: "%").first.map(String.init) ?? raw
+        case .ipv6(let address):
+            let raw = "\(address)"
+            if let percentIndex = raw.firstIndex(of: "%") {
+                let addr = raw[raw.startIndex..<percentIndex]
+                let iface = raw[raw.index(after: percentIndex)...]
+                return "[\(addr)%25\(iface)]"
+            }
+            return "[\(raw)]"
+        case .name(let name, _):
+            return name
+        @unknown default:
+            return "\(host)"
         }
     }
 }
