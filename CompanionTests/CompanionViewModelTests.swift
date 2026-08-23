@@ -10,9 +10,16 @@ private final class FakeEngine: Syncing {
 private final class FakePairer: Pairing {
     var shouldSucceed = true
     var lastCode: String?
+    let tokenStore: KeychainTokenStore
+
+    init(tokenStore: KeychainTokenStore) {
+        self.tokenStore = tokenStore
+    }
+
     func pair(code: String) async throws {
         lastCode = code
         if !shouldSucceed { throw MacClientError.pairingRejected }
+        try? tokenStore.save(token: "tok") // reproduit le comportement réel de MacClient.pair
     }
 }
 
@@ -26,7 +33,7 @@ final class CompanionViewModelTests: XCTestCase {
     override func setUp() {
         tokenStore = KeychainTokenStore(service: "vm-test-\(UUID().uuidString)")
         engine = FakeEngine()
-        pairer = FakePairer()
+        pairer = FakePairer(tokenStore: tokenStore)
         let defaults = UserDefaults(suiteName: "vm-test-\(UUID().uuidString)")!
         vm = CompanionViewModel(engine: engine, pairer: pairer, tokenStore: tokenStore, defaults: defaults)
     }
@@ -40,7 +47,6 @@ final class CompanionViewModelTests: XCTestCase {
 
     func test_submitPairingCode_success_flipsPaired() async {
         pairer.shouldSucceed = true
-        try? tokenStore.save(token: "tok") // le vrai MacClient.pair stocke ; le fake non, on simule
         await vm.submitPairingCode("123456")
         XCTAssertEqual(pairer.lastCode, "123456")
         XCTAssertTrue(vm.isPaired)
@@ -52,6 +58,7 @@ final class CompanionViewModelTests: XCTestCase {
         await vm.submitPairingCode("000000")
         XCTAssertFalse(vm.isPaired)
         XCTAssertNotNil(vm.errorMessage)
+        XCTAssertNil(tokenStore.currentToken()) // rien stocké : isPaired reste faux faute de jeton, pas par chance
     }
 
     func test_syncNow_success_updatesStateAndDate() async {
