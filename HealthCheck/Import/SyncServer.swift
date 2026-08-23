@@ -1,6 +1,10 @@
 import Foundation
 import Network
 
+enum SyncServerError: Error {
+    case timedOut
+}
+
 /// Serveur de synchro compagnon : NWListener persistant sur un port
 /// éphémère, annoncé en Bonjour. Chaque connexion accumule les octets
 /// jusqu'à la longueur annoncée par les en-têtes, passe la requête au
@@ -43,10 +47,17 @@ final class SyncServer {
         }
         listener.start(queue: queue)
         self.listener = listener
-        _ = semaphore.wait(timeout: .now() + 2)
+        let waitResult = semaphore.wait(timeout: .now() + 2)
         if let startError {
             self.listener = nil
             throw startError
+        }
+        if waitResult == .timedOut {
+            // Ni `.ready` ni `.failed` reçu à temps : ne pas retourner un
+            // serveur à moitié vivant avec un port potentiellement invalide.
+            listener.cancel()
+            self.listener = nil
+            throw SyncServerError.timedOut
         }
     }
 
