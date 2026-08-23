@@ -19,6 +19,15 @@ schemes:
         - HealthCheckTests
     run:
       config: Debug
+  HealthCheckCompanion:
+    build:
+      targets:
+        HealthCheckCompanion: all
+    test:
+      targets:
+        - HealthCheckCompanionTests
+    run:
+      config: Debug
 
 targets:
   HealthCheck:
@@ -74,3 +83,55 @@ targets:
         SWIFT_VERSION: "5.9"
         CODE_SIGNING_REQUIRED: NO
         CODE_SIGNING_ALLOWED: NO
+
+  HealthCheckCompanion:
+    type: application
+    platform: iOS
+    deploymentTarget: "17.0"
+    sources:
+      - path: Companion
+        excludes:
+          - "**/*.entitlements"
+          - "Info.plist"
+      - path: HealthCheckShared
+    settings:
+      base:
+        PRODUCT_NAME: HealthCheckCompanion
+        PRODUCT_BUNDLE_IDENTIFIER: fr.vincentlauriat.healthcheck.companion
+        MARKETING_VERSION: "0.1.0"
+        CURRENT_PROJECT_VERSION: "1"
+        SWIFT_VERSION: "5.9"
+        TARGETED_DEVICE_FAMILY: "1"
+        DEVELOPMENT_TEAM: KFLACS69T9
+        CODE_SIGN_STYLE: Automatic
+        CODE_SIGN_ENTITLEMENTS: Companion/Companion.entitlements
+    info:
+      path: Companion/Info.plist
+      properties:
+        CFBundleName: HealthCheck Companion
+        CFBundleDisplayName: HealthCheck Companion
+        CFBundleDevelopmentRegion: fr
+        CFBundleShortVersionString: "$(MARKETING_VERSION)"
+        CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
+        UILaunchScreen: {}
+        UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait]
+        NSHealthShareUsageDescription: "HealthCheck Companion lit vos données Santé (activité, cœur, sommeil, séances) pour les synchroniser vers HealthCheck sur votre Mac, via votre réseau local uniquement."
+        NSLocalNetworkUsageDescription: "HealthCheck Companion recherche votre Mac sur le réseau local pour lui envoyer vos données de santé, sans aucun cloud."
+        NSBonjourServices: ["_healthcheck._tcp"]
+
+  HealthCheckCompanionTests:
+    type: bundle.unit-test
+    platform: iOS
+    deploymentTarget: "17.0"
+    sources:
+      - path: CompanionTests
+        excludes:
+          - "Info.plist"
+    dependencies:
+      - target: HealthCheckCompanion
+    settings:
+      base:
+        SWIFT_VERSION: "5.9"
+    info:
+      path: CompanionTests/Info.plist
+      properties: {}
