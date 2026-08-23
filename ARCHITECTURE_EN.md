@@ -194,9 +194,10 @@ Séances, Corps, Corrélations, Tendances, Données). One ViewModel per
 section, all `@MainActor`, injected in `HealthCheckApp`.
 
 **Load-once policy**: every ViewModel exposes `hasLoaded`; views load
-on first visit only. Refresh happens exclusively through two
-`onChange` triggers in `ContentView`: import completion and Withings
-`syncGeneration`. A new ViewModel must follow this pattern.
+on first visit only. Refresh happens exclusively through three
+`onChange` triggers in `ContentView`: import completion, Withings
+`syncGeneration`, and companion `syncGeneration`. A new ViewModel must
+follow this pattern.
 
 **Chart rules**: never anchor an `AreaMark` at 0 for
 low-relative-amplitude quantities (body weight) — use a floor at

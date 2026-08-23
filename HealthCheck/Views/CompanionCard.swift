@@ -51,7 +51,9 @@ struct CompanionCard: View {
             }
         }
         .padding(16)
-        .background(.quaternary.opacity(0.35), in: RoundedRectangle(cornerRadius: 12))
+        .background(.background, in: RoundedRectangle(cornerRadius: 14))
+        .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(.separator.opacity(0.5)))
+        .shadow(color: .black.opacity(0.06), radius: 5, y: 2)
     }
 
     @ViewBuilder

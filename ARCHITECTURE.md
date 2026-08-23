@@ -210,8 +210,9 @@ tous `@MainActor`, injectés dans `HealthCheckApp`.
 
 **Chargement unique** : chaque ViewModel expose `hasLoaded` ; les vues
 chargent à la première visite seulement. Le rafraîchissement passe
-exclusivement par deux `onChange` dans `ContentView` : fin d'import et
-`syncGeneration` Withings. Tout nouveau ViewModel doit suivre ce motif.
+exclusivement par trois `onChange` dans `ContentView` : fin d'import,
+`syncGeneration` Withings et `syncGeneration` compagnon. Tout nouveau
+ViewModel doit suivre ce motif.
 
 **Règles graphiques** : jamais d'`AreaMark` ancrée à 0 pour des
 grandeurs à faible amplitude relative (poids) — plancher à min − 8 %

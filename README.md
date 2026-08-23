@@ -155,4 +155,4 @@ les identifiants et jetons vivent hors du dépôt.
 - [x] Spec 3 — écran Séances + traces GPX sur carte MapKit
 - [x] Spec 4 — corrélations santé (Pearson sur 180 j, 5 questions)
 - [x] Release v1.0.0 signée et notarisée
-- [~] (Optionnel) App compagnon iOS pour supprimer l'export manuel — récepteur Mac livré (serveur + appairage + ingestion), app iOS à construire
+- [ ] (Optionnel) App compagnon iOS pour supprimer l'export manuel — en cours (récepteur Mac livré : serveur + appairage + ingestion), app iOS à construire
