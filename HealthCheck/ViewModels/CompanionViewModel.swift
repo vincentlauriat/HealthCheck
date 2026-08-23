@@ -37,9 +37,14 @@ final class CompanionViewModel: ObservableObject {
 
     func startServer() {
         guard server == nil else { return }
-        let server = SyncServer(router: router) { [weak self] inserted in
-            Task { @MainActor [weak self] in self?.didInsert(rows: inserted) }
-        }
+        let server = SyncServer(
+            router: router,
+            onInsert: { [weak self] inserted in
+                Task { @MainActor [weak self] in self?.didInsert(rows: inserted) }
+            },
+            onPair: { [weak self] in
+                Task { @MainActor [weak self] in self?.didPair() }
+            })
         do {
             try server.start()
             self.server = server
@@ -64,10 +69,16 @@ final class CompanionViewModel: ObservableObject {
     }
 
     private func didInsert(rows: Int) {
-        isPaired = tokenStore.currentToken() != nil
-        pairingCode = nil // un appairage réussi ferme la fenêtre
         lastSyncDate = Date()
         defaults.set(lastSyncDate, forKey: Self.lastSyncKey)
         syncGeneration += 1
+    }
+
+    /// Signalé par `SyncServer` sur un `/pair` réussi (jeton déjà persisté par
+    /// `PairingManager.redeem`). Interne (non `private`) pour rester testable
+    /// directement, sans round-trip HTTP complet dans les tests.
+    func didPair() {
+        isPaired = tokenStore.currentToken() != nil
+        pairingCode = nil // un appairage réussi ferme la fenêtre
     }
 }

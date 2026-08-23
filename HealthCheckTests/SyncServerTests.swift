@@ -88,4 +88,28 @@ final class CompanionViewModelTests: XCTestCase {
         XCTAssertNil(vm.pairingCode)
         XCTAssertEqual(vm.syncGeneration, 0)
     }
+
+    /// Prouve que `didPair()` — appelée par `SyncServer` via `onPair` sur un
+    /// `/pair` réussi — reflète bien le jeton fraîchement persisté, sans
+    /// dépendre d'un aller-retour HTTP complet dans ce test.
+    func test_didPair_reflectsPersistedToken_andClosesWindow() throws {
+        let tempDir = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("vm-pair-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+
+        let defaults = UserDefaults(suiteName: "companion-vm-pair-tests-\(UUID().uuidString)")!
+        let tokenStore = CompanionTokenStore(directory: tempDir)
+        let vm = CompanionViewModel(store: try HealthStore(path: ":memory:"), defaults: defaults,
+                                    tokenStore: tokenStore, routeStore: RouteStore(directory: tempDir))
+        vm.beginPairing()
+        XCTAssertNotNil(vm.pairingCode)
+        XCTAssertFalse(vm.isPaired)
+
+        try tokenStore.save(token: "freshly-redeemed-token") // ce que PairingManager.redeem ferait
+        vm.didPair()
+
+        XCTAssertTrue(vm.isPaired)
+        XCTAssertNil(vm.pairingCode)
+    }
 }

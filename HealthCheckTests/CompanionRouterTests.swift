@@ -37,6 +37,7 @@ final class CompanionRouterTests: XCTestCase {
         let body = try ExchangeCoding.encoder.encode(PairRequest(code: "123456"))
         let result = router.handle(request("POST", "/pair", body: body))
         XCTAssertEqual(status(of: result.response), 200)
+        XCTAssertTrue(result.didPair)
         let jsonStart = result.response.range(of: Data("\r\n\r\n".utf8))!.upperBound
         let payload = try ExchangeCoding.decoder.decode(PairResponse.self, from: result.response[jsonStart...])
         XCTAssertEqual(payload.token, tokenStore.currentToken())
@@ -44,10 +45,14 @@ final class CompanionRouterTests: XCTestCase {
 
     func test_pair_wrongCodeOrClosedWindow_is401() throws {
         let body = try ExchangeCoding.encoder.encode(PairRequest(code: "123456"))
-        XCTAssertEqual(status(of: router.handle(request("POST", "/pair", body: body)).response), 401)
+        let closedWindow = router.handle(request("POST", "/pair", body: body))
+        XCTAssertEqual(status(of: closedWindow.response), 401)
+        XCTAssertFalse(closedWindow.didPair)
         _ = pairing.openWindow()
         let bad = try ExchangeCoding.encoder.encode(PairRequest(code: "654321"))
-        XCTAssertEqual(status(of: router.handle(request("POST", "/pair", body: bad)).response), 401)
+        let wrongCode = router.handle(request("POST", "/pair", body: bad))
+        XCTAssertEqual(status(of: wrongCode.response), 401)
+        XCTAssertFalse(wrongCode.didPair)
     }
 
     func test_batch_goodToken_ingests_badToken_401() throws {

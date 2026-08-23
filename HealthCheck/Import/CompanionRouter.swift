@@ -9,26 +9,28 @@ struct CompanionRouter {
     let importer: CompanionImporter
     let appVersion: String
 
-    func handle(_ request: SyncHTTPRequest) -> (response: Data, insertedRows: Int) {
+    func handle(_ request: SyncHTTPRequest) -> (response: Data, insertedRows: Int, didPair: Bool) {
         switch (request.method, request.path) {
         case ("POST", CompanionProtocol.pairPath):
-            return (handlePair(request), 0)
+            let (response, didPair) = handlePair(request)
+            return (response, 0, didPair)
         case ("POST", CompanionProtocol.batchPath):
-            return handleBatch(request)
+            let (response, inserted) = handleBatch(request)
+            return (response, inserted, false)
         case ("GET", CompanionProtocol.statusPath):
-            return (handleStatus(request), 0)
+            return (handleStatus(request), 0, false)
         default:
-            return (SyncHTTPResponse.make(status: 404), 0)
+            return (SyncHTTPResponse.make(status: 404), 0, false)
         }
     }
 
-    private func handlePair(_ request: SyncHTTPRequest) -> Data {
+    private func handlePair(_ request: SyncHTTPRequest) -> (Data, Bool) {
         guard let pair = try? ExchangeCoding.decoder.decode(PairRequest.self, from: request.body)
-        else { return SyncHTTPResponse.make(status: 400) }
+        else { return (SyncHTTPResponse.make(status: 400), false) }
         guard let token = pairing.redeem(code: pair.code)
-        else { return SyncHTTPResponse.make(status: 401) }
+        else { return (SyncHTTPResponse.make(status: 401), false) }
         let body = try? ExchangeCoding.encoder.encode(PairResponse(token: token))
-        return SyncHTTPResponse.make(status: 200, json: body)
+        return (SyncHTTPResponse.make(status: 200, json: body), true)
     }
 
     private func authorized(_ request: SyncHTTPRequest) -> Bool {

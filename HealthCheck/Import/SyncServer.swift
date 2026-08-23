@@ -12,14 +12,16 @@ enum SyncServerError: Error {
 final class SyncServer {
     private let router: CompanionRouter
     private let onInsert: (Int) -> Void
+    private let onPair: () -> Void
     private var listener: NWListener?
     private let queue = DispatchQueue(label: "healthcheck.syncserver")
 
     var port: UInt16? { listener?.port?.rawValue }
 
-    init(router: CompanionRouter, onInsert: @escaping (Int) -> Void) {
+    init(router: CompanionRouter, onInsert: @escaping (Int) -> Void, onPair: @escaping () -> Void = {}) {
         self.router = router
         self.onInsert = onInsert
+        self.onPair = onPair
     }
 
     func start() throws {
@@ -88,13 +90,14 @@ final class SyncServer {
     }
 
     private func respond(on connection: NWConnection, requestData: Data) {
-        let result: (response: Data, insertedRows: Int)
+        let result: (response: Data, insertedRows: Int, didPair: Bool)
         if let request = SyncHTTPRequest.parse(Data(requestData)) {
             result = router.handle(request)
         } else {
-            result = (SyncHTTPResponse.make(status: 400), 0)
+            result = (SyncHTTPResponse.make(status: 400), 0, false)
         }
         if result.insertedRows > 0 { onInsert(result.insertedRows) }
+        if result.didPair { onPair() }
         connection.send(content: result.response, completion: .contentProcessed { _ in
             connection.cancel()
         })
