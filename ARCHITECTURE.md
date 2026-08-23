@@ -145,6 +145,63 @@ cloud et ne synchronise vers Apple Santé que poids/% graisse/maigre/IMC.
 - Entitlements sandbox : `network.client` + `network.server`
   (listener loopback).
 
+## Synchro compagnon (récepteur Mac)
+
+Chemin pair-à-pair pour une future app compagnon iOS (suivie
+séparément) qui pousserait les données HealthKit directement vers le
+Mac, sans passer par l'export zip manuel. Ce chantier livre uniquement
+le récepteur côté Mac — pas encore de client iOS.
+
+- **Listener** : `SyncServer` encapsule un `NWListener` éphémère
+  (`.tcp`, port attribué par le système) annoncé en Bonjour sous
+  `_healthcheck._tcp`. Démarré hors du main actor (`Task.detached`)
+  depuis le `.task` de `ContentView` — le tout premier bind peut
+  déclencher l'invite système d'accès au réseau local, et `start()`
+  bloque jusqu'à 2 s en attendant l'état `.ready` ; le main actor ne
+  doit jamais attendre là-dessus. `stop()` existe mais n'est appelé
+  nulle part dans l'app — une course à l'arrêt du listener rend les
+  chemins d'arrêt non sûrs tant qu'ils ne sont pas synchronisés (suivi
+  séparément).
+- **Endpoints** : parsing HTTP/1.1 minimal fait maison
+  (`SyncHTTPRequest`/`SyncHTTPResponse`, `Connection: close`), routé
+  par la fonction pure `CompanionRouter.handle` :
+  - `POST /pair` — échange un code d'appairage, retourne
+    `{"token": …}`.
+  - `POST /batch` — authentifié par Bearer, ingère un `ExchangeBatch`
+    (records/sommeil/séances), retourne `{"inserted": N}`.
+  - `GET /status` — authentifié par Bearer, vérification de santé (nom
+    de l'app + version).
+- **Appairage** : `PairingManager` ouvre une fenêtre à code 6 chiffres
+  (120 s, 5 tentatives). À l'échange, un jeton hexadécimal de 32
+  octets est émis et persisté par `CompanionTokenStore`
+  (`companion-token.json` dans Application Support, chmod 600) — même
+  posture que les jetons Withings.
+- **Ingestion idempotente** : `CompanionImporter.ingest` réutilise les
+  chemins d'insertion existants du store (`insertRecords`/
+  `insertSleepRecords`/`insertWorkouts`) — idempotente via les mêmes
+  clés synthétiques + `INSERT OR IGNORE` que le pipeline zip. Les
+  traces GPX des séances sont écrites avant la ligne de séance, nommées
+  de façon déterministe (`companion_<ISO8601>_<activityType>.gpx`) ;
+  `routeFileName` est stocké de façon auto-cicatrisante dès que les
+  points de trace ne sont pas vides, même si l'écriture GPX échoue —
+  une relivraison du même batch répare le fichier manquant sous le
+  même nom.
+- **Protocole partagé** : `HealthCheckShared/ExchangeModels.swift` est
+  compilé dans les deux apps via un groupe source partagé (pas de
+  framework) — une seule définition des DTO, des endpoints et du type
+  de service Bonjour, aucune dérive possible entre les deux côtés.
+- **Rafraîchissement** : `CompanionViewModel.syncGeneration` s'incrémente
+  à chaque insertion réussie ; le `onChange(of: … syncGeneration)` de
+  `ContentView` recharge les sections alimentées par le compagnon
+  (effort, sommeil, bien-être, séances, corrélations, tendances) — pas
+  le corps, qui reste le territoire de Withings. Reproduit exactement
+  le handler Withings existant, y compris sa période `.sixMonths`
+  figée en dur pour les tendances (défaut connu et accepté, suivi dans
+  `TODOS.md` pour être corrigé sur les deux en même temps).
+- Sandbox de l'app : déjà couvert par l'entitlement `network.server`
+  ajouté pour le listener loopback OAuth Withings — aucun changement
+  requis.
+
 ## Structure de l'interface
 
 `NavigationSplitView` à 8 sections (Accueil, Sommeil, Effort, Séances,
@@ -178,12 +235,15 @@ de nouveaux appels.
 
 ## Tests
 
-70 cas XCTest, moteurs d'abord : formules de score au 0,01 près,
+105 cas XCTest, moteurs d'abord : formules de score au 0,01 près,
 sémantique du résolveur, idempotence du dédoublonnage sur un vrai
 store `:memory:`, mapping Withings sur JSON de fixture, parsing du
 callback OAuth, parsing GPX, refus de traversée de chemin, ancrage des
-deltas sur la dernière pesée. L'UI se vérifie visuellement (Swift
-Charts est invisible pour l'outillage d'accessibilité).
+deltas sur la dernière pesée, synchro compagnon (fenêtre/tentatives
+d'appairage, persistance du jeton, parsing HTTP, codes de statut du
+routeur, ingestion idempotente des batchs, auto-cicatrisation GPX).
+L'UI se vérifie visuellement (Swift Charts est invisible pour
+l'outillage d'accessibilité).
 
 `xcodegen generate` est obligatoire après tout ajout/retrait de
 fichier — un pbxproj périmé produit des erreurs « cannot find in
@@ -203,7 +263,7 @@ Accepted).
 
 | Décision | Pourquoi |
 |---|---|
-| Import zip manuel, pas d'app iOS en v1 | usage personnel informel ; le seam `HealthDataSource` reste pour un futur chemin CloudKit |
+| L'import zip manuel reste le chemin principal ; récepteur compagnon Mac livré, client iOS pas encore construit | usage personnel informel ; le côté Mac (listener, appairage, ingestion) est fait, l'app iOS est un chantier séparé pas encore démarré |
 | SQLite/GRDB plutôt que SwiftData | insertions bulk de 1,8 M de lignes mesurées sur l'export réel |
 | Résolution de source à la lecture | donnée brute préservée pour les analyses futures |
 | Sommeil dans sa propre table catégorielle | la valeur est une phase, pas un nombre |

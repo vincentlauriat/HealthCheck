@@ -138,6 +138,55 @@ cloud and only syncs weight/fat %/lean/BMI to Apple Health.
 - App sandbox entitlements: `network.client` + `network.server`
   (loopback listener).
 
+## Companion sync (Mac receiver)
+
+Peer-to-peer path for a future iOS companion app (tracked separately)
+to push HealthKit data straight to the Mac, without the manual zip
+export. This delivers the Mac-side receiver only — no iOS client yet.
+
+- **Listener**: `SyncServer` wraps an ephemeral `NWListener` (`.tcp`,
+  system-assigned port) advertised via Bonjour as `_healthcheck._tcp`.
+  Started off the main actor (`Task.detached`) from `ContentView`'s
+  `.task` — the first bind can trigger the local-network permission
+  prompt, and `start()` blocks up to 2 s waiting for the `.ready`
+  state; the main actor must never wait on that. `stop()` exists but
+  is never called from the app — a listener-teardown race makes
+  stop-paths unsafe until synchronized (tracked follow-up).
+- **Endpoints**: minimal hand-rolled HTTP/1.1 parsing (`SyncHTTPRequest`
+  / `SyncHTTPResponse`, `Connection: close`), routed by the pure
+  `CompanionRouter.handle`:
+  - `POST /pair` — redeems a pairing code, returns `{"token": …}`.
+  - `POST /batch` — Bearer-authenticated, ingests an `ExchangeBatch`
+    (records/sleep/workouts), returns `{"inserted": N}`.
+  - `GET /status` — Bearer-authenticated health check (app name +
+    version).
+- **Pairing**: `PairingManager` opens a 6-digit-code window (120 s,
+  5 attempts). On redeem it mints a 32-byte hex token, persisted by
+  `CompanionTokenStore` (`companion-token.json` in Application
+  Support, chmod 600) — same posture as the Withings tokens.
+- **Idempotent ingestion**: `CompanionImporter.ingest` reuses the
+  existing store insert paths (`insertRecords`/`insertSleepRecords`/
+  `insertWorkouts`) — idempotent via the same synthetic keys +
+  `INSERT OR IGNORE` as the zip pipeline. Workout GPX routes are
+  written before the workout row, named deterministically
+  (`companion_<ISO8601>_<activityType>.gpx`); `routeFileName` is
+  stored self-healingly whenever route points are non-empty even if
+  the GPX write fails — a re-delivered batch heals the missing file
+  under the same name on retry.
+- **Shared protocol**: `HealthCheckShared/ExchangeModels.swift` is
+  compiled into both apps as a shared source group (no framework) —
+  one definition of the DTOs, endpoints, and Bonjour service type, no
+  drift possible between the two sides.
+- **Refresh**: `CompanionViewModel.syncGeneration` increments on every
+  successful insert; `ContentView`'s `onChange(of: … syncGeneration)`
+  reloads the sections the companion feeds (activity, sleep, wellness,
+  workouts, correlations, trends) — not body, which stays Withings
+  territory. Mirrors the existing Withings handler exactly, including
+  its hardcoded `.sixMonths` trends period (a known, accepted flaw,
+  tracked in `TODOS.md` to be fixed for both at once).
+- App sandbox: already covered by the `network.server` entitlement
+  added for the Withings OAuth loopback listener — no change needed.
+
 ## UI structure
 
 `NavigationSplitView` with 8 sections (Accueil, Sommeil, Effort,
@@ -170,12 +219,14 @@ call sites.
 
 ## Testing
 
-70 XCTest cases, engine-first: score formulas checked to 0.01,
+105 XCTest cases, engine-first: score formulas checked to 0.01,
 resolver semantics, dedup idempotence through a real `:memory:` store,
 Withings mapping against fixture JSON, OAuth callback parsing, GPX
-parsing, path-traversal refusal, delta anchoring on last weigh-in.
-UI is verified visually (Swift Charts is invisible to accessibility
-tooling).
+parsing, path-traversal refusal, delta anchoring on last weigh-in,
+companion sync (pairing window/attempts, token persistence, HTTP
+parsing, router status codes, idempotent batch ingestion, GPX
+self-healing). UI is verified visually (Swift Charts is invisible to
+accessibility tooling).
 
 `xcodegen generate` is mandatory after adding/removing files — a stale
 pbxproj produces confusing "cannot find in scope" errors or empty test
@@ -194,7 +245,7 @@ submit --wait` (keychain profile `AppliMacVincentGithub`) → staple →
 
 | Decision | Why |
 |---|---|
-| Manual zip import, no iOS companion in v1 | informal personal use; `HealthDataSource` seam kept for a future CloudKit path |
+| Manual zip import stays the primary path; Mac companion receiver shipped, iOS client not yet built | informal personal use; the Mac side (listener, pairing, ingestion) is done, the iOS app is a separate, not-yet-started task |
 | SQLite/GRDB over SwiftData | 1.8M-row bulk inserts measured on the real export |
 | Read-time source resolution | raw data preserved for future analyses |
 | Sleep as its own categorical table | value is a phase string, not a number |

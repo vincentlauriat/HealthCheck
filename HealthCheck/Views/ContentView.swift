@@ -21,6 +21,7 @@ struct ContentView: View {
     @ObservedObject var withingsViewModel: WithingsViewModel
     @ObservedObject var workoutsViewModel: WorkoutsViewModel
     @ObservedObject var correlationsViewModel: CorrelationsViewModel
+    @ObservedObject var companionViewModel: CompanionViewModel
     @State private var selection: SidebarSelection? = .home
 
     var body: some View {
@@ -75,6 +76,8 @@ struct ContentView: View {
                         .frame(maxWidth: 560)
                     WithingsCard(viewModel: withingsViewModel)
                         .frame(maxWidth: 560)
+                    CompanionCard(viewModel: companionViewModel)
+                        .frame(maxWidth: 560)
                     Spacer()
                 }
                 .frame(maxWidth: .infinity)
@@ -86,6 +89,7 @@ struct ContentView: View {
         }
         .frame(minWidth: 900, minHeight: 640)
         .task { withingsViewModel.autoSyncIfNeeded() }
+        .task { companionViewModel.startServer() }
         .onChange(of: importViewModel.lastSummary?.recordsInserted) { _, _ in
             try? dashboardViewModel.loadToday()
             try? dashboardViewModel.loadThisWeek()
@@ -101,6 +105,16 @@ struct ContentView: View {
             try? dashboardViewModel.loadThisWeek()
             try? dashboardViewModel.loadWellness()
             try? bodyViewModel.load(period: .oneYear)
+            try? trendsViewModel.load(period: .sixMonths)
+        }
+        .onChange(of: companionViewModel.syncGeneration) { _, _ in
+            try? dashboardViewModel.loadToday()
+            try? dashboardViewModel.loadThisWeek()
+            try? dashboardViewModel.loadWellness()
+            try? sleepViewModel.load()
+            try? activityViewModel.load()
+            try? workoutsViewModel.load()
+            try? correlationsViewModel.load()
             try? trendsViewModel.load(period: .sixMonths)
         }
     }

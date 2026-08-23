@@ -2,7 +2,7 @@
 
 ![Release](https://img.shields.io/github/v/release/vincentlauriat/HealthCheck)
 ![Platform](https://img.shields.io/badge/platform-macOS%2015%2B-blue)
-![Tests](https://img.shields.io/badge/tests-70%2F70-brightgreen)
+![Tests](https://img.shields.io/badge/tests-105%2F105-brightgreen)
 
 Application macOS native (SwiftUI) d'analyse de santé personnelle :
 elle importe l'export Apple Santé, lit l'API Withings en direct, et
@@ -36,7 +36,7 @@ L'app est organisée en huit sections :
 | **Corps** | Composition corporelle complète : poids, masses grasse/maigre, muscle, eau, os, graisse viscérale ; deltas 30 j / 1 an ancrés sur la dernière pesée ; diagramme de Sankey de la répartition du poids ; courbes poids/maigre avec bande de graisse. |
 | **Corrélations** | 5 questions sur 180 j (ex. « mieux dormir améliore-t-il ta HRV du lendemain ? ») — Pearson avec garde-fous : minimum 10 paires, variance nulle refusée, avertissement corrélation ≠ causalité. |
 | **Tendances** | FC repos, poids, VO₂ max, sommeil — aire + moyenne mobile 7 j, périodes 1 sem → tout. |
-| **Données** | Import de l'export Apple Santé (bouton ou glisser-déposer) et connexion/synchro Withings. |
+| **Données** | Import de l'export Apple Santé (bouton ou glisser-déposer), connexion/synchro Withings, et appairage compagnon iPhone (récepteur Mac, réseau local). |
 
 ## Installation
 
@@ -66,6 +66,12 @@ HealthKit et ne seront jamais dans l'export Apple. Auto-synchro au
 lancement (au plus une fois par 12 h). Configuration :
 [docs/withings-setup.md](docs/withings-setup.md).
 
+**iPhone (compagnon)** — *en cours (récepteur Mac livré)* :
+synchronisation directe depuis l'iPhone en réseau local, sans passer
+par l'export zip. Le récepteur côté Mac (serveur, appairage par code à
+6 chiffres, ingestion idempotente) est livré ; l'app compagnon iOS qui
+s'y connecte reste à construire.
+
 ## Compiler depuis les sources
 
 Prérequis : Xcode 16+, [XcodeGen](https://github.com/yonaskolb/XcodeGen)
@@ -86,9 +92,10 @@ La dépendance GRDB (SQLite) est résolue par SPM à la première ouverture.
 xcodebuild -scheme HealthCheck -destination 'platform=macOS' test
 ```
 
-70 tests, tous sur les moteurs purs (scores, zones, corrélations,
-mapping Withings, parsing GPX, dédoublonnage) et le store. Les moteurs
-d'analyse sont volontairement découplés de SwiftUI pour rester
+105 tests, tous sur les moteurs purs (scores, zones, corrélations,
+mapping Withings, parsing GPX, dédoublonnage), le store et la synchro
+compagnon (appairage, routeur HTTP, ingestion idempotente). Les
+moteurs d'analyse sont volontairement découplés de SwiftUI pour rester
 testables au centième près.
 
 ## Release
@@ -108,12 +115,13 @@ Apple (`--wait`), staple, vérification `spctl`. Voir les prérequis
 HealthCheck/
 ├── HealthCheck/
 │   ├── Models/          # HealthRecord, Workout, SleepRecord (+ clés de dédoublonnage)
-│   ├── Import/          # Parseur SAX, zip, importeur, GPX, client Withings
+│   ├── Import/          # Parseur SAX, zip, importeur, GPX, client Withings, serveur compagnon
 │   ├── Store/           # HealthStore (SQLite/GRDB), SourcePriorityResolver
 │   ├── Analysis/        # Moteurs purs : scores, zones FC, corrélations, Sankey…
 │   ├── ViewModels/      # Un par section, @MainActor, chargement unique
 │   └── Views/           # SwiftUI + Swift Charts + Sankey maison
-├── HealthCheckTests/    # 70 tests (moteurs + store + mapping)
+├── HealthCheckShared/    # DTO d'échange + protocole compagnon, partagés Mac/iOS
+├── HealthCheckTests/    # 105 tests (moteurs + store + mapping + synchro compagnon)
 ├── Scripts/release.sh   # Release signée + notarisée
 ├── docs/                # Guides + specs de conception
 └── project.yml          # Source de vérité XcodeGen (le .xcodeproj est généré)
@@ -147,4 +155,4 @@ les identifiants et jetons vivent hors du dépôt.
 - [x] Spec 3 — écran Séances + traces GPX sur carte MapKit
 - [x] Spec 4 — corrélations santé (Pearson sur 180 j, 5 questions)
 - [x] Release v1.0.0 signée et notarisée
-- [ ] (Optionnel) App compagnon iOS + CloudKit pour supprimer l'export manuel
+- [~] (Optionnel) App compagnon iOS pour supprimer l'export manuel — récepteur Mac livré (serveur + appairage + ingestion), app iOS à construire
