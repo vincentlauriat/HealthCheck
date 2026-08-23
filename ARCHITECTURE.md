@@ -410,7 +410,7 @@ de nouveaux appels.
 
 ## Tests
 
-Mac : 168 cas XCTest, moteurs d'abord : formules de score au 0,01
+Mac : 169 cas XCTest, moteurs d'abord : formules de score au 0,01
 près, sémantique du résolveur, idempotence du dédoublonnage sur un
 vrai store `:memory:`, mapping Withings sur JSON de fixture, parsing
 du callback OAuth, parsing GPX, refus de traversée de chemin, ancrage

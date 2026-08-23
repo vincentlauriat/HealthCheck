@@ -26,6 +26,9 @@ struct TrainingView: View {
                     deleteSection
                 } else {
                     emptyState
+                    if let assessment = viewModel.assessment {
+                        loadSection(assessment)
+                    }
                 }
             }
             .padding(24)

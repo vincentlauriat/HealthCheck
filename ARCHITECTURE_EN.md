@@ -380,7 +380,7 @@ call sites.
 
 ## Testing
 
-Mac: 168 XCTest cases, engine-first: score formulas checked to 0.01,
+Mac: 169 XCTest cases, engine-first: score formulas checked to 0.01,
 resolver semantics, dedup idempotence through a real `:memory:` store,
 Withings mapping against fixture JSON, OAuth callback parsing, GPX
 parsing, path-traversal refusal, delta anchoring on last weigh-in,
