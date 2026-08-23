@@ -71,7 +71,11 @@ reality cannot drift apart and no plan schema ever needs migrating.
 
 ## 4. Data model
 
-New GRDB migration adding one table:
+One new table. **The project has no `DatabaseMigrator`** — the schema
+is created by `CREATE TABLE IF NOT EXISTS` statements inside
+`HealthStore.init(path:)`. The new table follows that pattern exactly:
+one more `try db.execute(sql:)` in the same `queue.write` block, no
+migration machinery introduced.
 
 ```sql
 CREATE TABLE race_goal (
@@ -85,16 +89,38 @@ CREATE TABLE race_goal (
 );
 ```
 
-`HealthStore` gains `saveRaceGoal`, `deleteRaceGoal`, `raceGoals()`.
-**Active goal** = the goal with the earliest `raceDate >= today`. Past
-goals are kept (history) but never planned for.
+`HealthStore` gains `saveRaceGoal(_:)`, `deleteRaceGoal(id:)`, and
+`raceGoals() throws -> [RaceGoal]`, written like every other store
+method: raw SQL through `queue().read`/`queue().write`, `Row.fetchAll`,
+manual row→struct mapping, ISO8601 dates via the store's existing
+`isoFormatter`.
 
-Swift model `RaceGoal: Codable, FetchableRecord, PersistableRecord`,
-mirroring the existing `HealthRecord`/`Workout` patterns.
+**Active goal** = the goal with the earliest `raceDate >= today`. Past
+goals are kept (history) but never planned for. The selection is a pure
+function over the fetched array, not SQL — it is unit-testable and the
+table is tiny.
+
+Swift model `struct RaceGoal: Equatable` with a plain memberwise init —
+**not** `Codable`/`FetchableRecord`/`PersistableRecord`: no existing
+model conforms to those, the store maps rows by hand, and `id` is a
+UUID string generated at creation (unlike `HealthRecord`/`Workout`,
+whose ids are SHA256 dedup keys — a race goal has nothing to dedup).
 
 ## 5. TrainingPlanner (pure engine)
 
-`TrainingPlanner.plan(goal:history:today:) -> TrainingPlan`
+```swift
+enum TrainingPlanner {
+    static func plan(goal: RaceGoal,
+                     history: [Workout],
+                     today: Date,
+                     calendar: Calendar) -> TrainingPlan
+}
+```
+
+Engines in this project are `enum`s of `static func`s living in
+`HealthCheck/Analysis/`, never read the clock internally, and take
+`calendar` as a parameter rather than using `.current` — these two
+follow that convention.
 
 `history` is the running workouts (`HKWorkoutActivityTypeRunning`) of
 the last 90 days, all sources, after `SourcePriorityResolver`-style
@@ -198,7 +224,21 @@ No pace targets in v1 (objective is comfort, not time).
 
 ## 6. TrainingLoadMonitor (pure engine)
 
-`TrainingLoadMonitor.assess(history:readiness:today:) -> LoadAssessment`
+```swift
+enum TrainingLoadMonitor {
+    static func assess(history: [Workout],
+                       plan: TrainingPlan?,
+                       readiness: ReadinessScore?,
+                       today: Date,
+                       calendar: Calendar) -> LoadAssessment
+}
+```
+
+`readiness` arrives as an already-computed `ReadinessScore?` (the
+existing `HealthScoreEngine.readiness(sleep:restingHeartRate:hrv:activity:)`
+returns one, and the view model composes its components exactly as
+`DashboardViewModel` already does). The monitor never recomputes it and
+never touches the store — it stays a pure function.
 
 - `acute` and `chronic`: the §5.2 definitions, verbatim — one reading
   shared by both engines.
@@ -266,8 +306,11 @@ stay visible as « à faire ».
 
 ## 8. UI — « Entraînement » screen
 
-New sidebar row in the Analyse group (icon `figure.run`, between
-Séances and Corps). French, vouvoiement. States:
+New `case training` in the existing `SidebarSelection` enum, with a
+row in the `Section("Analyse")` group between Séances and Corps
+(`Label("Entraînement", systemImage: "target")` — `figure.run` is
+already taken by Séances). Cards reuse `Theme.swift`'s `MetricCard`
+styling so the screen matches the rest of the app. French, vouvoiement. States:
 
 - **No active goal**: empty state + « Créer un objectif » form
   (name, date, distance km, climb m — objective fixed to « Finir
@@ -297,12 +340,15 @@ Séances and Corps). French, vouvoiement. States:
 
 ## 10. Code structure
 
-- `HealthCheck/Models/RaceGoal.swift` — model + table constants.
-- `HealthCheck/Store/HealthStore+RaceGoals.swift` — migration + CRUD.
-- `HealthCheck/Engine/TrainingPlanner.swift` — §5 (TrainingPlan,
+- `HealthCheck/Models/RaceGoal.swift` — model.
+- `HealthCheck/Store/HealthStore.swift` — one more `CREATE TABLE IF
+  NOT EXISTS` in `init(path:)` plus the three CRUD methods (same file
+  as the other store methods, matching the existing layout).
+- `HealthCheck/Analysis/TrainingPlanner.swift` — §5 (TrainingPlan,
   PlannedWeek, PlannedSession value types included).
-- `HealthCheck/Engine/TrainingLoadMonitor.swift` — §6 (LoadAssessment).
-- `HealthCheck/Engine/SessionMatcher.swift` — §7.
+- `HealthCheck/Analysis/TrainingLoadMonitor.swift` — §6
+  (LoadAssessment).
+- `HealthCheck/Analysis/SessionMatcher.swift` — §7.
 - `HealthCheck/ViewModels/TrainingViewModel.swift` — composition,
   load-once, `hasLoaded`.
 - `HealthCheck/Views/TrainingView.swift` — §8.
