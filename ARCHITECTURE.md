@@ -228,11 +228,16 @@ manuel.
   .urlHost(for:)` met les adresses IPv6 entre crochets et
   percent-encode le scope `%iface` d'un lien local). Le port du
   listener Mac est lui-même éphémère et change à chaque lancement de
-  l'app Mac, donc `MacClient` mémorise l'endpoint résolu pour la durée
-  d'une synchro et l'invalide dès qu'une requête échoue en
-  `.unreachable` — la découverte n'a lieu qu'une fois par tentative de
-  synchro dans le cas nominal (davantage seulement si l'adresse
-  mémorisée devient invalide en cours de route).
+  l'app Mac, donc `MacClient` mémorise l'endpoint résolu pour toute sa
+  durée de vie (une seule instance persiste tant que l'app tourne) au
+  lieu de le redécouvrir à chaque requête HTTP. Si une requête échoue
+  sur une adresse SERVIE PAR LE CACHE (port périmé après un
+  redémarrage du Mac entre deux synchros), `MacClient` invalide le
+  cache et retente une fois avec une adresse fraîche avant de faire
+  remonter `.unreachable` ; un échec sur une résolution déjà fraîche
+  (Mac réellement injoignable) ne déclenche pas de second essai. La
+  découverte n'a donc lieu qu'une fois par tentative de synchro dans le
+  cas nominal, deux si le port a changé depuis la dernière synchro.
 - **Jeton Keychain** : `KeychainTokenStore` détient le jeton Bearer
   (compte `mac-token`) dans le trousseau iOS. Une réponse `401`/
   `needsPairing` l'efface et fait basculer le view model en
@@ -251,15 +256,20 @@ manuel.
   synthétique du chemin compagnon (qui inclut `device`, voir
   `HealthRecord.dedupKey`) DIVERGE de celle du même échantillon importé
   via zip (qui porte le `device` réel) — `INSERT OR IGNORE` ne les
-  fusionne donc jamais au niveau clé. Le chevauchement de 30 jours
-  entre les deux sources n'est pas absorbé à l'insertion mais à la
-  LECTURE, par `SourcePriorityResolver`
+  fusionne donc jamais au niveau clé. La conversion directe des
+  `HKQuantity` compagnon (`Double`) peut en plus différer, au dernier
+  chiffre près, de la valeur parsée depuis le XML du zip, ce qui
+  divergerait aussi la clé même à `device` égal (`dedupKey` inclut
+  `String(value)`). Le chevauchement de 30 jours entre les deux sources
+  n'est pas absorbé à l'insertion mais à la LECTURE, par
+  `SourcePriorityResolver`
   (`HealthCheck/Store/SourcePriorityResolver.swift`), qui ne garde
   qu'une source par fenêtre temporelle qui se chevauche selon
   `sourceName` et l'ordre de priorité configuré. `creationDate` n'entre
   pas dans la clé de dédoublonnage.
-- **Répartition simulateur/appareil des tests** : les 26 cas XCTest du
+- **Répartition simulateur/appareil des tests** : les 41 cas XCTest du
   compagnon (mapper, persistance, moteur de synchro, stub client Mac,
+  formatage d'endpoint Bonjour, fusion des réveils concurrents,
   protocole partagé, view model) tournent entièrement sur le
   simulateur iPhone 17. La vraie découverte Bonjour sur le réseau
   local et le timing de réveil en arrière-plan ne peuvent pas s'y
@@ -318,13 +328,17 @@ statut du routeur, ingestion idempotente des batchs, auto-cicatrisation
 GPX). L'UI se vérifie visuellement (Swift Charts est invisible pour
 l'outillage d'accessibilité).
 
-iOS (`HealthCheckCompanion`) : 26 cas XCTest — mapping HealthKit avec
+iOS (`HealthCheckCompanion`) : 41 cas XCTest — mapping HealthKit avec
 unités épinglées, persistance des ancres/du trousseau, découpage en
 batchs et avancement des ancres conditionné à l'ack du moteur de
-synchro, stub HTTP du client Mac, aller-retour du protocole partagé,
-et le view model compagnon (appairage, synchro, états d'erreur). Voir
-la répartition simulateur/appareil ci-dessus — la découverte Bonjour
-et la livraison en arrière-plan sont réservées à l'appareil.
+synchro, stub HTTP du client Mac (mémorisation/invalidation/rattrapage
+de l'endpoint, requête authentifiée sans jeton), formatage d'hôte URL
+IPv4/IPv6/`.name` de `BonjourEndpointProvider`, fusion des réveils
+concurrents (`SyncCoalescer`), aller-retour du protocole partagé, et le
+view model compagnon (appairage, synchro complète/partielle/en échec,
+états d'erreur). Voir la répartition simulateur/appareil ci-dessus — la
+découverte Bonjour et la livraison en arrière-plan sont réservées à
+l'appareil.
 
 `xcodegen generate` est obligatoire après tout ajout/retrait de
 fichier — un pbxproj périmé produit des erreurs « cannot find in

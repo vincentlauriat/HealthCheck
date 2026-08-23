@@ -86,7 +86,7 @@ Companion → Réseau local**.
 
 ## Validation sur appareil
 
-Les 26 tests XCTest du compagnon tournent en simulateur ; la découverte
+Les 41 tests XCTest du compagnon tournent en simulateur ; la découverte
 Bonjour sur un vrai réseau et le timing du réveil en arrière-plan ne
 s'y exercent pas. Après une installation ou une modification touchant
 Bonjour, HealthKit ou le réveil en arrière-plan, coche cette liste sur

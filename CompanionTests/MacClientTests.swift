@@ -9,12 +9,18 @@ final class StubURLProtocol: URLProtocol {
     /// lieu de renvoyer une réponse HTTP — nécessaire pour exercer le chemin
     /// `.unreachable` / invalidation du cache d'endpoint (I3).
     nonisolated(unsafe) static var shouldFail = false
+    /// Nombre de requêtes à faire échouer au niveau transport avant de
+    /// revenir au comportement normal — simule un échec ponctuel (port Mac
+    /// périmé après redémarrage) suivi d'un succès, contrairement à
+    /// `shouldFail` qui échoue jusqu'à réinitialisation explicite.
+    nonisolated(unsafe) static var failNextRequests = 0
 
     override class func canInit(with request: URLRequest) -> Bool { true }
     override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
     override func startLoading() {
         Self.lastRequest = request
-        if Self.shouldFail {
+        if Self.shouldFail || Self.failNextRequests > 0 {
+            if Self.failNextRequests > 0 { Self.failNextRequests -= 1 }
             client?.urlProtocol(self, didFailWithError: URLError(.notConnectedToInternet))
             return
         }
@@ -49,6 +55,7 @@ final class MacClientTests: XCTestCase {
     override func setUp() {
         StubURLProtocol.lastRequest = nil
         StubURLProtocol.shouldFail = false
+        StubURLProtocol.failNextRequests = 0
         let config = URLSessionConfiguration.ephemeral
         config.protocolClasses = [StubURLProtocol.self]
         tokenStore = KeychainTokenStore(service: "test-\(UUID().uuidString)")
@@ -62,6 +69,7 @@ final class MacClientTests: XCTestCase {
         StubURLProtocol.handler = nil
         StubURLProtocol.lastRequest = nil
         StubURLProtocol.shouldFail = false
+        StubURLProtocol.failNextRequests = 0
     }
 
     private func makeSession() -> URLSession {
@@ -162,6 +170,8 @@ final class MacClientTests: XCTestCase {
         let provider = CountingEndpointProvider(endpoint: ("127.0.0.1", 8080))
         let cachingClient = MacClient(endpointProvider: provider, tokenStore: tokenStore, session: makeSession())
 
+        // Échec persistant sur une résolution FRAÎCHE (rien n'est encore en
+        // cache) : le Mac est réellement injoignable, pas de rattrapage.
         StubURLProtocol.shouldFail = true
         do {
             _ = try await cachingClient.push(batch: ExchangeBatch(records: [], sleep: [], workouts: []))
@@ -169,7 +179,7 @@ final class MacClientTests: XCTestCase {
         } catch let error as MacClientError {
             XCTAssertEqual(error, .unreachable)
         }
-        XCTAssertEqual(provider.callCount, 1)
+        XCTAssertEqual(provider.callCount, 1, "pas de rattrapage sur une résolution déjà fraîche")
 
         StubURLProtocol.shouldFail = false
         StubURLProtocol.handler = { _ in (200, try! ExchangeCoding.encoder.encode(BatchResponse(inserted: 2))) }
@@ -177,5 +187,25 @@ final class MacClientTests: XCTestCase {
 
         XCTAssertEqual(inserted, 2)
         XCTAssertEqual(provider.callCount, 2, "l'échec réseau doit invalider le cache et forcer une nouvelle découverte")
+    }
+
+    func test_cachedEndpointStale_retriesOnceWithFreshDiscovery_andSucceeds() async throws {
+        // Simule un redémarrage du Mac entre deux synchros : le port mémorisé
+        // depuis la première requête réussie devient invalide, mais l'appel
+        // doit réussir tout seul grâce au rattrapage (I3), pas remonter une
+        // erreur visible côté VM/report (voir C2).
+        try tokenStore.save(token: "cafe01")
+        let provider = CountingEndpointProvider(endpoint: ("127.0.0.1", 8080))
+        let cachingClient = MacClient(endpointProvider: provider, tokenStore: tokenStore, session: makeSession())
+
+        StubURLProtocol.handler = { _ in (200, try! ExchangeCoding.encoder.encode(BatchResponse(inserted: 1))) }
+        _ = try await cachingClient.push(batch: ExchangeBatch(records: [], sleep: [], workouts: []))
+        XCTAssertEqual(provider.callCount, 1, "endpoint mémorisé après la première requête")
+
+        StubURLProtocol.failNextRequests = 1 // la SEULE requête suivante échoue (adresse périmée), puis ça repasse au handler
+        let inserted = try await cachingClient.push(batch: ExchangeBatch(records: [], sleep: [], workouts: []))
+
+        XCTAssertEqual(inserted, 1, "le rattrapage automatique doit réussir après re-découverte")
+        XCTAssertEqual(provider.callCount, 2, "un seul rattrapage : re-découverte après l'échec sur l'adresse mémorisée")
     }
 }

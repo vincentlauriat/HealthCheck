@@ -86,8 +86,8 @@ final class CompanionViewModelTests: XCTestCase {
         await vm.syncNow()
         XCTAssertNil(vm.lastSyncDate, "un échec partiel ne doit pas tamponner une synchro propre")
         XCTAssertNotNil(vm.lastReportSummary)
-        XCTAssertTrue(vm.lastReportSummary?.contains("1") ?? false, "le résumé doit mentionner le nombre de types en échec")
-        XCTAssertTrue(vm.lastReportSummary?.contains("échec") ?? false)
+        XCTAssertTrue(vm.lastReportSummary?.contains("1 type(s) en échec") ?? false,
+                      "le résumé doit mentionner le nombre de types en échec, pas seulement contenir un chiffre")
         XCTAssertNotNil(vm.errorMessage, "un état d'avertissement doit rester visible dans l'UI")
     }
 

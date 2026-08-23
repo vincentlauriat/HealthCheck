@@ -19,11 +19,16 @@ protocol MacEndpointProviding {
 /// sur le tableau §9 de la spec : toute non-2xx laisse l'appelant décider
 /// (les ancres n'avancent jamais sur un échec).
 final class MacClient {
-    /// Endpoint résolu, mémorisé pour la durée de vie du client (typiquement
-    /// une synchro) et invalidé dès qu'une requête échoue avec
-    /// `.unreachable` — la découverte Bonjour n'a alors lieu qu'une fois par
-    /// tentative de synchro dans le cas nominal, au lieu d'une fois par
-    /// requête HTTP (jusqu'à ~86 découvertes sur la première synchro).
+    /// Endpoint résolu, mémorisé pour la durée de vie du client (une seule
+    /// instance persiste tant que l'app tourne — `CompanionApp.init` n'en
+    /// crée qu'une) et invalidé dès qu'une requête échoue avec
+    /// `.unreachable`. La découverte Bonjour n'a donc lieu qu'une fois par
+    /// tentative de synchro dans le cas nominal (au lieu d'une fois par
+    /// requête HTTP, jusqu'à ~86 découvertes sur la première synchro) :
+    /// `send` retente une fois avec une adresse fraîche quand l'échec
+    /// survient sur une adresse SERVIE PAR LE CACHE (le port Mac, éphémère,
+    /// a pu changer entre deux synchros) ; un Mac réellement injoignable
+    /// (échec sur une résolution fraîche) ne déclenche pas de second essai.
     private struct EndpointCache {
         var endpoint: (host: String, port: UInt16)?
         var resolved = false
@@ -40,12 +45,12 @@ final class MacClient {
         self.session = session
     }
 
-    private func resolvedEndpoint() async -> (host: String, port: UInt16)? {
+    private func resolvedEndpoint() async -> (endpoint: (host: String, port: UInt16)?, wasCached: Bool) {
         let cached = endpointCache.withLock { $0 }
-        if cached.resolved { return cached.endpoint }
+        if cached.resolved { return (cached.endpoint, true) }
         let endpoint = await endpointProvider.currentEndpoint()
         endpointCache.withLock { $0 = EndpointCache(endpoint: endpoint, resolved: true) }
-        return endpoint
+        return (endpoint, false)
     }
 
     private func invalidateEndpoint() {
@@ -90,7 +95,8 @@ final class MacClient {
     }
 
     private func send(path: String, method: String, body: Data?, authenticated: Bool) async throws -> (Data, Int) {
-        guard let endpoint = await resolvedEndpoint(),
+        let (resolved, wasCached) = await resolvedEndpoint()
+        guard let endpoint = resolved,
               let url = URL(string: "http://\(endpoint.host):\(endpoint.port)\(path)")
         else {
             invalidateEndpoint()
@@ -114,7 +120,12 @@ final class MacClient {
             return (data, status)
         } catch {
             invalidateEndpoint() // adresse mémorisée possiblement périmée : refaire une découverte au prochain appel
-            throw MacClientError.unreachable // Mac éteint / réseau différent : cas normal, pas fatal
+            guard wasCached else { throw MacClientError.unreachable } // résolution déjà fraîche : le Mac est bien injoignable
+            // L'échec est survenu sur une adresse SERVIE PAR LE CACHE — le
+            // port Mac (éphémère) a pu changer depuis (redémarrage entre
+            // deux synchros). Un seul rattrapage avec une adresse fraîche
+            // avant de faire remonter l'échec à l'appelant.
+            return try await send(path: path, method: method, body: body, authenticated: authenticated)
         }
     }
 }

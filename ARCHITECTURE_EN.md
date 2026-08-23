@@ -211,10 +211,16 @@ to the Mac receiver above — HealthKit on the phone, no manual export.
   (`BonjourEndpointProvider.urlHost(for:)` brackets IPv6 addresses and
   percent-encodes a link-local `%iface` scope). The Mac's listener
   port is itself ephemeral and changes on every Mac app launch, so
-  `MacClient` caches the resolved endpoint for the lifetime of one sync
-  and invalidates it as soon as a request fails with `.unreachable` —
-  discovery happens only once per sync attempt in the common case
-  (more only if the cached address goes stale mid-sync).
+  `MacClient` caches the resolved endpoint for its entire lifetime (one
+  instance persists for as long as the app runs) instead of
+  re-discovering on every HTTP request. If a request fails on an
+  address SERVED FROM CACHE (a stale port after the Mac restarted
+  between two syncs), `MacClient` invalidates the cache and retries
+  once with a fresh address before propagating `.unreachable`; a
+  failure on an already-fresh resolution (the Mac is genuinely
+  unreachable) does not trigger a second attempt. Discovery therefore
+  happens once per sync attempt in the common case, twice if the port
+  changed since the last sync.
 - **Keychain token**: `KeychainTokenStore` holds the Bearer token
   (`mac-token` account) in the iOS Keychain. A `401`/`needsPairing`
   response clears it and flips the view model back to unpaired —
@@ -232,16 +238,21 @@ to the Mac receiver above — HealthKit on the phone, no manual export.
   companion path's synthetic key (which includes `device`, see
   `HealthRecord.dedupKey`) DIVERGES from the same sample's key when
   imported via zip (which carries the real `device`) — `INSERT OR
-  IGNORE` therefore never merges them at the key level. The 30-day
-  overlap between the two sources is not absorbed at insert time but
-  at READ time, by `SourcePriorityResolver`
+  IGNORE` therefore never merges them at the key level. The direct
+  `HKQuantity` conversion on the companion side (`Double`) can also
+  differ, at the last digit, from the value parsed out of the zip's
+  XML, which would diverge the key even with a matching `device`
+  (`dedupKey` includes `String(value)`). The 30-day overlap between the
+  two sources is not absorbed at insert time but at READ time, by
+  `SourcePriorityResolver`
   (`HealthCheck/Store/SourcePriorityResolver.swift`), which keeps only
   one source per overlapping time window based on `sourceName` and the
   configured priority order. `creationDate` is not part of the dedup
   key.
-- **Sim-vs-device test split**: the 26 companion XCTest cases (mapper,
-  persistence, sync engine, Mac client stub, shared protocol,
-  view model) run fully on the iPhone 17 simulator. Real Bonjour
+- **Sim-vs-device test split**: the 41 companion XCTest cases (mapper,
+  persistence, sync engine, Mac client stub, Bonjour endpoint
+  formatting, concurrent-wake coalescing, shared protocol, view model)
+  run fully on the iPhone 17 simulator. Real Bonjour
   discovery over the local network and background-delivery wake
   timing cannot be exercised there (no local-network peers, no true
   background wake) and are validated manually on a physical iPhone —
@@ -296,12 +307,15 @@ parsing, router status codes, idempotent batch ingestion, GPX
 self-healing). UI is verified visually (Swift Charts is invisible to
 accessibility tooling).
 
-iOS (`HealthCheckCompanion`): 26 XCTest cases — HealthKit mapping
+iOS (`HealthCheckCompanion`): 41 XCTest cases — HealthKit mapping
 against pinned units, anchor/keychain persistence, sync engine
-batching and ack-gated anchor advance, Mac client HTTP stub, shared
-protocol round-trip, and the companion view model (pairing, sync,
-error states). See the sim-vs-device split above — Bonjour discovery
-and background delivery are device-only.
+batching and ack-gated anchor advance, Mac client HTTP stub (endpoint
+caching/invalidation/retry, authenticated request without a token),
+`BonjourEndpointProvider` IPv4/IPv6/`.name` URL-host formatting,
+concurrent-wake coalescing (`SyncCoalescer`), shared protocol
+round-trip, and the companion view model (pairing, full/partial/failed
+sync, error states). See the sim-vs-device split above — Bonjour
+discovery and background delivery are device-only.
 
 `xcodegen generate` is mandatory after adding/removing files — a stale
 pbxproj produces confusing "cannot find in scope" errors or empty test
