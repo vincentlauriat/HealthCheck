@@ -4,21 +4,26 @@ import XCTest
 final class SyncServerTests: XCTestCase {
     private var tempDir: URL!
     private var tokenStore: CompanionTokenStore!
+    private var pairing: PairingManager!
     private var server: SyncServer!
     private var insertedTotals: [Int] = []
+    private var pairedCount = 0
 
     override func setUpWithError() throws {
         tempDir = URL(fileURLWithPath: NSTemporaryDirectory())
             .appendingPathComponent("server-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
         tokenStore = CompanionTokenStore(directory: tempDir)
+        pairing = PairingManager(tokenStore: tokenStore, codeGenerator: { "123456" })
         let router = CompanionRouter(
-            pairing: PairingManager(tokenStore: tokenStore, codeGenerator: { "123456" }),
+            pairing: pairing,
             tokenStore: tokenStore,
             importer: CompanionImporter(store: try HealthStore(path: ":memory:"),
                                         routeStore: RouteStore(directory: tempDir)),
             appVersion: "1.0.0")
-        server = SyncServer(router: router, onInsert: { [weak self] in self?.insertedTotals.append($0) })
+        server = SyncServer(router: router,
+                            onInsert: { [weak self] in self?.insertedTotals.append($0) },
+                            onPair: { [weak self] in self?.pairedCount += 1 })
     }
 
     override func tearDownWithError() throws {
@@ -46,6 +51,23 @@ final class SyncServerTests: XCTestCase {
         bad.setValue("Bearer wrong", forHTTPHeaderField: "Authorization")
         let (_, badResponse) = try await URLSession.shared.data(for: bad)
         XCTAssertEqual((badResponse as? HTTPURLResponse)?.statusCode, 401)
+    }
+
+    func test_server_pairsOverHTTP_andFiresOnPair() async throws {
+        try server.start()
+        _ = pairing.openWindow()
+
+        var req = URLRequest(url: try url("/pair"))
+        req.httpMethod = "POST"
+        req.httpBody = try ExchangeCoding.encoder.encode(PairRequest(code: "123456"))
+        let (data, response) = try await URLSession.shared.data(for: req)
+        XCTAssertEqual((response as? HTTPURLResponse)?.statusCode, 200)
+        let payload = try ExchangeCoding.decoder.decode(PairResponse.self, from: data)
+        XCTAssertEqual(payload.token, tokenStore.currentToken())
+        // La réponse n'est envoyée qu'après le passage dans `respond(on:requestData:)`,
+        // qui appelle `onPair()` avant `connection.send` — même argument de visibilité
+        // que pour `insertedTotals` dans le test `/batch` ci-dessous.
+        XCTAssertEqual(pairedCount, 1)
     }
 
     func test_server_ingestsBatch_andReportsInsertCount() async throws {

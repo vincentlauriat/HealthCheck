@@ -45,12 +45,18 @@ final class CompanionViewModel: ObservableObject {
             onPair: { [weak self] in
                 Task { @MainActor [weak self] in self?.didPair() }
             })
-        do {
-            try server.start()
-            self.server = server
-        } catch {
-            // Pas de port dispo : la carte restera « serveur arrêté », le
-            // reste de l'app fonctionne — pas de crash pour un listener.
+        self.server = server
+        // `start()` bloque jusqu'à 2 s (attente `.ready`) et le tout premier
+        // bind peut déclencher l'invite système d'accès au réseau local —
+        // jamais bloquer le MainActor là-dessus, sous peine de geler l'UI.
+        Task.detached(priority: .utility) { [weak self] in
+            do {
+                try server.start()
+            } catch {
+                // Pas de port dispo : la carte restera « serveur arrêté », le
+                // reste de l'app fonctionne — pas de crash pour un listener.
+                await MainActor.run { self?.server = nil }
+            }
         }
     }
 
