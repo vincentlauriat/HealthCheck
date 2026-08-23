@@ -1,4 +1,5 @@
 import Foundation
+import os.log
 
 /// Ingestion d'un batch compagnon dans le store existant. L'idempotence
 /// vient des clés synthétiques + `INSERT OR IGNORE` : re-livrer un batch
@@ -38,7 +39,11 @@ struct CompanionImporter {
             if let points = exchange.routePoints, !points.isEmpty {
                 let rawName = Self.routeFileName(for: exchange)
                 let name = (rawName as NSString).lastPathComponent
-                _ = try? writeGPX(points: points, fileName: name)
+                do {
+                    try writeGPX(points: points, fileName: name)
+                } catch {
+                    os_log(.error, "Échec d'écriture GPX pour %{public}@", name)
+                }
                 routeFileName = name
             }
             return Workout(activityType: exchange.activityType, sourceName: exchange.sourceName,

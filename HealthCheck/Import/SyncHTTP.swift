@@ -14,6 +14,18 @@ struct SyncHTTPRequest {
     /// Longueur totale attendue (en-têtes + corps) dès que les en-têtes
     /// sont complets ; `nil` tant qu'on n'a pas vu CRLFCRLF. Le serveur
     /// accumule les octets d'une connexion jusqu'à cette longueur.
+    ///
+    /// Cette fonction retient le PREMIER en-tête `Content-Length` rencontré,
+    /// alors que `parse(_:)` ci-dessous retient le DERNIER (chaque itération
+    /// de boucle écrase `contentLength`). En terrain HTTP général, un tel
+    /// désaccord entre deux lectures du même en-tête est le terreau classique
+    /// du request smuggling (front-end et back-end découpent le flux
+    /// différemment). Ici c'est sans danger uniquement parce que ce serveur
+    /// traite exactement une requête par connexion et la ferme
+    /// inconditionnellement ensuite (`Connection: close`, voir
+    /// `SyncHTTPResponse.make`) : il n'y a jamais de second message à
+    /// désynchroniser. Si ce serveur passe un jour en keep-alive, cette
+    /// hypothèse tombe et l'incohérence doit être corrigée avant tout.
     static func expectedTotalLength(_ data: Data) -> Int? {
         guard let headerRange = data.range(of: headerTerminator) else { return nil }
         let headerData = data[data.startIndex..<headerRange.upperBound]

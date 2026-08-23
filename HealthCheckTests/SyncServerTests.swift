@@ -134,4 +134,26 @@ final class CompanionViewModelTests: XCTestCase {
         XCTAssertTrue(vm.isPaired)
         XCTAssertNil(vm.pairingCode)
     }
+
+    /// Prouve que `didInsert(rows:)` — appelée par `SyncServer` via `onInsert`
+    /// sur un `/batch` réussi — fait bien progresser `syncGeneration` et
+    /// `lastSyncDate`, sans dépendre d'un aller-retour HTTP complet ici.
+    func test_didInsert_advancesSyncGeneration_andSetsLastSyncDate() throws {
+        let tempDir = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("vm-insert-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+
+        let defaults = UserDefaults(suiteName: "companion-vm-insert-tests-\(UUID().uuidString)")!
+        let vm = CompanionViewModel(store: try HealthStore(path: ":memory:"), defaults: defaults,
+                                    tokenStore: CompanionTokenStore(directory: tempDir),
+                                    routeStore: RouteStore(directory: tempDir))
+        XCTAssertEqual(vm.syncGeneration, 0)
+        XCTAssertNil(vm.lastSyncDate)
+
+        vm.didInsert(rows: 1)
+
+        XCTAssertEqual(vm.syncGeneration, 1)
+        XCTAssertNotNil(vm.lastSyncDate)
+    }
 }

@@ -46,6 +46,12 @@ final class PairingManager {
     private var opensAt: Date?
     private var attempts = 0
 
+    // `code`/`opensAt`/`attempts` sont écrits depuis le MainActor (`openWindow`/
+    // `closeWindow`, via `CompanionViewModel`) et lus/écrits depuis la queue
+    // d'écoute du serveur (`redeem`/`isWindowOpen`, via `CompanionRouter`) :
+    // deux threads distincts sur le même état mutable, d'où le verrou.
+    private let lock = NSLock()
+
     init(tokenStore: CompanionTokenStore,
          now: @escaping () -> Date = Date.init,
          codeGenerator: @escaping () -> String = PairingManager.randomCode) {
@@ -55,11 +61,17 @@ final class PairingManager {
     }
 
     var isWindowOpen: Bool {
+        lock.lock(); defer { lock.unlock() }
+        return isWindowOpenLocked
+    }
+
+    private var isWindowOpenLocked: Bool {
         guard let opensAt, code != nil else { return false }
         return now().timeIntervalSince(opensAt) < Self.windowDuration && attempts < Self.maxAttempts
     }
 
     func openWindow() -> String {
+        lock.lock(); defer { lock.unlock() }
         let newCode = codeGenerator()
         code = newCode
         opensAt = now()
@@ -68,6 +80,11 @@ final class PairingManager {
     }
 
     func closeWindow() {
+        lock.lock(); defer { lock.unlock() }
+        closeWindowLocked()
+    }
+
+    private func closeWindowLocked() {
         code = nil
         opensAt = nil
         attempts = 0
@@ -75,13 +92,16 @@ final class PairingManager {
 
     /// `nil` si la fenêtre est fermée, expirée, grillée (5 essais) ou si
     /// le code est faux. Sinon : émet, persiste et retourne le jeton.
+    /// NSLock n'étant pas réentrant, on passe par les variantes `*Locked`
+    /// pour éviter le deadlock avec `isWindowOpen`/`closeWindow` publics.
     func redeem(code candidate: String) -> String? {
-        guard isWindowOpen else { return nil }
+        lock.lock(); defer { lock.unlock() }
+        guard isWindowOpenLocked else { return nil }
         attempts += 1
         guard candidate == code else { return nil }
         let token = Self.randomToken()
         do { try tokenStore.save(token: token) } catch { return nil }
-        closeWindow()
+        closeWindowLocked()
         return token
     }
 

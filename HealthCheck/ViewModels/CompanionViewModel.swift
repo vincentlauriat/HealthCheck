@@ -74,7 +74,9 @@ final class CompanionViewModel: ObservableObject {
         isPaired = false
     }
 
-    private func didInsert(rows: Int) {
+    /// Signalé par `SyncServer` sur un `/batch` réussi. Interne (non `private`),
+    /// même précédent que `didPair()`, pour rester testable sans round-trip HTTP.
+    func didInsert(rows: Int) {
         lastSyncDate = Date()
         defaults.set(lastSyncDate, forKey: Self.lastSyncKey)
         syncGeneration += 1
