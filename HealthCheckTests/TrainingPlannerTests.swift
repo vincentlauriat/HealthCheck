@@ -167,4 +167,72 @@ final class TrainingPlannerTests: XCTestCase {
                                         hrMax: 190, today: date("2026-08-23"), calendar: calendar)
         XCTAssertEqual(plan.weeks[1].targetKm, 14.49, accuracy: 0.05)
     }
+
+    // MARK: - Séances
+
+    func plannedWeeks(_ today: String = "2026-08-23") -> [PlannedWeek] {
+        TrainingPlanner.plan(goal: goal(), history: comebackHistory, hrMax: 190,
+                             today: date(today), calendar: calendar)
+            .weeks.filter { $0.role != .currentWeekClosing }
+    }
+
+    func test_sessions_goldenCase_longRunChainRespectsTheGrowthCap() {
+        let longs = plannedWeeks().map { w in w.sessions.first { $0.kind == .longRun }!.targetKm }
+        // base = 5.6 km (plus longue des 14 derniers jours), +2,5 km/semaine max
+        for (got, want) in zip(longs, [8.1, 10.0, 11.5, 6.8, 5.75]) {
+            XCTAssertEqual(got, want, accuracy: 0.05)
+        }
+    }
+
+    func test_sessions_longRun_neverExceedsEightyPercentOfRaceDistance() {
+        let plan = TrainingPlanner.plan(goal: goal(), history: trainedHistory(perDayKm: 5.0),
+                                        hrMax: 190, today: date("2026-08-23"), calendar: calendar)
+        for week in plan.weeks {
+            if let long = week.sessions.first(where: { $0.kind == .longRun }) {
+                XCTAssertLessThanOrEqual(long.targetKm, min(14, 17 * 0.8) + 0.001)
+            }
+        }
+    }
+
+    func test_sessions_buildWeek_hasThreeCoreSessionsPlusOneOptional() {
+        let first = plannedWeeks().first!
+        XCTAssertEqual(first.sessions.filter { !$0.isOptional }.map(\.kind),
+                       [.longRun, .hills, .baseEndurance])
+        XCTAssertEqual(first.sessions.filter(\.isOptional).count, 1)
+    }
+
+    func test_sessions_hillClimb_rampsToThreeQuartersOfRaceClimbAtPeak() {
+        let weeks = plannedWeeks()
+        let first = weeks.first!.sessions.first { $0.kind == .hills }!
+        XCTAssertEqual(first.targetClimbM, 100, accuracy: 0.5)
+        let peak = weeks.first { $0.role == .peak }!.sessions.first { $0.kind == .hills }!
+        XCTAssertEqual(peak.targetClimbM, 300, accuracy: 0.5) // min(300, 400 × 0.75)
+    }
+
+    func test_sessions_raceWeek_swapsHillsForALegOpener() {
+        let raceWeek = plannedWeeks().first { $0.role == .raceWeek }!
+        XCTAssertFalse(raceWeek.sessions.contains { $0.kind == .hills })
+        XCTAssertTrue(raceWeek.sessions.contains { $0.kind == .legOpener })
+    }
+
+    func test_sessions_taperWeeks_haveNoOptionalSession() {
+        for week in plannedWeeks() where week.role == .taper || week.role == .raceWeek {
+            XCTAssertFalse(week.sessions.contains(where: \.isOptional))
+        }
+    }
+
+    func test_sessions_baseEndurance_isFlooredAtThreeKilometres() {
+        let base = plannedWeeks().first!.sessions.first { $0.kind == .baseEndurance }!
+        XCTAssertGreaterThanOrEqual(base.targetKm, 3.0 - 0.001)
+    }
+
+    func test_sessions_hrRanges_deriveFromHrMax() {
+        let week = plannedWeeks().first!
+        let hills = week.sessions.first { $0.kind == .hills }!
+        XCTAssertEqual(hills.hrRange.lowerBound, 190 * 0.85, accuracy: 0.5)
+        XCTAssertEqual(hills.hrRange.upperBound, 190 * 0.92, accuracy: 0.5)
+        let long = week.sessions.first { $0.kind == .longRun }!
+        XCTAssertEqual(long.hrRange.lowerBound, 190 * 0.70, accuracy: 0.5)
+        XCTAssertEqual(long.hrRange.upperBound, 190 * 0.80, accuracy: 0.5)
+    }
 }
