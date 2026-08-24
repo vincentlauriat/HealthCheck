@@ -8,9 +8,14 @@ packages:
   GRDB:
     url: https://github.com/groue/GRDB.swift
     from: 6.29.0
+  # Épinglé à l'exact, contrairement à GRDB : Package.resolved vit dans le
+  # .xcodeproj, qui est gitignoré et régénéré par XcodeGen. Rien ne fige donc
+  # la résolution pour qui clone le dépôt, et c'est la seule dépendance dont le
+  # rôle est de télécharger et d'installer du code exécutable sur la machine de
+  # l'utilisateur. Une borne haute floue y vaut une dépendance non auditée.
   Sparkle:
     url: https://github.com/sparkle-project/Sparkle
-    from: 2.6.0
+    exactVersion: 2.9.6
 
 schemes:
   HealthCheck:
