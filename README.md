@@ -2,7 +2,7 @@
 
 ![Release](https://img.shields.io/github/v/release/vincentlauriat/HealthCheck)
 ![Platform](https://img.shields.io/badge/platform-macOS%2015%2B-blue)
-![Tests](https://img.shields.io/badge/tests-169%2F169-brightgreen)
+![Tests](https://img.shields.io/badge/tests-179%2F179-brightgreen)
 
 Application macOS native (SwiftUI) d'analyse de santé personnelle :
 elle importe l'export Apple Santé, lit l'API Withings en direct, et
@@ -97,7 +97,7 @@ xcodebuild -scheme HealthCheck -destination 'platform=macOS' test
 xcodebuild -scheme HealthCheckCompanion -destination 'platform=iOS Simulator,name=iPhone 17' test
 ```
 
-169 tests côté Mac, tous sur les moteurs purs (scores, zones,
+179 tests côté Mac, tous sur les moteurs purs (scores, zones,
 corrélations, mapping Withings, parsing GPX, dédoublonnage, plan
 d'entraînement/rapprochement des séances/moniteur de charge), le store
 et la synchro compagnon (appairage, routeur HTTP, ingestion
@@ -131,7 +131,7 @@ HealthCheck/
 │   ├── ViewModels/      # Un par section, @MainActor, chargement unique
 │   └── Views/           # SwiftUI + Swift Charts + Sankey maison
 ├── HealthCheckShared/    # DTO d'échange + protocole compagnon, partagés Mac/iOS
-├── HealthCheckTests/    # 169 tests (moteurs + store + mapping + synchro compagnon + entraînement)
+├── HealthCheckTests/    # 179 tests (moteurs + store + mapping + synchro compagnon + entraînement)
 ├── Companion/            # App iOS (HealthKit, synchro, appairage, UI)
 ├── CompanionTests/       # 41 tests (mapping HealthKit, ancres, synchro, view model)
 ├── Scripts/release.sh   # Release signée + notarisée
