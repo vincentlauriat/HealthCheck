@@ -9,7 +9,12 @@ final class DashboardViewModelTests: XCTestCase {
     @MainActor
     func test_loadToday_sumsStepsAndDistanceAfterSourceResolution() throws {
         let store = try HealthStore(path: ":memory:")
-        let now = Date()
+        // 23:00 aujourd'hui plutôt que l'horloge réelle : ces tests posent leurs
+        // données à des heures fixes de la journée (01:00, 14:00). Avec un `now`
+        // pris sur l'horloge, ces heures sont dans le futur tant que la journée
+        // n'est pas assez avancée, les données sortent de la fenêtre lue et le
+        // test échoue — une heure par nuit, tous les jours.
+        let now = Calendar.current.startOfDay(for: Date()).addingTimeInterval(23 * 3600)
         let startOfDay = Calendar.current.startOfDay(for: now)
         let morning = startOfDay.addingTimeInterval(3600)
         let afternoon = startOfDay.addingTimeInterval(3600 * 14)
@@ -38,8 +43,13 @@ final class DashboardViewModelTests: XCTestCase {
         let store = try HealthStore(path: ":memory:")
         var calendar = Calendar(identifier: .gregorian)
         calendar.firstWeekday = 2 // Monday
-        let now = Date()
-        let startOfWeek = calendar.dateInterval(of: .weekOfYear, for: now)!.start
+        // « Maintenant » figé au mercredi 12:00 de la semaine courante, comme
+        // le test voisin. Avec un `now` pris sur l'horloge, un lundi fait
+        // tomber « plus tôt cette semaine » et « aujourd'hui » sur le même
+        // instant : le résolveur de sources voit deux mesures Watch qui se
+        // recouvrent, n'en garde qu'une, et la somme attendue s'effondre.
+        let startOfWeek = calendar.dateInterval(of: .weekOfYear, for: Date())!.start
+        let now = startOfWeek.addingTimeInterval(2 * 86_400 + 12 * 3600)
         let earlierThisWeek = startOfWeek.addingTimeInterval(3600)
         let today = calendar.startOfDay(for: now).addingTimeInterval(3600)
 
@@ -82,7 +92,12 @@ final class DashboardViewModelTests: XCTestCase {
     @MainActor
     func test_loadWellness_scoresTodayAgainstPersonalBaseline() throws {
         let store = try HealthStore(path: ":memory:")
-        let now = Date()
+        // 23:00 aujourd'hui plutôt que l'horloge réelle : ces tests posent leurs
+        // données à des heures fixes de la journée (01:00, 14:00). Avec un `now`
+        // pris sur l'horloge, ces heures sont dans le futur tant que la journée
+        // n'est pas assez avancée, les données sortent de la fenêtre lue et le
+        // test échoue — une heure par nuit, tous les jours.
+        let now = Calendar.current.startOfDay(for: Date()).addingTimeInterval(23 * 3600)
         let calendar = Calendar.current
         let startOfToday = calendar.startOfDay(for: now)
 

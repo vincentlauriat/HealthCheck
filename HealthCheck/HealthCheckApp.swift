@@ -14,6 +14,7 @@ struct HealthCheckApp: App {
     @StateObject private var workoutsViewModel: WorkoutsViewModel
     @StateObject private var correlationsViewModel: CorrelationsViewModel
     @StateObject private var companionViewModel: CompanionViewModel
+    @StateObject private var trainingViewModel: TrainingViewModel
 
     init() {
         // Base illisible, disque plein, droits refusés : on ne crashe pas au
@@ -48,6 +49,7 @@ struct HealthCheckApp: App {
         _workoutsViewModel = StateObject(wrappedValue: WorkoutsViewModel(store: store))
         _correlationsViewModel = StateObject(wrappedValue: CorrelationsViewModel(store: store, resolver: resolver))
         _companionViewModel = StateObject(wrappedValue: CompanionViewModel(store: store))
+        _trainingViewModel = StateObject(wrappedValue: TrainingViewModel(store: store))
     }
 
     var body: some Scene {
@@ -65,7 +67,8 @@ struct HealthCheckApp: App {
                     withingsViewModel: withingsViewModel,
                     workoutsViewModel: workoutsViewModel,
                     correlationsViewModel: correlationsViewModel,
-                    companionViewModel: companionViewModel
+                    companionViewModel: companionViewModel,
+                    trainingViewModel: trainingViewModel
                 )
             }
         }

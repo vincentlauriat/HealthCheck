@@ -36,7 +36,7 @@ Withings cloud ──► WithingsClient (OAuth2) ─────────►�
                                                           ▼
                                              ViewModels (@MainActor)
                                                           ▼
-                                             SwiftUI views (8 sections)
+                                             SwiftUI views (9 sections)
 ```
 
 ## Storage
@@ -113,6 +113,107 @@ SwiftUI, no store, testable to two decimals.
 | `WorkoutStatsEngine` | weekly volumes + labels | duration normalized by unit (min/s/h); 20 activity types mapped to French, prefix-stripping fallback |
 | `CorrelationEngine` | Pearson r + paired points | refuses <10 pairs and zero variance; day-D x paired with day-D+lag y (sleep night labeled D affects D+1 morning metrics) |
 | `GPXParser` | `[RoutePoint]` | SAX, `trkpt` lat/lon only, MapKit-free |
+
+## Training planner
+
+Three pure engines under `HealthCheck/Analysis/` turn a race goal into
+a week-by-week plan, track what was actually run against it, and watch
+training load for problems. `TrainingViewModel`
+(`HealthCheck/ViewModels/TrainingViewModel.swift`) is the only thing
+that composes them — it recomputes `goal`/`plan`/`progress`/
+`assessment` from scratch on every `load()`, nothing is persisted, so
+the screen can never diverge from what a fresh call to the same three
+engines would produce for the same inputs.
+
+- **`TrainingPlanner`** builds a deterministic `TrainingPlan` from a
+  `RaceGoal`, the running history, and `hrMax`. The starting weekly
+  volume is the greater of the chronic load, the acute load, and a
+  10 km floor; it ramps geometrically — ×1.15/week while that starting
+  weekly volume is below the goal distance, ×1.10/week once at or
+  above it —
+  capped at 1.5× the goal distance, peaks two weeks before the race,
+  then tapers ×0.75 and ×0.5 into race week. Each week's target splits
+  into a long run (60 % share, grown at most 2.5 km/week off the
+  longest run in the last 14 days), a hilly session (25 % share, climb
+  ramped from 100 m toward `min(300, goal.elevationGainM × 0.75)`),
+  base endurance filling the remainder, and an optional easy add-on.
+- **`SessionMatcher`** reconciles executed runs against a
+  `PlannedWeek`: distance-defined sessions are matched by size
+  (largest run against largest target first), duration-defined
+  sessions (leg-opener, optional easy) take whatever run is left over,
+  a session counts done at 70 % of its target distance, and unmatched
+  runs surface separately as `offPlan`. Recomputing this on every load
+  is what lets a freshly synced run flip a session to "done" with no
+  manual action.
+- **`TrainingLoadMonitor`** watches acute (7-day) vs. chronic (28-day,
+  4-week-average) volume and turns it into `LoadAlert`s, in one of two
+  regimes (below).
+
+**One chronic-load definition, shared.** `TrainingPlanner.chronicWeeklyKm`
+and `TrainingPlanner.acuteKm` are the single definitions of "chronic"
+and "acute" load in the codebase — `TrainingLoadMonitor` calls them
+directly rather than keeping its own reading. If the two ever
+disagreed, the monitor could warn about a ratio the planner itself
+just built the week's target around; sharing the definition is what
+makes plan-relative alerting (below) actually consistent with the plan
+on screen.
+
+**Plan-relative alerting, and why raw ACWR must stay silent against a
+ramp.** With no active goal, `TrainingLoadMonitor` falls back to the
+classic acute:chronic ratio (ACWR) — above 1.3 warns "you're
+progressing too fast," below 0.8 suggests doing more. But
+`TrainingPlanner`'s ramp is capped by construction (×1.10–1.15/week);
+a week that exactly matches the plan's own prescribed increase can
+still show a raw ACWR above 1.3, especially early in a comeback where
+the geometric ramp is steepest relative to a low baseline. Firing
+"you're progressing too fast" next to a plan card that itself just
+prescribed that increase would be self-contradictory. So whenever the
+current week is present in `plan.weeks` and carries targets (`role !=
+.currentWeekClosing`), `assess` compares realized volume to *that
+week's target* instead of the raw ratio — over target by 25 % warns,
+under target by 50 % with ≤2 days left in the week notes it won't be
+caught up, and a low readiness score suggests swapping a still-pending
+long run or hilly session for an easy one. The raw-ratio fallback is gated on
+the **absence of a plan** (`plan == nil`), not on the outcome of the
+week lookup. That distinction is anything but academic:
+`TrainingPlanner` marks the current week `currentWeekClosing` as soon
+as fewer than three days remain in it, so a guard keyed on the week
+would have brought "you're progressing too fast" back every Saturday
+and Sunday, beside a plan being followed exactly — the very
+contradiction this design removes. When a plan exists but the current
+week carries no targets, `assess` still publishes acute load, chronic
+load and the ratio for display, but raises no alert: there is no target
+to compare against, and the raw ratio is precisely the number that must
+not drive an alert while a plan is active.
+
+**Anchored at creation, not recomputed from today.** The week sequence
+is derived from `goal.createdAt` — the §5.2 start-week rule is applied
+once, at creation — and a week's target volume is folded forward rather
+than re-derived. A past or current week ramps from the load measured
+**strictly before its own Monday**, capped against the previous week's
+target; a **future** week is pure projection from the previous target
+and reads no load at all. Recomputing either quantity from `today`
+looked harmless and broke three things at once: the current week's
+target chased the volume already run (so the plan moved daily with no
+user action), the horizon counted down until every plan fell into the
+`<= 2` maintenance branch two weeks out (destroying the taper), and —
+worst — the overshoot alert became arithmetically unreachable, because
+a target that grows to match what was run can never be exceeded by
+25%. A runner doing twice the prescribed volume got no warning at all.
+The `min(measured, previousTarget)` cap is the no-catch-up rule: a week
+run short re-bases the following weeks downward, a week overshot never
+raises them. It has no floor, so prolonged total inactivity ratchets a
+plan toward zero (design spec §5.2bis).
+
+**Climb is prescribed, never verified.** Every `PlannedSession` carries
+a `targetClimbM`, ramped toward `goal.elevationGainM` the same way
+distance is ramped — but no part of the import, companion sync, or
+`Workout` model captures elevation gain anywhere in the pipeline
+(design spec §6.1). `SessionMatcher` matches and marks sessions "done"
+on distance alone; verifying a climb target would need GPX-derived
+elevation data that nothing in this codebase extracts, so the climb
+figure on a hilly session is guidance for the runner to read, not
+something the app can check.
 
 ## Withings integration
 
@@ -267,9 +368,9 @@ to the Mac receiver above — HealthKit on the phone, no manual export.
 
 ## UI structure
 
-`NavigationSplitView` with 8 sections (Accueil, Sommeil, Effort,
-Séances, Corps, Corrélations, Tendances, Données). One ViewModel per
-section, all `@MainActor`, injected in `HealthCheckApp`.
+`NavigationSplitView` with 9 sections (Accueil, Sommeil, Effort,
+Séances, Entraînement, Corps, Corrélations, Tendances, Données). One
+ViewModel per section, all `@MainActor`, injected in `HealthCheckApp`.
 
 **Load-once policy**: every ViewModel exposes `hasLoaded`; views load
 on first visit only. Refresh happens exclusively through three
@@ -298,14 +399,17 @@ call sites.
 
 ## Testing
 
-Mac: 106 XCTest cases, engine-first: score formulas checked to 0.01,
+Mac: 169 XCTest cases, engine-first: score formulas checked to 0.01,
 resolver semantics, dedup idempotence through a real `:memory:` store,
 Withings mapping against fixture JSON, OAuth callback parsing, GPX
 parsing, path-traversal refusal, delta anchoring on last weigh-in,
 companion sync (pairing window/attempts, token persistence, HTTP
 parsing, router status codes, idempotent batch ingestion, GPX
-self-healing). UI is verified visually (Swift Charts is invisible to
-accessibility tooling).
+self-healing), training planner/matcher/monitor/view model (golden
+plan volumes, session matching, plan-relative vs. raw-ACWR alerting,
+history-window coverage). UI is verified visually (Swift Charts is
+invisible to accessibility tooling); training screen views stay thin
+and untested like every other screen, only the view model is covered.
 
 iOS (`HealthCheckCompanion`): 41 XCTest cases — HealthKit mapping
 against pinned units, anchor/keychain persistence, sync engine
@@ -341,3 +445,6 @@ submit --wait` (keychain profile `AppliMacVincentGithub`) → staple →
 | Withings API over CSV export | live freshness + the four HealthKit-less metrics + no manual step |
 | Water outside the Sankey tree | total body water is contained in muscle/organs; adding it as a sibling compartment would double-count |
 | ECG (`export_cda.xml`) excluded | clinical CDA format, outside the four analysis axes |
+| Training plan/progress/assessment recomputed on every `load()`, nothing persisted | the screen can never diverge from what a fresh call to `TrainingPlanner`/`SessionMatcher`/`TrainingLoadMonitor` would produce for the same history |
+| Plan anchored at `goal.createdAt`, targets folded forward | a quantity recomputed from `today` makes the plan move daily, collapses the taper, and renders the overshoot alert unreachable; the cost is that recreating a goal restarts the arc |
+| Climb targets prescribed but never verified | no elevation data exists anywhere in the pipeline (import, companion sync, or the `Workout` model) to check them against |

@@ -44,6 +44,8 @@ how much is too much) and the daily decision (is today a hard day).
 - Multi-sport plans (cycling, swimming). Running only.
 - Calendar/reminder integration, notifications.
 - Editing individual planned sessions by hand.
+- Capturing elevation (altitude in the exchange protocol, `<ele>` in
+  GPX, ascent computation with GPS smoothing) — see §6.1.
 - More than one active goal at a time (nearest future race wins;
   others are ignored until it passes).
 
@@ -69,7 +71,11 @@ reality cannot drift apart and no plan schema ever needs migrating.
 
 ## 4. Data model
 
-New GRDB migration adding one table:
+One new table. **The project has no `DatabaseMigrator`** — the schema
+is created by `CREATE TABLE IF NOT EXISTS` statements inside
+`HealthStore.init(path:)`. The new table follows that pattern exactly:
+one more `try db.execute(sql:)` in the same `queue.write` block, no
+migration machinery introduced.
 
 ```sql
 CREATE TABLE race_goal (
@@ -83,16 +89,38 @@ CREATE TABLE race_goal (
 );
 ```
 
-`HealthStore` gains `saveRaceGoal`, `deleteRaceGoal`, `raceGoals()`.
-**Active goal** = the goal with the earliest `raceDate >= today`. Past
-goals are kept (history) but never planned for.
+`HealthStore` gains `saveRaceGoal(_:)`, `deleteRaceGoal(id:)`, and
+`raceGoals() throws -> [RaceGoal]`, written like every other store
+method: raw SQL through `queue().read`/`queue().write`, `Row.fetchAll`,
+manual row→struct mapping, ISO8601 dates via the store's existing
+`isoFormatter`.
 
-Swift model `RaceGoal: Codable, FetchableRecord, PersistableRecord`,
-mirroring the existing `HealthRecord`/`Workout` patterns.
+**Active goal** = the goal with the earliest `raceDate >= today`. Past
+goals are kept (history) but never planned for. The selection is a pure
+function over the fetched array, not SQL — it is unit-testable and the
+table is tiny.
+
+Swift model `struct RaceGoal: Equatable` with a plain memberwise init —
+**not** `Codable`/`FetchableRecord`/`PersistableRecord`: no existing
+model conforms to those, the store maps rows by hand, and `id` is a
+UUID string generated at creation (unlike `HealthRecord`/`Workout`,
+whose ids are SHA256 dedup keys — a race goal has nothing to dedup).
 
 ## 5. TrainingPlanner (pure engine)
 
-`TrainingPlanner.plan(goal:history:today:) -> TrainingPlan`
+```swift
+enum TrainingPlanner {
+    static func plan(goal: RaceGoal,
+                     history: [Workout],
+                     today: Date,
+                     calendar: Calendar) -> TrainingPlan
+}
+```
+
+Engines in this project are `enum`s of `static func`s living in
+`HealthCheck/Analysis/`, never read the clock internally, and take
+`calendar` as a parameter rather than using `.current` — these two
+follow that convention.
 
 `history` is the running workouts (`HKWorkoutActivityTypeRunning`) of
 the last 90 days, all sources, after `SourcePriorityResolver`-style
@@ -106,31 +134,107 @@ Estimated distance for any such workout:
 used consistently everywhere a workout distance is read (chronic load,
 ACWR, matching). Workouts with a real distance always use it.
 
+### 5.2bis What is anchored, and what tracks reality
+
+**This section exists because the first implementation got it wrong in three
+ways at once, all with the same root: a quantity that should be fixed once was
+recomputed from `today` on every rebuild.** The plan is recomputed on every
+load (§3) — that is what keeps plan and reality in step — but recomputation
+must reproduce the plan's history, not rewrite it.
+
+| Quantity | Anchored to | Why |
+|---|---|---|
+| The week sequence (which Mondays the plan spans) | `goal.createdAt`'s week, applying the §5.2 start-week rule **at creation time** | Otherwise the horizon shrinks as the race nears and the plan falls into the ≤2-week maintenance branch, destroying the taper (see below) |
+| A week's role (build / peak / taper / raceWeek) | position relative to `raceMonday` | Peak is always race−2; roles must not depend on how many weeks remain to be *rebuilt* |
+| A **past or current** week's target volume | the load measured **strictly before that week's Monday**, capped at `× f` against the previous week's determined target | A target must not move while the week is being run |
+| A **future** week's target volume | pure projection: previous week's target `× f`, **no load read at all** | For a week that has not started, no "load before its Monday" exists yet; reading today's load instead would make the whole forward preview move every time the user runs — the original defect, relocated to « Semaines suivantes » |
+| The ≤2-week maintenance branch | the horizon **at creation** | It exists for a goal genuinely created inside two weeks, not for the tail of a longer plan |
+
+Consequences that are requirements, not side effects:
+
+- **A week's target is fixed for the duration of that week.** Computing the
+  ramp base from a window that includes the current week makes the target chase
+  what was executed: each run raises the same week's target, so the plan moves
+  daily with no user action, and — worse — `executed > target × 1.25` becomes
+  arithmetically unreachable, disabling the over-training alert entirely. That
+  alert is the feature's whole purpose (§1's asymmetry: under-training costs
+  comfort, over-training costs the race).
+- **Past weeks must reproduce their historical targets.** Computing the arc
+  means folding forward from the first build week, each week's target derived
+  from load as of that week's start and capped at `× f` against the previous
+  week's target. This is deterministic from the goal plus the workout history —
+  no new persistence — and it is what makes `peakVolume` still available when
+  the peak week is in the past and the taper needs it.
+- **Re-anchoring happens at week boundaries, not continuously.** That is what
+  §2's "continuous re-anchoring" and §6's no-catch-up rule ("re-bases the
+  *next* weeks") both actually describe.
+- **The history window is derived from the goal, not from a constant.** The
+  fold needs load from 28 days before `firstBuildMonday` through today, so the
+  view model must fetch `firstBuildMonday − 28 days … today`, not a fixed 90
+  days. A 90-day constant silently truncates the early weeks of any plan longer
+  than about nine weeks, which makes their targets wrong, which makes
+  `peakVolume` wrong, which breaks the taper again by a second route.
+- **The golden chain is the check that the cap semantics are right.** For a
+  runner executing the plan exactly, the fold must still produce
+  14.49 / 16.66 / 19.16 — week 2 being `min(load-based, 14.49 × 1.15)`. If the
+  fold does not reproduce those numbers, the cap is implemented wrongly.
+- **Stated consequence:** anchoring on `goal.createdAt` means deleting and
+  recreating a goal restarts the whole arc from the current load. That is
+  acceptable — recreating a goal is an explicit user act — but it is a
+  consequence to know, not a surprise to discover.
+
 ### 5.2 Starting point and weekly volumes
 
-- `chronicWeeklyKm` = total km (with fallback) of the last 28 days
-  before the current week's Monday, divided by 4.
-- `startVolume` = `max(chronicWeeklyKm, 10.0)` km — the floor keeps a
-  returning runner on a meaningful base; the chronic reading keeps an
-  already-trained runner from being reset to beginner volume.
-- Weeks are Monday-based (French convention). `weeksToRace` = number of
-  Mondays from the current week's Monday to race week's Monday,
-  inclusive of both.
+- **One chronic definition, used by both engines** (§6 reads the same
+  numbers — divergent windows would let the planner prescribe what the
+  monitor flags): `chronicWeeklyKm` = total km (with fallback) of the
+  **last 28 days ending today, inclusive**, divided by 4.
+  `acuteKm` = total km of the last 7 days ending today, inclusive.
+- `startVolume` = `max(chronicWeeklyKm, acuteKm, 10.0)` km — the floor
+  keeps a returning runner on a meaningful base, the acute reading
+  credits the comeback week already underway, and the chronic reading
+  keeps an already-trained runner from being reset to beginner volume.
+- Weeks are Monday-based (French convention).
+- **Start week rule.** The current week is always *displayed* (executed
+  sessions, so the user sees where they stand) but receives new targets
+  only if at least 3 days remain in it (enough for the 3 core sessions).
+  Otherwise it is shown as `.currentWeekClosing` — executed only, no
+  targets — and the ramp's first build week is the following Monday.
+  This matters on the very first plan: created on a Sunday, a
+  "week 1" with zero remaining days would be a target nobody can hit
+  and would poison the ×f chain.
+- `weeksToRace` = number of Mondays from the **first build week's**
+  Monday to race week's Monday, inclusive of both.
 - Volume progression, week by week starting from the current base:
-  `W1 = startVolume × 1.10`, then `next = previous × 1.10`, capped so
-  the **peak week** (race week − 2… see below) never exceeds
-  `raceDistance × 1.5` km (25.5 km for 17 km).
+  `W1 = startVolume × f`, then `next = previous × f`, where
+  `f = 1.15` while `startVolume < raceDistance` (comeback ramp — a
+  returning runner rebuilding toward a known level tolerates slightly
+  faster progression) and `f = 1.10` otherwise; capped so the **peak
+  week** (race week − 2… see below) never exceeds `raceDistance × 1.5`
+  km (25.5 km for 17 km). The ACWR guard (§6) remains the runtime
+  safety net either way.
 - **Taper**: race week − 1 = peak × 0.75; race week = peak × 0.5,
   race excluded (the race is not a planned session).
 - If `weeksToRace <= 2` (goal created very late) all remaining weeks
   are taper weeks at `startVolume × 0.75` — never ramp into a race.
 
-Worked example (Vincent today: chronic ≈ 12.6/4 → floor 10 → start
-max(3.15, 10) = 10 — note the 28-day window catches only this first
-week back, hence the floor doing its job; 5 weeks):
-W1 11 km → W2 12.1 → W3 13.3 (peak) → W4 10.0 (taper 0.75) →
-W5 6.7 + race. Values are illustrative of the formulas, not constants
-in code; tests pin the formulas.
+Worked example — the real case, pinned as a golden test. Today
+Sunday 2026-08-23, race Sunday 2026-09-27, 17 km / +400 m. The current
+week (Mon 08-17) has 0 days left → `.currentWeekClosing`; the ramp
+starts Mon 08-24, giving 5 planned weeks. chronic ≈ 3.15, acute 12.6 →
+`startVolume` = max(3.15, 12.6, 10) = 12.6; `f` = 1.15 (12.6 < 17);
+longest run of the last 14 days = 5.6 km.
+
+| Week (Monday) | Volume | Long run | Role |
+|---|---|---|---|
+| 08-24 | 14.5 | 8.1 | build |
+| 08-31 | 16.7 | 10.0 | build |
+| 09-07 | 19.2 | 11.5 | **peak** (race − 2) |
+| 09-14 | 14.4 | 6.8 | taper ×0.75 |
+| 09-21 | 9.6 | 6.8 | race week ×0.5, race 09-27 |
+
+Long-run chain: min(60 % of volume, previous + 2.5, cap 13.6).
+Values illustrate the formulas; the test pins them to ±0.05 km.
 
 *(Peak is always `raceWeek − 2`; with 5 weeks that makes 3 build weeks.)*
 
@@ -140,9 +244,9 @@ Every non-taper week has 3 core sessions plus 1 optional:
 
 | Session | Share of week volume | Prescription |
 |---|---|---|
-| Long run | 45 %, growth capped at +2 km/week, absolute cap `min(14, raceDistance × 0.8)` km | Endurance zone, "la séance qui fait le 17 km" |
+| Long run | up to 60 % of week volume, growth capped at +2.5 km/week from the longest run of the last 14 days (default base 5 km), absolute cap `min(14, raceDistance × 0.8)` km | Endurance zone, "la séance qui fait le 17 km" — the 60 % share is deliberate on 3-session weeks: at comeback volumes a 45 % share would peak the long run near 6 km, useless for a 17 km objective |
 | Hills | 25 % | Rolling/hilly route; weekly climb target from 100 m (W1) growing linearly to `min(300, raceElevation × 0.75)` m at peak week |
-| Base endurance | remainder (≈30 %) | Easy zone |
+| Base endurance | remainder (volume − long − hills, minimum 3 km) | Easy zone |
 | Optional short run | 30 min easy, **not counted in the week's target volume** (once executed it counts in *executed* load like any workout, §6) | Only shown when the week's 3 core sessions are all done or ahead of schedule |
 
 Taper weeks: long run capped at `raceDistance × 0.4`, no hill session
@@ -151,25 +255,63 @@ week of the race.
 
 ### 5.4 Heart-rate zones
 
-`hrMax` = highest heart-rate **sample** recorded during any running
-workout interval in the last 180 days (join `health_record`
-HeartRate rows to workout intervals); fallback if none: 190.
+`hrMax` = highest heart-rate sample of the last 180 days, read with a
+**single indexed query, no join** — the store holds ~1.8 M rows and a
+range-join of HeartRate against workout intervals on screen load is
+exactly the class of problem the recent perf pass removed:
+
+```sql
+SELECT MAX(value) FROM health_record
+WHERE type = 'HKQuantityTypeIdentifierHeartRate'
+  AND startDate >= :cutoff;
+```
+
+Fallback if the query returns NULL: 190.
 Zones: easy = 60–75 % of hrMax, endurance = 70–80 %, hills hard
 effort = 85–92 %. Prescriptions are phrased as bpm ranges in the UI.
 No pace targets in v1 (objective is comfort, not time).
 
 ## 6. TrainingLoadMonitor (pure engine)
 
-`TrainingLoadMonitor.assess(history:readiness:today:) -> LoadAssessment`
+```swift
+enum TrainingLoadMonitor {
+    static func assess(history: [Workout],
+                       plan: TrainingPlan?,
+                       readiness: ReadinessScore?,
+                       today: Date,
+                       calendar: Calendar) -> LoadAssessment
+}
+```
 
-- `acute` = km of the last 7 days (fallback rule §5.1);
-  `chronic` = km of the last 28 days / 4.
-- `acwr = acute / chronic` (nil when chronic < 3 km — too little data,
-  no ratio shown).
-- Alerts: `acwr > 1.3` → « Vous progressez trop vite — réduisez cette
-  semaine » (severity: warning). `acwr < 0.8` with a goal active and
-  ≥ 2 build weeks remaining → « Vous pouvez en faire un peu plus »
-  (severity: info).
+`readiness` arrives as an already-computed `ReadinessScore?` (the
+existing `HealthScoreEngine.readiness(sleep:restingHeartRate:hrv:activity:)`
+returns one, and the view model composes its components exactly as
+`DashboardViewModel` already does). The monitor never recomputes it and
+never touches the store — it stays a pure function.
+
+- `acute` and `chronic`: the §5.2 definitions, verbatim — one reading
+  shared by both engines.
+- `acwr = acute / chronic`, **nil unless the history is meaningful**:
+  at least 3 of the last 4 weeks contain a run, or `chronic >= 8` km.
+  A comeback mechanically shows a huge ratio (12.6 / 3.15 ≈ 4.0 for
+  Vincent on day one) — that is arithmetic, not danger, and showing it
+  as a warning next to a plan card prescribing a ramp would be
+  self-contradictory. Below the gate the card reads « Reprise en cours
+  — l'indicateur de charge s'activera après 3 semaines régulières ».
+- **Alerts follow the plan when a goal is active.** The planner already
+  caps progression at `f` per week; a ramp that respects the plan is by
+  construction safe, so raw ACWR must not fire against it. With an
+  active goal, alerts compare executed against *planned* week volume:
+  - executed > 125 % of the week's target → « Vous dépassez le plan —
+    tenez-vous-en aux séances prévues » (warning);
+  - executed < 50 % of target with ≤ 2 days left in the week →
+    « Semaine en retard — elle ne sera pas rattrapée la semaine
+    suivante » (info, restating the no-catch-up rule).
+  The ACWR value is still *displayed* when the gate above passes
+  (informative), but it does not drive the alert.
+- **Without an active goal** (feature used as a plain load monitor),
+  raw ACWR drives the alerts: `> 1.3` → « Vous progressez trop vite »
+  (warning); `< 0.8` → « Vous pouvez en faire un peu plus » (info).
 - Day suggestion: if today's planned session is Hills or Long run and
   the readiness score (existing engine) is `< 50`, suggest swapping
   with an easy day: « Forme du jour basse — intervertissez avec une
@@ -178,22 +320,46 @@ No pace targets in v1 (objective is comfort, not time).
   re-bases the next weeks from the *executed* chronic load, never
   inflates a following week beyond the ×1.10 cap.
 
+### 6.1 Climb is prescriptive only (verified against the data)
+
+Checked on the real store before writing this: the `workout` table has
+no elevation column, `ExchangeRoutePoint` carries lat/lon/timestamp
+only, and the GPX files written by the companion contain **no `<ele>`
+element**. No elevation figure exists anywhere in the pipeline, and the
+companion is the primary data path from now on.
+
+Therefore the hills session **prescribes** a climb target and nothing
+ever verifies it: its done-check uses distance (§7), like any other
+session, and the climb figure is displayed as a coaching instruction
+(« parcours vallonné, visez ~200 m de D+ »). No test asserts on climb
+data, because no real workout can reach such a branch — the exact trap
+that cost a review round in the companion project.
+
+Capturing altitude is a worthwhile follow-up but is **not** in this
+scope: `CLLocation.altitude` is already in hand on the iOS side, so the
+transport is trivial, but a naive sum of positive deltas over noisy GPS
+inflates ascent by 2-3×. Doing it right needs a smoothing pass with its
+own tests — a task of its own, later.
+
 ## 7. Matching planned vs executed
 
 Within the current week (Monday-based), executed running workouts are
 matched to planned sessions greedily: sort executed by distance
 descending, planned by target distance descending, pair in order. A
 session is « done » when its matched workout's distance is ≥ 70 % of
-target (or ≥ 70 % of target climb for the hills session when route
-elevation data exists; distance rule otherwise). Unmatched extra
+target. This is the rule for every session type including hills — see
+§6.1: no elevation data exists to check a climb against. Unmatched extra
 workouts count toward week volume but are labeled « hors plan ». The
 remaining days of the week redistribute nothing — undone sessions just
 stay visible as « à faire ».
 
 ## 8. UI — « Entraînement » screen
 
-New sidebar row in the Analyse group (icon `figure.run`, between
-Séances and Corps). French, vouvoiement. States:
+New `case training` in the existing `SidebarSelection` enum, with a
+row in the `Section("Analyse")` group between Séances and Corps
+(`Label("Entraînement", systemImage: "target")` — `figure.run` is
+already taken by Séances). Cards reuse `Theme.swift`'s `MetricCard`
+styling so the screen matches the rest of the app. French, vouvoiement. States:
 
 - **No active goal**: empty state + « Créer un objectif » form
   (name, date, distance km, climb m — objective fixed to « Finir
@@ -223,12 +389,15 @@ Séances and Corps). French, vouvoiement. States:
 
 ## 10. Code structure
 
-- `HealthCheck/Models/RaceGoal.swift` — model + table constants.
-- `HealthCheck/Store/HealthStore+RaceGoals.swift` — migration + CRUD.
-- `HealthCheck/Engine/TrainingPlanner.swift` — §5 (TrainingPlan,
+- `HealthCheck/Models/RaceGoal.swift` — model.
+- `HealthCheck/Store/HealthStore.swift` — one more `CREATE TABLE IF
+  NOT EXISTS` in `init(path:)` plus the three CRUD methods (same file
+  as the other store methods, matching the existing layout).
+- `HealthCheck/Analysis/TrainingPlanner.swift` — §5 (TrainingPlan,
   PlannedWeek, PlannedSession value types included).
-- `HealthCheck/Engine/TrainingLoadMonitor.swift` — §6 (LoadAssessment).
-- `HealthCheck/Engine/SessionMatcher.swift` — §7.
+- `HealthCheck/Analysis/TrainingLoadMonitor.swift` — §6
+  (LoadAssessment).
+- `HealthCheck/Analysis/SessionMatcher.swift` — §7.
 - `HealthCheck/ViewModels/TrainingViewModel.swift` — composition,
   load-once, `hasLoaded`.
 - `HealthCheck/Views/TrainingView.swift` — §8.
@@ -256,8 +425,8 @@ Engine-first, mirroring the project:
 
 ## 12. Known limitations (accepted)
 
-- The hills « done » check uses distance when no route elevation is
-  available (most non-GPX workouts).
+- Climb is never verified, only prescribed (§6.1). Vincent knows
+  whether he ran hills; the app does not.
 - hrMax from observed samples underestimates true max for a runner who
   never pushed hard in the window — zones err on the easy side, which
   matches the objective.

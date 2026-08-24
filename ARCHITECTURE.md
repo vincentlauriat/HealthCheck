@@ -36,7 +36,7 @@ Cloud Withings ──► WithingsClient (OAuth2) ────────►│ 
                                                          ▼
                                             ViewModels (@MainActor)
                                                          ▼
-                                            Vues SwiftUI (8 sections)
+                                            Vues SwiftUI (9 sections)
 ```
 
 ## Stockage
@@ -119,6 +119,120 @@ valeur — pas de SwiftUI, pas de store, testables au centième.
 | `WorkoutStatsEngine` | volumes hebdo + libellés | durée normalisée par unité (min/s/h) ; 20 types traduits en français, repli sans préfixe |
 | `CorrelationEngine` | r de Pearson + paires | refuse <10 paires et variance nulle ; x du jour D apparié au y du jour D+décalage (la nuit étiquetée D influence le matin D+1) |
 | `GPXParser` | `[RoutePoint]` | SAX, seulement les `trkpt` lat/lon, sans MapKit |
+
+## Plan d'entraînement
+
+Trois moteurs purs sous `HealthCheck/Analysis/` transforment un
+objectif de course en plan semaine par semaine, rapprochent le réalisé
+du plan, et surveillent la charge d'entraînement. `TrainingViewModel`
+(`HealthCheck/ViewModels/TrainingViewModel.swift`) est le seul à les
+composer — il recalcule `goal`/`plan`/`progress`/`assessment` depuis
+zéro à chaque `load()`, rien n'est persisté, donc l'écran ne peut
+jamais diverger de ce que produirait un appel direct aux trois moteurs
+pour les mêmes entrées.
+
+- **`TrainingPlanner`** construit un `TrainingPlan` déterministe à
+  partir d'un `RaceGoal`, de l'historique de course et de `hrMax`. Le
+  volume hebdomadaire de départ est le plus grand de la charge
+  chronique, de la charge aiguë et d'un plancher à 10 km ; il monte
+  géométriquement — ×1,15/semaine tant que ce volume hebdomadaire de
+  départ est sous la distance de l'objectif, ×1,10/semaine une fois à
+  son niveau ou au-delà —
+  plafonné à 1,5× la distance de l'objectif, culmine deux semaines
+  avant la course, puis redescend par ×0,75 puis ×0,5 jusqu'à la
+  semaine de course. La cible de chaque semaine se répartit en sortie
+  longue (part de 60 %, croissance plafonnée à 2,5 km/semaine par
+  rapport à la plus longue sortie des 14 derniers jours), séance de
+  côtes (part de 25 %, dénivelé monté de 100 m vers
+  `min(300, goal.elevationGainM × 0,75)`), endurance fondamentale pour
+  le reste, et une séance optionnelle facile.
+- **`SessionMatcher`** rapproche les sorties réellement courues d'une
+  `PlannedWeek` : les séances définies en distance sont appariées par
+  taille (la plus grosse sortie sur la plus grosse cible d'abord), les
+  séances définies en durée (déverrouillage, optionnelle) récupèrent
+  ce qui reste, une séance est comptée faite à 70 % de sa distance
+  cible, et les sorties non appariées ressortent séparément comme
+  `offPlan`. Recalculer ce rapprochement à chaque chargement est ce qui
+  permet à une séance fraîchement synchronisée de basculer sur « fait »
+  sans aucune action manuelle.
+- **`TrainingLoadMonitor`** surveille le volume aigu (7 jours) contre
+  le volume chronique (28 jours, moyenne sur 4 semaines) et en tire des
+  `LoadAlert`, selon l'un de deux régimes (ci-dessous).
+
+**Une seule définition de la charge chronique, partagée.**
+`TrainingPlanner.chronicWeeklyKm` et `TrainingPlanner.acuteKm` sont les
+seules définitions de charge « chronique » et « aiguë » de tout le
+code — `TrainingLoadMonitor` les appelle directement plutôt que de
+garder sa propre lecture. Si les deux divergeaient, le moniteur
+pourrait alerter sur un ratio que le planificateur vient lui-même de
+construire pour la cible de la semaine ; partager la définition est ce
+qui rend les alertes relatives au plan (ci-dessous) réellement
+cohérentes avec le plan affiché à l'écran.
+
+**Alertes relatives au plan, et pourquoi l'ACWR brut doit rester
+silencieux face à une montée en charge.** Sans objectif actif,
+`TrainingLoadMonitor` retombe sur le ratio classique aigu/chronique
+(ACWR) — au-dessus de 1,3 il alerte « vous progressez trop vite », en
+dessous de 0,8 il suggère d'en faire un peu plus. Mais la montée en
+charge de `TrainingPlanner` est plafonnée par construction
+(×1,10-1,15/semaine) ; une semaine qui suit exactement la progression
+prescrite par le plan peut quand même afficher un ACWR brut supérieur
+à 1,3, en particulier en début de reprise où la montée géométrique est
+la plus raide par rapport à une base basse. Déclencher « vous
+progressez trop vite » à côté d'une carte de plan qui vient elle-même
+de prescrire cette hausse serait contradictoire. Donc dès que la
+semaine en cours est présente dans `plan.weeks` et porte des cibles
+(`role != .currentWeekClosing`), `assess` compare le réalisé à *la
+cible de cette semaine* plutôt qu'au ratio brut — dépasser la cible de
+25 % alerte, être en retard de 50 % avec ≤2 jours restants dans la
+semaine signale qu'elle ne sera pas rattrapée, et une forme du jour
+basse suggère d'intervertir une sortie longue ou de côtes encore en
+attente avec une séance facile. Le repli sur le ratio brut est
+conditionné à l'**absence de plan** (`plan == nil`), et non au résultat
+de la recherche de semaine. La distinction est tout sauf théorique :
+`TrainingPlanner` marque la semaine en cours `currentWeekClosing` dès
+qu'il y reste moins de trois jours, donc une garde portant sur la
+semaine aurait fait réapparaître « vous progressez trop vite » chaque
+samedi et dimanche, à côté d'un plan respecté — exactement la
+contradiction que cette conception élimine. Quand un plan existe mais
+que la semaine en cours ne porte pas de cibles, `assess` publie
+toujours charge aiguë, chronique et ratio pour l'affichage, mais
+n'émet aucune alerte : il n'y a pas de cible à laquelle comparer, et le
+ratio brut est précisément le nombre qui ne doit pas piloter d'alerte
+tant qu'un plan est actif.
+
+**Ancré à la création, jamais recalculé depuis aujourd'hui.** La
+séquence des semaines se déduit de `goal.createdAt` — la règle de
+semaine de départ du §5.2 s'applique une seule fois, à la création — et
+la cible d'une semaine se reporte de proche en proche au lieu d'être
+redérivée. Une semaine passée ou en cours monte depuis la charge
+mesurée **strictement avant son propre lundi**, plafonnée par la cible
+de la semaine précédente ; une semaine **future** est une pure
+projection depuis la cible précédente et ne lit aucune charge. Recalculer
+l'une ou l'autre depuis `today` semblait anodin et cassait trois choses
+à la fois : la cible de la semaine en cours courait après le volume
+déjà réalisé (le plan bougeait donc tout seul chaque jour), l'horizon
+se réduisait jusqu'à faire basculer tout plan dans la branche de
+maintien `<= 2` à deux semaines de l'échéance (détruisant le relâchement),
+et — le pire — l'alerte de surdosage devenait arithmétiquement
+inatteignable, puisqu'une cible qui grandit pour rejoindre le réalisé ne
+peut jamais être dépassée de 25 %. Un coureur faisant le double du
+volume prescrit ne recevait aucun avertissement. Le plafond
+`min(mesuré, ciblePrécédente)` est la règle de non-rattrapage : une
+semaine courue en deçà rebase les suivantes vers le bas, une semaine
+dépassée ne les relève jamais. Il n'a pas de plancher, donc une
+inactivité totale prolongée fait tomber un plan vers zéro (spec §5.2bis).
+
+**Le dénivelé est prescrit, jamais vérifié.** Chaque `PlannedSession`
+porte un `targetClimbM`, monté vers `goal.elevationGainM` de la même
+façon que la distance — mais aucune partie de l'import, de la synchro
+compagnon ou du modèle `Workout` ne capture de dénivelé nulle part
+dans le pipeline (spec de conception §6.1). `SessionMatcher` apparie et
+marque les séances « faites » sur la seule distance ; vérifier une
+cible de dénivelé demanderait des données d'altitude tirées du GPX que
+rien dans ce code n'extrait — le chiffre de dénivelé sur une séance de
+côtes est une indication à lire par le coureur, pas quelque chose que
+l'app peut contrôler.
 
 ## Intégration Withings
 
@@ -286,9 +400,9 @@ manuel.
 
 ## Structure de l'interface
 
-`NavigationSplitView` à 8 sections (Accueil, Sommeil, Effort, Séances,
-Corps, Corrélations, Tendances, Données). Un ViewModel par section,
-tous `@MainActor`, injectés dans `HealthCheckApp`.
+`NavigationSplitView` à 9 sections (Accueil, Sommeil, Effort, Séances,
+Entraînement, Corps, Corrélations, Tendances, Données). Un ViewModel
+par section, tous `@MainActor`, injectés dans `HealthCheckApp`.
 
 **Chargement unique** : chaque ViewModel expose `hasLoaded` ; les vues
 chargent à la première visite seulement. Le rafraîchissement passe
@@ -318,15 +432,20 @@ de nouveaux appels.
 
 ## Tests
 
-Mac : 106 cas XCTest, moteurs d'abord : formules de score au 0,01
+Mac : 169 cas XCTest, moteurs d'abord : formules de score au 0,01
 près, sémantique du résolveur, idempotence du dédoublonnage sur un
 vrai store `:memory:`, mapping Withings sur JSON de fixture, parsing
 du callback OAuth, parsing GPX, refus de traversée de chemin, ancrage
 des deltas sur la dernière pesée, synchro compagnon (fenêtre/
 tentatives d'appairage, persistance du jeton, parsing HTTP, codes de
 statut du routeur, ingestion idempotente des batchs, auto-cicatrisation
-GPX). L'UI se vérifie visuellement (Swift Charts est invisible pour
-l'outillage d'accessibilité).
+GPX), plan d'entraînement/rapprochement/moniteur de charge/view model
+(volumes de plan de référence, rapprochement des séances, alertes
+relatives au plan vs. ACWR brut, couverture de la fenêtre d'historique).
+L'UI se vérifie visuellement (Swift Charts est invisible pour
+l'outillage d'accessibilité) ; les vues de l'écran Entraînement restent
+minces et non testées comme tous les autres écrans, seul le view model
+est couvert.
 
 iOS (`HealthCheckCompanion`) : 41 cas XCTest — mapping HealthKit avec
 unités épinglées, persistance des ancres/du trousseau, découpage en
@@ -365,3 +484,6 @@ Accepted).
 | API Withings plutôt qu'export CSV | fraîcheur en direct + les quatre métriques absentes de HealthKit + zéro geste manuel |
 | Eau hors de l'arbre du Sankey | l'eau corporelle est contenue dans muscle/organes ; en faire un compartiment frère double-compterait |
 | ECG (`export_cda.xml`) exclu | format clinique CDA, hors des quatre axes d'analyse |
+| Plan/progression/évaluation d'entraînement recalculés à chaque `load()`, rien persisté | l'écran ne peut jamais diverger de ce que produirait un appel direct à `TrainingPlanner`/`SessionMatcher`/`TrainingLoadMonitor` pour le même historique |
+| Plan ancré sur `goal.createdAt`, cibles reportées de proche en proche | une grandeur recalculée depuis `today` fait bouger le plan chaque jour, effondre le relâchement et rend l'alerte de surdosage inatteignable ; en contrepartie, recréer un objectif repart de zéro |
+| Cibles de dénivelé prescrites mais jamais vérifiées | aucune donnée d'altitude n'existe nulle part dans le pipeline (import, synchro compagnon, ou modèle `Workout`) pour les contrôler |

@@ -62,6 +62,17 @@ final class HealthStore {
                 CREATE INDEX IF NOT EXISTS idx_sleep_record_start
                 ON sleep_record(startDate)
                 """)
+            try db.execute(sql: """
+                CREATE TABLE IF NOT EXISTS race_goal (
+                    id TEXT PRIMARY KEY,
+                    name TEXT NOT NULL,
+                    raceDate TEXT NOT NULL,
+                    distanceKm REAL NOT NULL,
+                    elevationGainM REAL NOT NULL,
+                    objective TEXT NOT NULL,
+                    createdAt TEXT NOT NULL
+                )
+                """)
         }
     }
 
@@ -266,6 +277,43 @@ final class HealthStore {
                     endDate: Self.isoFormatter.date(from: row["endDate"])!,
                     creationDate: (row["creationDate"] as String?).flatMap(Self.isoFormatter.date(from:))
                 )
+            }
+        }
+    }
+
+    func saveRaceGoal(_ goal: RaceGoal) throws {
+        try queue().write { db in
+            try db.execute(sql: """
+                INSERT OR REPLACE INTO race_goal
+                    (id, name, raceDate, distanceKm, elevationGainM, objective, createdAt)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                arguments: [goal.id, goal.name,
+                            Self.isoFormatter.string(from: goal.raceDate),
+                            goal.distanceKm, goal.elevationGainM,
+                            goal.objective.rawValue,
+                            Self.isoFormatter.string(from: goal.createdAt)])
+        }
+    }
+
+    func deleteRaceGoal(id: String) throws {
+        try queue().write { db in
+            try db.execute(sql: "DELETE FROM race_goal WHERE id = ?", arguments: [id])
+        }
+    }
+
+    func raceGoals() throws -> [RaceGoal] {
+        try queue().read { db in
+            let rows = try Row.fetchAll(db, sql: "SELECT * FROM race_goal ORDER BY raceDate")
+            return rows.compactMap { row in
+                guard let raceDate = Self.isoFormatter.date(from: row["raceDate"]),
+                      let createdAt = Self.isoFormatter.date(from: row["createdAt"]),
+                      let objective = RaceGoal.Objective(rawValue: row["objective"])
+                else { return nil }
+                return RaceGoal(id: row["id"], name: row["name"], raceDate: raceDate,
+                                distanceKm: row["distanceKm"],
+                                elevationGainM: row["elevationGainM"],
+                                objective: objective, createdAt: createdAt)
             }
         }
     }
