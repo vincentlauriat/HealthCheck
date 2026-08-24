@@ -230,6 +230,9 @@ final class TrainingPlannerTests: XCTestCase {
         let history = comebackHistory + [run("2026-08-26", km: 14.49), run("2026-09-02", km: 16.66)]
         let plan = TrainingPlanner.plan(goal: g, history: history, hrMax: 190,
                                         today: date("2026-09-07"), calendar: calendar)
+        // `zip` tronque en silence : sans ce compte, un plan qui perdrait
+        // ses semaines d'affûtage passerait sur les paires survivantes.
+        XCTAssertEqual(plan.weeks.count, 5)
         for (got, want) in zip(plan.weeks.map(\.targetKm), [14.49, 16.66, 19.16, 14.37, 9.58]) {
             XCTAssertEqual(got, want, accuracy: 0.05)
         }
