@@ -26,10 +26,11 @@ final class TrainingLoadMonitorTests: XCTestCase {
                 routeFileName: nil)
     }
 
-    func goal(_ raceDay: String = "2026-09-27", km: Double = 17, climb: Double = 400) -> RaceGoal {
+    func goal(_ raceDay: String = "2026-09-27", km: Double = 17, climb: Double = 400,
+              createdAt: String = "2026-08-23") -> RaceGoal {
         RaceGoal(id: "g1", name: "Paris-Versailles", raceDate: date(raceDay, "10:00"),
                  distanceKm: km, elevationGainM: climb,
-                 objective: .finishComfortable, createdAt: date("2026-08-23"))
+                 objective: .finishComfortable, createdAt: date(createdAt))
     }
 
     /// L'historique réel de Vincent au 2026-08-23 : reprise cette semaine.
@@ -253,11 +254,13 @@ final class TrainingLoadMonitorTests: XCTestCase {
     /// justement cette montée en charge — la contradiction que toute cette
     /// fonctionnalité a été conçue pour éliminer, revenue par une autre porte.
     func test_assess_withPlan_onAClosingWeek_neverWarnsFromRawRatio() {
-        let g = goal()
+        // 2026-08-29 est un samedi : il ne reste que deux jours à la semaine
+        // du 08-24, qui devient donc `.currentWeekClosing` (cible à 0). Depuis
+        // l'ancrage à la création (§5.2bis), cette semaine de clôture n'existe
+        // que si l'objectif a été créé ce samedi-là — d'où le `createdAt`.
+        let g = goal(createdAt: "2026-08-29")
         // Trois semaines régulières avant la semaine en cours.
         let baseline = [run("2026-08-03", km: 5.0), run("2026-08-10", km: 5.0), run("2026-08-17", km: 5.0)]
-        // 2026-08-29 est un samedi : il ne reste que deux jours à la semaine
-        // du 08-24, qui devient donc `.currentWeekClosing` (cible à 0).
         let plan = TrainingPlanner.plan(goal: g, history: baseline, hrMax: 190,
                                         today: date("2026-08-29"), calendar: calendar)
         XCTAssertEqual(plan.weeks.first?.role, .currentWeekClosing)

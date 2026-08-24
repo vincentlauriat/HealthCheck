@@ -26,10 +26,11 @@ final class TrainingPlannerTests: XCTestCase {
                 routeFileName: nil)
     }
 
-    func goal(_ raceDay: String = "2026-09-27", km: Double = 17, climb: Double = 400) -> RaceGoal {
+    func goal(_ raceDay: String = "2026-09-27", km: Double = 17, climb: Double = 400,
+              createdAt: String = "2026-08-23") -> RaceGoal {
         RaceGoal(id: "g1", name: "Paris-Versailles", raceDate: date(raceDay, "10:00"),
                  distanceKm: km, elevationGainM: climb,
-                 objective: .finishComfortable, createdAt: date("2026-08-23"))
+                 objective: .finishComfortable, createdAt: date(createdAt))
     }
 
     /// L'historique réel de Vincent au 2026-08-23 : reprise cette semaine.
@@ -97,7 +98,10 @@ final class TrainingPlannerTests: XCTestCase {
 
     func test_plan_currentWeekWithThreeDaysLeft_receivesTargets() {
         // 2026-08-21 est un vendredi : vendredi, samedi, dimanche = 3 jours.
-        let plan = TrainingPlanner.plan(goal: goal(), history: comebackHistory, hrMax: 190,
+        // La règle s'évalue sur `createdAt`, donc l'objectif est créé ce
+        // jour-là — c'est la semaine de création qui décide, pas `today`.
+        let plan = TrainingPlanner.plan(goal: goal(createdAt: "2026-08-21"),
+                                        history: comebackHistory, hrMax: 190,
                                         today: date("2026-08-21"), calendar: calendar)
         XCTAssertEqual(plan.weeks.first?.role, .build)
         XCTAssertEqual(plan.weeks.first?.monday, calendar.startOfDay(for: date("2026-08-17")))

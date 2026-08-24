@@ -39,6 +39,10 @@ struct TrainingPlan: Equatable {
     let goal: RaceGoal
     let weeks: [PlannedWeek]
     let hrMax: Double
+    /// Vrai quand l'objectif a été créé à moins de deux semaines de sa
+    /// course : plus le temps de progresser, on entretient (spec §5.2).
+    /// La vue s'en sert pour afficher la mise en garde de §9.
+    let isMaintenance: Bool
 }
 
 /// Construit un plan déterministe : mêmes entrées, même plan. Rien n'est
@@ -103,6 +107,44 @@ enum TrainingPlanner {
         return 7 - ((weekday + 5) % 7)
     }
 
+    // MARK: - Ancrage
+
+    /// Lundi de la première semaine de construction. **Lu sur
+    /// `goal.createdAt`, jamais sur `today`** (spec §5.2bis) : la règle de
+    /// semaine de départ de §5.2 s'applique une seule fois, à la création.
+    /// Sinon la séquence de semaines rétrécit à mesure que la course
+    /// approche, tout plan finit dans la branche d'entretien à deux
+    /// semaines, et l'affûtage disparaît.
+    ///
+    /// Conséquence assumée : supprimer puis recréer un objectif redémarre
+    /// tout l'arc depuis la charge du moment. Recréer un objectif est un
+    /// acte explicite de l'utilisateur, pas un effet de bord.
+    static func firstBuildMonday(goal: RaceGoal, calendar: Calendar) -> Date {
+        let creationMonday = monday(of: goal.createdAt, calendar: calendar)
+        let takesTargets = daysRemainingInWeek(from: goal.createdAt, calendar: calendar)
+            >= minimumDaysForTargets
+        let candidate = takesTargets
+            ? creationMonday
+            : calendar.date(byAdding: .day, value: 7, to: creationMonday)!
+        // Objectif créé le samedi ou le dimanche qui précède sa propre
+        // course : décaler d'une semaine sauterait la course. On garde
+        // alors la semaine de création, pour que la semaine de course et
+        // son déverrouillage existent quand même.
+        let raceMonday = monday(of: goal.raceDate, calendar: calendar)
+        return candidate > raceMonday ? creationMonday : candidate
+    }
+
+    /// Charge hebdomadaire mesurée **strictement avant** `weekMonday`. On
+    /// réutilise `chronicWeeklyKm`/`acuteKm` avec une date décalée d'un
+    /// jour — la borne exclusive de `sumKm` tombe alors exactement sur ce
+    /// lundi — pour qu'il n'existe qu'une seule définition de la charge.
+    static func measuredBaseKm(history: [Workout], before weekMonday: Date,
+                               calendar: Calendar) -> Double {
+        let dayBefore = calendar.date(byAdding: .day, value: -1, to: weekMonday)!
+        return max(chronicWeeklyKm(history: history, today: dayBefore, calendar: calendar),
+                   acuteKm(history: history, today: dayBefore, calendar: calendar))
+    }
+
     // MARK: - Plan
 
     static func plan(goal: RaceGoal, history: [Workout], hrMax: Double,
@@ -111,66 +153,97 @@ enum TrainingPlanner {
         let currentMonday = monday(of: today, calendar: calendar)
         let raceMonday = monday(of: goal.raceDate, calendar: calendar)
 
-        // La semaine en cours ne reçoit des cibles que s'il y reste assez
-        // de jours pour les trois séances cœur ; sinon elle est affichée
-        // telle quelle et la montée en charge démarre lundi prochain.
-        let currentWeekTakesTargets =
-            daysRemainingInWeek(from: today, calendar: calendar) >= minimumDaysForTargets
-        let firstBuildMonday = currentWeekTakesTargets
-            ? currentMonday
-            : calendar.date(byAdding: .day, value: 7, to: currentMonday)!
+        // La séquence de semaines est ancrée à la création (§5.2bis) : la
+        // règle « la semaine en cours ne reçoit des cibles que s'il y reste
+        // assez de jours pour les trois séances cœur » s'évalue sur
+        // `goal.createdAt`, pas sur `today`.
+        let creationMonday = monday(of: goal.createdAt, calendar: calendar)
+        let creationWeekTakesTargets =
+            daysRemainingInWeek(from: goal.createdAt, calendar: calendar) >= minimumDaysForTargets
+        let firstMonday = firstBuildMonday(goal: goal, calendar: calendar)
 
         var mondays: [Date] = []
-        var cursor = firstBuildMonday
+        var cursor = firstMonday
         while cursor <= raceMonday {
             mondays.append(cursor)
             cursor = calendar.date(byAdding: .day, value: 7, to: cursor)!
         }
 
         var weeks: [PlannedWeek] = []
-        if !currentWeekTakesTargets {
-            weeks.append(PlannedWeek(monday: currentMonday, role: .currentWeekClosing,
+        // La semaine de création trop entamée n'est affichée que pendant
+        // cette semaine-là : une fois passée, il n'y a plus rien à clore.
+        // (`firstMonday == creationMonday` est le repli « samedi avant la
+        // course » : cette semaine est alors une vraie semaine du plan.)
+        if !creationWeekTakesTargets, currentMonday == creationMonday, firstMonday != creationMonday {
+            weeks.append(PlannedWeek(monday: creationMonday, role: .currentWeekClosing,
                                      targetKm: 0, sessions: []))
         }
         guard !mondays.isEmpty else {
-            return TrainingPlan(goal: goal, weeks: weeks, hrMax: hrMax)
+            return TrainingPlan(goal: goal, weeks: weeks, hrMax: hrMax, isMaintenance: false)
         }
 
-        let start = max(chronicWeeklyKm(history: runs, today: today, calendar: calendar),
-                        acuteKm(history: runs, today: today, calendar: calendar),
-                        minimumStartVolumeKm)
-        let factor = start < goal.distanceKm ? comebackRampFactor : steadyRampFactor
+        // Base d'ancrage : la charge mesurée strictement avant la première
+        // semaine de construction. Le facteur de rampe s'en déduit une fois
+        // pour toutes — pas une fois par semaine — pour que le plan ne
+        // change pas de régime au fil des sorties.
+        let anchorBase = max(measuredBaseKm(history: runs, before: firstMonday, calendar: calendar),
+                             minimumStartVolumeKm)
+        let factor = anchorBase < goal.distanceKm ? comebackRampFactor : steadyRampFactor
         let volumeCap = goal.distanceKm * peakVolumeMultiplier
 
-        var previousLong = longestRecentRunKm(history: runs, today: today, calendar: calendar)
+        // Même ancrage pour la graine de sortie longue : lue avant la
+        // première semaine, puis repliée en avant. Sinon les cibles de
+        // sortie longue rebougeraient chaque jour, pour exactement la même
+        // raison que les volumes.
+        let anchorDayBefore = calendar.date(byAdding: .day, value: -1, to: firstMonday)!
+        var previousLong = longestRecentRunKm(history: runs, today: anchorDayBefore, calendar: calendar)
         let peakClimb = min(maximumClimbM, goal.elevationGainM * 0.75)
 
-        // Deux semaines ou moins : trop tard pour progresser, on entretient.
+        // Deux semaines ou moins **à la création** : trop tard pour
+        // progresser, on entretient.
         if mondays.count <= 2 {
             for (i, monday) in mondays.enumerated() {
                 let role: WeekRole = i == mondays.count - 1 ? .raceWeek : .taper
-                let target = start * taperFactor
+                let target = anchorBase * taperFactor
                 let climb: Double = role == .raceWeek ? 0 : peakClimb * 0.5
                 let weekSessions = sessions(role: role, targetKm: target, previousLongKm: previousLong,
                                             climbTargetM: climb, goal: goal, hrMax: hrMax)
                 if let long = weekSessions.first(where: { $0.kind == .longRun }) { previousLong = long.targetKm }
                 weeks.append(PlannedWeek(monday: monday, role: role, targetKm: target, sessions: weekSessions))
             }
-            return TrainingPlan(goal: goal, weeks: weeks, hrMax: hrMax)
+            return TrainingPlan(goal: goal, weeks: weeks, hrMax: hrMax, isMaintenance: true)
         }
 
         // Le pic est à course − 2 ; on monte jusqu'à lui, puis on relâche.
         let peakIndex = mondays.count - 3
-        var volume = start
-        var peakVolume = start
+        var previousTarget = 0.0
+        var peakVolume = anchorBase
         for (i, monday) in mondays.enumerated() {
             let role: WeekRole
             let target: Double
             if i <= peakIndex {
-                volume = min(volume * factor, volumeCap)
+                let base: Double
+                if i == 0 {
+                    base = anchorBase
+                } else if monday <= currentMonday {
+                    // Semaine passée ou en cours : on relit la charge
+                    // d'avant son lundi, plafonnée par la cible précédente.
+                    // C'est la règle du non-rattrapage : une semaine courue
+                    // court re-base les suivantes vers le bas, une semaine
+                    // dépassée ne les remonte pas.
+                    base = min(measuredBaseKm(history: runs, before: monday, calendar: calendar),
+                               previousTarget)
+                } else {
+                    // Semaine à venir : projection pure, **aucune lecture de
+                    // charge**. Une semaine qui n'a pas commencé n'a pas de
+                    // « charge d'avant son lundi » ; y substituer celle
+                    // d'aujourd'hui ferait bouger tout l'aperçu à chaque
+                    // sortie — le défaut d'origine, déplacé.
+                    base = previousTarget
+                }
+                target = min(base * factor, volumeCap)
                 role = i == peakIndex ? .peak : .build
-                target = volume
-                if i == peakIndex { peakVolume = volume }
+                if i == peakIndex { peakVolume = target }
             } else if i == mondays.count - 1 {
                 role = .raceWeek
                 target = peakVolume * raceWeekFactor
@@ -189,9 +262,10 @@ enum TrainingPlanner {
             let weekSessions = sessions(role: role, targetKm: target, previousLongKm: previousLong,
                                         climbTargetM: climb, goal: goal, hrMax: hrMax)
             if let long = weekSessions.first(where: { $0.kind == .longRun }) { previousLong = long.targetKm }
+            previousTarget = target
             weeks.append(PlannedWeek(monday: monday, role: role, targetKm: target, sessions: weekSessions))
         }
-        return TrainingPlan(goal: goal, weeks: weeks, hrMax: hrMax)
+        return TrainingPlan(goal: goal, weeks: weeks, hrMax: hrMax, isMaintenance: false)
     }
 }
 
@@ -208,10 +282,18 @@ extension TrainingPlanner {
         (hrMax * low)...(hrMax * high)
     }
 
+    /// Plus longue sortie des 14 derniers jours, `today` compris. La borne
+    /// haute est **exclusive comme celle de `sumKm`** : sans elle, décaler
+    /// la date d'ancrage ne suffirait pas — les sorties postérieures
+    /// fuiraient dans la graine et les cibles de sortie longue rebougeraient
+    /// chaque jour (§5.2bis).
     static func longestRecentRunKm(history: [Workout], today: Date, calendar: Calendar) -> Double {
-        let start = calendar.date(byAdding: .day, value: -14, to: calendar.startOfDay(for: today))!
+        let endExclusive = calendar.date(byAdding: .day, value: 1,
+                                         to: calendar.startOfDay(for: today))!
+        let start = calendar.date(byAdding: .day, value: -14, to: endExclusive)!
         let recent = history
-            .filter { $0.activityType == runningActivityType && $0.startDate >= start }
+            .filter { $0.activityType == runningActivityType
+                      && $0.startDate >= start && $0.startDate < endExclusive }
             .map(distanceKm)
         return recent.max() ?? defaultPreviousLongKm
     }

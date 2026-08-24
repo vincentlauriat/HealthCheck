@@ -33,10 +33,11 @@ final class TrainingViewModelTests: XCTestCase {
                     creationDate: date(day))
     }
 
-    func goal(_ raceDay: String, km: Double = 17, climb: Double = 400) -> RaceGoal {
+    func goal(_ raceDay: String, km: Double = 17, climb: Double = 400,
+              createdAt: String = "2026-08-01") -> RaceGoal {
         RaceGoal(id: "g1", name: "Paris-Versailles", raceDate: date(raceDay, "10:00"),
                  distanceKm: km, elevationGainM: climb,
-                 objective: .finishComfortable, createdAt: date("2026-08-01"))
+                 objective: .finishComfortable, createdAt: date(createdAt))
     }
 
     // MARK: - État vide
@@ -183,8 +184,11 @@ final class TrainingViewModelTests: XCTestCase {
 
     func test_load_progressReflectsExecutedRuns() throws {
         let store = try HealthStore(path: ":memory:")
-        try store.saveRaceGoal(goal("2026-09-27"))
-        // Vendredi : 3 jours restants, la semaine en cours reçoit des cibles.
+        // Objectif créé le lundi 2026-08-17 : la semaine en cours est la
+        // première semaine de construction du plan, donc elle porte des
+        // cibles. (Avec un `createdAt` bien antérieur, les semaines déjà
+        // écoulées sans la moindre sortie re-baseraient les cibles à zéro.)
+        try store.saveRaceGoal(goal("2026-09-27", createdAt: "2026-08-17"))
         try store.insertWorkouts([run("2026-08-19", km: 15.0)])
         let vm = TrainingViewModel(store: store, calendar: calendar, now: { self.date("2026-08-21") })
 
@@ -216,7 +220,7 @@ final class TrainingViewModelTests: XCTestCase {
 
     func test_load_lowReadiness_producesTheDaySuggestion() throws {
         let store = try HealthStore(path: ":memory:")
-        try store.saveRaceGoal(goal("2026-09-27"))
+        try store.saveRaceGoal(goal("2026-09-27", createdAt: "2026-08-17"))
         let vm = TrainingViewModel(store: store, calendar: calendar, now: { self.date("2026-08-21") })
 
         try vm.load(readiness: ReadinessScore(value: 42, label: "Fatigue", components: []))

@@ -13,6 +13,12 @@ final class TrainingViewModel: ObservableObject {
     @Published private(set) var progress: WeekProgress?
     @Published private(set) var assessment: LoadAssessment?
 
+    /// Toutes les courses encore à venir, la plus proche d'abord. La v1 ne
+    /// planifie que la première (`goal`), mais la vue doit pouvoir dire
+    /// qu'une autre suit — sinon un second objectif est chargé puis
+    /// silencieusement jeté.
+    @Published private(set) var upcomingGoals: [RaceGoal] = []
+
     /// Vrai après le premier chargement — même sémantique que
     /// `WorkoutsViewModel.hasLoaded`.
     @Published private(set) var hasLoaded = false
@@ -22,6 +28,9 @@ final class TrainingViewModel: ObservableObject {
     private let now: () -> Date
 
     private static let historyWindowDays = 90
+    /// Le repliage des cibles (§5.2bis) lit la charge des 28 jours qui
+    /// précèdent la première semaine de construction.
+    private static let foldLookbackDays = 28
     private static let hrMaxWindowDays = 180
     private static let heartRateType = "HKQuantityTypeIdentifierHeartRate"
     private static let defaultHRMax = 190.0
@@ -42,8 +51,25 @@ final class TrainingViewModel: ObservableObject {
         let goals = try store.raceGoals()
         let activeGoal = RaceGoal.active(in: goals, today: end, calendar: calendar)
         goal = activeGoal
+        let startOfToday = calendar.startOfDay(for: end)
+        upcomingGoals = goals
+            .filter { calendar.startOfDay(for: $0.raceDate) >= startOfToday }
+            .sorted { $0.raceDate < $1.raceDate }
 
-        let historyStart = calendar.date(byAdding: .day, value: -Self.historyWindowDays, to: end)!
+        // La fenêtre d'historique est dérivée de l'objectif, pas d'une
+        // constante (§5.2bis) : le repliage remonte à 28 jours avant la
+        // première semaine de construction, et 90 jours fixes tronqueraient
+        // silencieusement les premières semaines d'un plan de plus de neuf
+        // semaines — cibles fausses, donc `peakVolume` faux, donc affûtage
+        // cassé par une seconde route.
+        let defaultStart = calendar.date(byAdding: .day, value: -Self.historyWindowDays, to: end)!
+        var historyStart = defaultStart
+        if let activeGoal {
+            let firstMonday = TrainingPlanner.firstBuildMonday(goal: activeGoal, calendar: calendar)
+            let foldStart = calendar.date(byAdding: .day, value: -Self.foldLookbackDays,
+                                          to: firstMonday)!
+            historyStart = min(defaultStart, foldStart)
+        }
         let history = try store.workouts(from: historyStart, to: end)
 
         // Sans objectif actif, le plan et la progression n'ont pas de sens,

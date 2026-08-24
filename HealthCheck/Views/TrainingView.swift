@@ -16,6 +16,11 @@ struct TrainingView: View {
             VStack(alignment: .leading, spacing: 24) {
                 if let goal = viewModel.goal, let plan = viewModel.plan {
                     goalCard(goal: goal, plan: plan)
+                    if let next = nextGoalAfterActive {
+                        Text("Objectif suivant : \(next.name), le \(raceDateText(next.raceDate)).")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
                     if let progress = viewModel.progress {
                         thisWeekSection(progress)
                     }
@@ -136,7 +141,11 @@ struct TrainingView: View {
     @ViewBuilder
     private func goalCard(goal: RaceGoal, plan: TrainingPlan) -> some View {
         let currentMonday = TrainingPlanner.monday(of: Date(), calendar: .current)
-        let weekIndex = plan.weeks.firstIndex { $0.monday == currentMonday }
+        // Seules les semaines porteuses de cibles sont numérotées : la
+        // semaine de clôture n'en est pas une. Si aujourd'hui ne tombe dans
+        // aucune d'elles, la ligne est omise plutôt que fausse.
+        let targetWeeks = plan.weeks.filter { $0.role != .currentWeekClosing }
+        let weekIndex = targetWeeks.firstIndex { $0.monday == currentMonday }
 
         VStack(alignment: .leading, spacing: 10) {
             HStack {
@@ -152,8 +161,13 @@ struct TrainingView: View {
                 statText("\(goal.distanceKm.formatted(.number.precision(.fractionLength(1)))) km", icon: "location.fill")
                 statText("D+ \(Int(goal.elevationGainM.rounded())) m", icon: "mountain.2.fill")
                 if let weekIndex {
-                    statText("Semaine \(weekIndex + 1) sur \(plan.weeks.count)", icon: "calendar")
+                    statText("Semaine \(weekIndex + 1) sur \(targetWeeks.count)", icon: "calendar")
                 }
+            }
+            if plan.isMaintenance {
+                Text("Trop tard pour progresser — plan de maintien")
+                    .font(.caption)
+                    .foregroundStyle(.orange)
             }
         }
         .padding(16)
@@ -161,6 +175,16 @@ struct TrainingView: View {
         .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(.separator.opacity(0.5)))
         .shadow(color: .black.opacity(0.06), radius: 5, y: 2)
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    /// Deuxième course à venir, s'il y en a une : la v1 ne planifie que la
+    /// plus proche, mais elle ne doit pas faire comme si l'autre n'existait pas.
+    private var nextGoalAfterActive: RaceGoal? {
+        viewModel.upcomingGoals.count > 1 ? viewModel.upcomingGoals[1] : nil
+    }
+
+    private func raceDateText(_ date: Date) -> String {
+        date.formatted(.dateTime.day().month(.wide).year().locale(Locale(identifier: "fr_FR")))
     }
 
     private func countdownText(to raceDate: Date) -> String {
