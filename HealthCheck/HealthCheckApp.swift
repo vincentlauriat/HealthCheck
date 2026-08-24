@@ -1,3 +1,4 @@
+import Sparkle
 import SwiftUI
 
 @main
@@ -15,6 +16,14 @@ struct HealthCheckApp: App {
     @StateObject private var correlationsViewModel: CorrelationsViewModel
     @StateObject private var companionViewModel: CompanionViewModel
     @StateObject private var trainingViewModel: TrainingViewModel
+
+    // Démarre le cycle Sparkle dès le lancement : la recherche périodique en
+    // arrière-plan et l'entrée de menu partagent le même updater.
+    private let updaterController = SPUStandardUpdaterController(
+        startingUpdater: true,
+        updaterDelegate: nil,
+        userDriverDelegate: nil
+    )
 
     init() {
         // Base illisible, disque plein, droits refusés : on ne crashe pas au
@@ -73,6 +82,11 @@ struct HealthCheckApp: App {
             }
         }
         .environment(\.locale, Locale(identifier: "fr_FR"))
+        .commands {
+            CommandGroup(after: .appInfo) {
+                CheckForUpdatesView(updater: updaterController.updater)
+            }
+        }
     }
 }
 
