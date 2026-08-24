@@ -454,4 +454,64 @@ final class TrainingPlannerTests: XCTestCase {
         XCTAssertEqual(plan.longestPlannedRunKm, peakLong!, accuracy: 0.001)
         XCTAssertEqual(plan.longestPlannedRunKm, 11.5, accuracy: 0.05)
     }
+
+    /// Nombre de semaines de cibles (build/peak/taper/raceWeek) qu'un
+    /// objectif produirait, recalculé indépendamment de `plan(...)` à
+    /// partir des seules fonctions pures `firstBuildMonday`/`monday` — pour
+    /// que le test ne duplique pas la logique de rôle qu'il vérifie.
+    private func mondaysCount(goal g: RaceGoal) -> Int {
+        let first = TrainingPlanner.firstBuildMonday(goal: g, calendar: calendar)
+        let raceMonday = TrainingPlanner.monday(of: g.raceDate, calendar: calendar)
+        var count = 0
+        var cursor = first
+        while cursor <= raceMonday {
+            count += 1
+            cursor = calendar.date(byAdding: .day, value: 7, to: cursor)!
+        }
+        return count
+    }
+
+    /// La chaîne dorée (5 semaines de cibles, rôles
+    /// build/build/peak/taper/raceWeek) doit porter 3 semaines qui montent
+    /// (build/build/peak) et 2 qui redescendent (taper/raceWeek) — la forme
+    /// que l'explicateur de plan doit annoncer pour ce cas.
+    func test_planArcCounts_fiveWeekGoal_matchesGoldenRoles() {
+        let plan = TrainingPlanner.plan(goal: goal(), history: comebackHistory, hrMax: 190,
+                                        today: date("2026-08-23"), calendar: calendar)
+        XCTAssertEqual(plan.rampWeekCount, 3)
+        XCTAssertEqual(plan.taperWeekCount, 2)
+    }
+
+    /// Un objectif plus lointain porte plus de semaines de montée — la
+    /// phrase d'arc ne peut donc pas être une constante figée à « trois »
+    /// et « deux » : elle doit suivre la vraie longueur du plan.
+    func test_planArcCounts_scaleWithPlanLength() {
+        let longerGoal = goal("2026-12-06")
+        let totalTargetWeeks = mondaysCount(goal: longerGoal)
+        XCTAssertGreaterThan(totalTargetWeeks, 5,
+                             "le fixture doit produire un plan plus long que la chaîne dorée à 5 semaines")
+
+        let plan = TrainingPlanner.plan(goal: longerGoal, history: comebackHistory, hrMax: 190,
+                                        today: date("2026-08-23"), calendar: calendar)
+        XCTAssertEqual(plan.rampWeekCount, totalTargetWeeks - 2)
+        XCTAssertEqual(plan.taperWeekCount, 2)
+
+        let fiveWeekPlan = TrainingPlanner.plan(goal: goal(), history: comebackHistory, hrMax: 190,
+                                                today: date("2026-08-23"), calendar: calendar)
+        XCTAssertGreaterThan(plan.rampWeekCount, fiveWeekPlan.rampWeekCount,
+                             "un plan plus long doit annoncer plus de semaines de montée, pas le même chiffre")
+    }
+
+    /// Un plan de maintien ne monte jamais : aucune semaine build/peak, et
+    /// toutes les semaines de cibles sont taper/raceWeek. La phrase d'arc
+    /// n'a alors aucun sens — c'est la branche `isMaintenance` de la vue
+    /// qui doit l'éviter, mais le compte lui-même doit rester correct.
+    func test_planArcCounts_maintenanceGoal_hasNoRampWeeks() {
+        let g = goal("2026-09-27", createdAt: "2026-09-26")  // course le lendemain de la création
+        let plan = TrainingPlanner.plan(goal: g, history: comebackHistory, hrMax: 190,
+                                        today: date("2026-09-26"), calendar: calendar)
+        XCTAssertTrue(plan.isMaintenance)
+        XCTAssertEqual(plan.rampWeekCount, 0)
+        XCTAssertEqual(plan.taperWeekCount, 1)
+    }
 }

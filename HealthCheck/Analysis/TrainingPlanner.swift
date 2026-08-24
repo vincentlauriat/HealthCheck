@@ -61,6 +61,19 @@ struct TrainingPlan: Equatable {
             .map(\.targetKm)
             .max() ?? 0
     }
+
+    /// Nombre de semaines qui montent (construction + pic), semaine de
+    /// clôture exclue puisqu'elle ne porte aucune cible. Dépend de la
+    /// distance à la course — un plan plus long a plus de semaines de
+    /// montée — donc calculé, jamais recopié dans une phrase figée.
+    var rampWeekCount: Int {
+        weeks.filter { $0.role == .build || $0.role == .peak }.count
+    }
+
+    /// Nombre de semaines qui redescendent (affûtage + semaine de course).
+    var taperWeekCount: Int {
+        weeks.filter { $0.role == .taper || $0.role == .raceWeek }.count
+    }
 }
 
 /// Construit un plan déterministe : mêmes entrées, même plan. Rien n'est

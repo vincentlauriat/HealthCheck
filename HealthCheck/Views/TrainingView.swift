@@ -187,7 +187,7 @@ struct TrainingView: View {
     }
 
     /// La sortie la plus longue du plan comparée à la distance de course :
-    /// le chiffre le plus déterminant de l'écran, jusque-là tu.
+    /// le chiffre le plus déterminant de l'écran, jusque-là passé sous silence.
     private func honestLimitText(plan: TrainingPlan, goal: RaceGoal) -> String {
         let pct = Int((plan.longestPlannedRunKm / goal.distanceKm * 100).rounded())
         return "Plus longue sortie du plan : "
@@ -220,10 +220,19 @@ struct TrainingView: View {
     }
 
     private func planExplainerText(plan: TrainingPlan) -> String {
+        // Plan de maintien (spec §5.2) : aucune semaine ne monte, donc la
+        // phrase d'arc décrirait quelque chose qui n'existe pas, et
+        // « base mesurée / +N % » n'a pas de sens sans rampe.
+        if plan.isMaintenance {
+            return "Trop tard pour progresser : ce plan entretient votre forme jusqu'à la course sans "
+                + "chercher à l'augmenter."
+        }
+
         let rampPercent = Int(((plan.rampFactor - 1) * 100).rounded())
-        var text = "Trois semaines qui montent, deux qui redescendent. Le plus gros volume tombe deux "
-            + "semaines avant la course, pas la veille : vous ne progressez pas pendant l'effort mais "
-            + "pendant que vous récupérez de l'effort.\n\nBase mesurée : "
+        var text = planArcText(rampWeeks: plan.rampWeekCount, taperWeeks: plan.taperWeekCount)
+            + " Le plus gros volume tombe deux semaines avant la course, pas la veille : vous ne "
+            + "progressez pas pendant l'effort mais pendant que vous récupérez de l'effort.\n\n"
+            + "Base mesurée : "
             + plan.anchorBaseKm.formatted(.number.precision(.fractionLength(1)))
             + " km/semaine. Chaque semaine ajoute au plus \(rampPercent) % à la précédente — le "
             + "garde-fou principal contre la blessure : le corps s'adapte en semaines, les tendons et "
@@ -233,6 +242,36 @@ struct TrainingView: View {
                 + "distance de course."
         }
         return text
+    }
+
+    /// « Trois semaines qui montent, deux qui redescendent. » — dérivée du
+    /// plan plutôt que figée : la longueur de l'arc de montée dépend de la
+    /// distance à la course (spec `peakIndex = mondays.count - 3`), un plan
+    /// à cinq semaines et un plan à onze semaines n'ont pas le même compte.
+    private func planArcText(rampWeeks: Int, taperWeeks: Int) -> String {
+        let up = rampWeeks == 1
+            ? "Une semaine qui monte"
+            : "\(TrainingView.capitalizedFirst(TrainingView.frenchWeekCount(rampWeeks))) semaines qui montent"
+        let down = taperWeeks == 1
+            ? "une qui redescend"
+            : "\(TrainingView.frenchWeekCount(taperWeeks)) qui redescendent"
+        return "\(up), \(down)."
+    }
+
+    /// Nombre d'une semaine en toutes lettres, accordé au féminin (accorde
+    /// avec « semaine(s) »). Retombe sur le chiffre au-delà de la table :
+    /// un plan ne dépasse jamais quelques dizaines de semaines, mais mieux
+    /// vaut un chiffre correct qu'un mot halluciné sur un cas extrême.
+    private static func frenchWeekCount(_ n: Int) -> String {
+        let words = ["zéro", "une", "deux", "trois", "quatre", "cinq", "six", "sept",
+                     "huit", "neuf", "dix", "onze", "douze", "treize", "quatorze",
+                     "quinze", "seize", "dix-sept", "dix-huit", "dix-neuf", "vingt"]
+        return n >= 0 && n < words.count ? words[n] : "\(n)"
+    }
+
+    private static func capitalizedFirst(_ s: String) -> String {
+        guard let first = s.first else { return s }
+        return first.uppercased() + s.dropFirst()
     }
 
     /// Deuxième course à venir, s'il y en a une : la v1 ne planifie que la
