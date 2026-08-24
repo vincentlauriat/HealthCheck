@@ -64,6 +64,19 @@ final class TrainingPlannerTests: XCTestCase {
                        5.0, accuracy: 0.001)
     }
 
+    /// Sans distance mesurée et sans durée exploitable (unité non
+    /// reconnue), la séance ne doit fabriquer aucun kilomètre — 0, pas une
+    /// estimation à partir d'une unité devinée.
+    func test_distanceKm_withoutDistanceAndUnusableDuration_contributesZero() {
+        let unusable = Workout(activityType: "HKWorkoutActivityTypeRunning", sourceName: "Watch",
+                               duration: 35, durationUnit: "furlong",
+                               totalDistance: nil, totalDistanceUnit: nil,
+                               totalEnergyBurned: nil, totalEnergyBurnedUnit: nil,
+                               startDate: date("2026-06-13"), endDate: date("2026-06-13"),
+                               routeFileName: nil)
+        XCTAssertEqual(TrainingPlanner.distanceKm(unusable), 0, accuracy: 0.001)
+    }
+
     func test_acuteKm_sumsTheLastSevenDaysInclusive() {
         XCTAssertEqual(TrainingPlanner.acuteKm(history: comebackHistory,
                                                today: date("2026-08-23"), calendar: calendar),
@@ -151,6 +164,16 @@ final class TrainingPlannerTests: XCTestCase {
         let planned = plan.weeks.filter { $0.role != .currentWeekClosing }
         XCTAssertTrue(planned.allSatisfy { $0.role == .taper || $0.role == .raceWeek })
         XCTAssertTrue(planned.allSatisfy { $0.targetKm <= 12.6 * 0.75 + 0.001 })
+
+        // La borne `<=` ci-dessus ne suffit pas à distinguer 0.75 de 0.5 —
+        // les deux la respectent. La semaine `.raceWeek` de cette branche
+        // doit utiliser exactement `taperFactor` (0.75), pas
+        // `raceWeekFactor` (0.5) : il n'y a jamais eu de semaine de pic
+        // dans cette branche de maintien, donc rien dont `raceWeekFactor`
+        // pourrait prendre la moitié (TrainingPlanner.swift:244-265).
+        let raceWeek = planned.first { $0.role == .raceWeek }
+        XCTAssertNotNil(raceWeek)
+        XCTAssertEqual(raceWeek?.targetKm ?? -1, 12.6 * TrainingPlanner.taperFactor, accuracy: 0.001)
     }
 
     func test_plan_isDeterministic() {

@@ -118,7 +118,9 @@ struct WorkoutsView: View {
             Spacer()
 
             HStack(spacing: 16) {
-                statText(workout.minutes.formatted(.number.precision(.fractionLength(0))) + " min", icon: "clock")
+                if let minutes = workout.minutes {
+                    statText(minutes.formatted(.number.precision(.fractionLength(0))) + " min", icon: "clock")
+                }
                 if let distance = workout.distanceKm, distance > 0 {
                     statText(distance.formatted(.number.precision(.fractionLength(1))) + " km", icon: "location")
                 }

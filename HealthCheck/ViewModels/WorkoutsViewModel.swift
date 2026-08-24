@@ -5,7 +5,9 @@ import Foundation
 struct WorkoutItem: Equatable {
     let label: String
     let startDate: Date
-    let minutes: Double
+    /// `nil` quand l'export porte une unité de durée non reconnue — pas de
+    /// nombre fabriqué à afficher.
+    let minutes: Double?
     let distanceKm: Double?
     let energyKcal: Double?
     let averageHeartRate: Double?
@@ -48,7 +50,9 @@ final class WorkoutsViewModel: ObservableObject {
         if let weekStart = calendar.dateInterval(of: .weekOfYear, for: end)?.start {
             let thisWeek = workouts.filter { $0.startDate >= weekStart }
             thisWeekCount = thisWeek.count
-            thisWeekMinutes = thisWeek.reduce(0) { $0 + WorkoutStatsEngine.durationMinutes($1) }
+            // Une séance à l'unité non reconnue contribue 0 au total plutôt
+            // qu'une durée fabriquée.
+            thisWeekMinutes = thisWeek.reduce(0) { $0 + (WorkoutStatsEngine.durationMinutes($1) ?? 0) }
             thisWeekKcal = thisWeek.reduce(0) { $0 + ($1.totalEnergyBurned ?? 0) }
         }
 

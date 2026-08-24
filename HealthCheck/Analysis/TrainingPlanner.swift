@@ -93,12 +93,17 @@ enum TrainingPlanner {
     // MARK: - Lectures de charge
 
     /// Distance d'une séance : la valeur réelle si elle existe, sinon une
-    /// estimation à 7:00/km. Le même repli partout — deux définitions
-    /// laisseraient le planificateur et le moniteur lire des charges
-    /// différentes pour le même historique.
+    /// estimation à 7:00/km à partir de la durée. Le même repli partout —
+    /// deux définitions laisseraient le planificateur et le moniteur lire
+    /// des charges différentes pour le même historique. Sans distance
+    /// mesurée **et** sans durée exploitable (unité non reconnue), la
+    /// séance contribue 0 km plutôt qu'un chiffre fabriqué à partir d'une
+    /// unité qu'on ne comprend pas — un 0 rate silencieusement une séance,
+    /// une distance inventée fausserait la base d'ancrage du plan.
     static func distanceKm(_ workout: Workout) -> Double {
         if let d = workout.totalDistance { return d }
-        return WorkoutStatsEngine.durationMinutes(workout) / fallbackPaceMinutesPerKm
+        guard let minutes = WorkoutStatsEngine.durationMinutes(workout) else { return 0 }
+        return minutes / fallbackPaceMinutesPerKm
     }
 
     static func acuteKm(history: [Workout], today: Date, calendar: Calendar) -> Double {
@@ -239,6 +244,15 @@ enum TrainingPlanner {
         if mondays.count <= 2 {
             for (i, monday) in mondays.enumerated() {
                 let role: WeekRole = i == mondays.count - 1 ? .raceWeek : .taper
+                // `role` peut être `.raceWeek` ici, mais la cible reste
+                // `taperFactor` (0.75) et non `raceWeekFactor` (0.5) — c'est
+                // délibéré. `raceWeekFactor` réduit de moitié le volume de
+                // *pic* pour la semaine de course ; cette branche n'a jamais
+                // eu de semaine de pic dont redescendre, donc rien dont
+                // `raceWeekFactor` pourrait prendre la moitié. Le nom du
+                // rôle sert à l'affichage (« semaine de course »), pas au
+                // calcul de la cible. Ne pas « corriger » ce facteur sans
+                // relire `test_plan_raceTooClose_isTaperOnlyAndNeverRamps`.
                 let target = anchorBase * taperFactor
                 let climb: Double = role == .raceWeek ? 0 : peakClimb * 0.5
                 let weekSessions = sessions(role: role, targetKm: target, previousLongKm: previousLong,
