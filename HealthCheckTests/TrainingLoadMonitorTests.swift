@@ -315,6 +315,147 @@ final class TrainingLoadMonitorTests: XCTestCase {
                       "2× le volume prescrit doit déclencher l'avertissement de surdosage")
     }
 
+    // MARK: - Effondrement de l'arc
+
+    /// Le cas d'or de la spec, mais la première semaine de construction
+    /// (08-24) n'a pas été courue du tout. La règle de non-rattrapage
+    /// rebase alors la semaine du 08-31 sur la charge chronique (3,15 km)
+    /// au lieu de la cible précédente (14,49 km) : 3,62 km au lieu de
+    /// 16,66. Le plan continue de s'afficher tout en ne prescrivant
+    /// presque plus rien — c'est exactement ce que cette alerte existe
+    /// pour rendre visible.
+    func test_assess_collapsedRampWeek_warnsAndNamesBothTargets() {
+        let g = goal()
+        // Mercredi 09-02 : 5 jours restants, donc pas d'alerte « en
+        // retard » (qui exige 2 jours ou moins) — l'effondrement est isolé.
+        let today = date("2026-09-02")
+        let plan = TrainingPlanner.plan(goal: g, history: comebackHistory, hrMax: 190,
+                                        today: today, calendar: calendar)
+        let current = plan.weeks.first { $0.monday == TrainingPlanner.monday(of: today, calendar: calendar) }!
+        XCTAssertEqual(current.targetKm, 3.62, accuracy: 0.05)
+        XCTAssertEqual(plan.weeks.first { $0.monday == calendar.startOfDay(for: date("2026-08-24")) }!.targetKm,
+                       14.49, accuracy: 0.05)
+
+        let a = TrainingLoadMonitor.assess(history: comebackHistory, plan: plan, readiness: nil,
+                                           today: today, calendar: calendar)
+
+        let alert = a.alerts.first { $0.message.contains("Plan en repli") }
+        XCTAssertNotNil(alert)
+        XCTAssertEqual(alert?.severity, .warning)
+        // Les deux nombres sont nommés, au format de l'écran (virgule).
+        XCTAssertTrue(alert?.message.contains("3,6 km") ?? false, alert?.message ?? "")
+        XCTAssertTrue(alert?.message.contains("14,5 km") ?? false, alert?.message ?? "")
+        // Et la sortie de secours est nommée.
+        XCTAssertTrue(alert?.message.contains("Recréez l'objectif") ?? false, alert?.message ?? "")
+    }
+
+    /// Un plan suivi ne doit jamais lever l'alerte : la chaîne d'or monte
+    /// (14,49 → 16,66 → 19,16), elle ne baisse pas. Ce test est sensible
+    /// au seuil, pas seulement à l'absence d'alerte : élargir
+    /// `collapseFactor` à 1,5 le fait échouer.
+    func test_assess_followedPlan_raisesNoCollapseAlert() {
+        let g = goal()
+        let today = date("2026-09-02")
+        // Semaine du 08-24 courue exactement à sa cible (14,49 km).
+        let executed = comebackHistory + [run("2026-08-25", km: 7.245), run("2026-08-27", km: 7.245)]
+        let plan = TrainingPlanner.plan(goal: g, history: executed, hrMax: 190,
+                                        today: today, calendar: calendar)
+        let current = plan.weeks.first { $0.monday == TrainingPlanner.monday(of: today, calendar: calendar) }!
+        XCTAssertEqual(current.targetKm, 16.66, accuracy: 0.05)
+
+        let a = TrainingLoadMonitor.assess(history: executed, plan: plan, readiness: nil,
+                                           today: today, calendar: calendar)
+
+        XCTAssertFalse(a.alerts.contains { $0.message.contains("Plan en repli") })
+    }
+
+    /// **Ce test ne prouve pas que la restriction de rôle protège quoi que
+    /// ce soit** — il vérifie seulement qu'un plan suivi jusqu'au bout reste
+    /// silencieux sur l'affûtage et la semaine de course, bout en bout via
+    /// `assess`. Sur le cas d'or, les rapports du relâchement (affûtage =
+    /// pic × 0,75, semaine de course = pic × 0,5, soit ≈ 0,67 d'une semaine
+    /// à l'autre) restent tous deux au-dessus de `collapseFactor` (0,6) :
+    /// retirer la restriction de rôle dans `hasCollapsed` ne fait **pas**
+    /// échouer ce test, quel que soit le fixture — c'est structurel, pas un
+    /// hasard de ce cas précis. La restriction de rôle elle-même est testée
+    /// directement par `test_hasCollapsed_ignoresTaperDropBelowThreshold`,
+    /// avec une paire dont le rapport franchit réellement le seuil.
+    func test_assess_followedPlan_taperAndRaceWeek_endToEndStaysQuiet() {
+        let g = goal()
+        let executed = comebackHistory
+            + [run("2026-08-25", km: 7.245), run("2026-08-27", km: 7.245)]      // 14,49
+            + [run("2026-09-01", km: 8.33), run("2026-09-03", km: 8.33)]        // 16,66
+            + [run("2026-09-08", km: 9.58), run("2026-09-10", km: 9.58)]        // 19,16
+        for day in ["2026-09-16", "2026-09-23"] {   // affûtage, puis semaine de course
+            let today = date(day)
+            let plan = TrainingPlanner.plan(goal: g, history: executed, hrMax: 190,
+                                            today: today, calendar: calendar)
+            let current = plan.weeks.first { $0.monday == TrainingPlanner.monday(of: today, calendar: calendar) }
+            XCTAssertTrue(current?.role == .taper || current?.role == .raceWeek, day)
+            let a = TrainingLoadMonitor.assess(history: executed, plan: plan, readiness: nil,
+                                               today: today, calendar: calendar)
+            XCTAssertFalse(a.alerts.contains { $0.message.contains("Plan en repli") }, day)
+        }
+    }
+
+    /// Test direct de la restriction de rôle, avec une paire construite à la
+    /// main dont le rapport franchit réellement `collapseFactor` (0,6) — ce
+    /// qu'aucune paire affûtage/course issue de `TrainingPlanner` ne fait
+    /// jamais (voir le test précédent). `.taper` à 5 km contre `.peak` à
+    /// 19,16 km donne un rapport de 0,26 : sans le garde, `hasCollapsed`
+    /// répondrait `true`.
+    func test_hasCollapsed_ignoresTaperDropBelowThreshold() {
+        let peak = PlannedWeek(monday: date("2026-09-07"), role: .peak, targetKm: 19.16, sessions: [])
+        let taper = PlannedWeek(monday: date("2026-09-14"), role: .taper, targetKm: 5.0, sessions: [])
+        XCTAssertLessThan(taper.targetKm, peak.targetKm * TrainingLoadMonitor.collapseFactor,
+                          "le fixture doit franchir le seuil pour être un test utile")
+        XCTAssertFalse(TrainingLoadMonitor.hasCollapsed(current: taper, previous: peak))
+    }
+
+    /// Une semaine de clôture porte une cible nulle : elle ne doit lever
+    /// l'alerte d'aucun côté. Côté « semaine en cours », le garde de rôle
+    /// existant la ferme. Côté « semaine précédente », c'est structurel et
+    /// ce test le pince : la clôture, quand elle existe, est toujours en
+    /// tête de `plan.weeks`, donc elle n'est jamais la semaine qui précède
+    /// une autre. Déplacer son ajout en fin de liste fait échouer ce test.
+    func test_assess_currentWeekClosing_isNeverACollapse() {
+        let g = goal()
+        // 2026-08-23 est le dimanche de création : la semaine du 08-17 est
+        // affichée en clôture.
+        let today = date("2026-08-23")
+        let plan = TrainingPlanner.plan(goal: g, history: comebackHistory, hrMax: 190,
+                                        today: today, calendar: calendar)
+        XCTAssertEqual(plan.weeks.first?.role, .currentWeekClosing)
+        XCTAssertEqual(plan.weeks.first?.targetKm, 0)
+        // Invariant structurel : la clôture est toujours en tête, donc
+        // `weeks[i - 1]` n'est jamais une semaine de clôture.
+        XCTAssertEqual(plan.weeks.firstIndex { $0.role == .currentWeekClosing }, 0)
+        XCTAssertEqual(plan.weeks.filter { $0.role == .currentWeekClosing }.count, 1)
+
+        let a = TrainingLoadMonitor.assess(history: comebackHistory, plan: plan, readiness: nil,
+                                           today: today, calendar: calendar)
+
+        XCTAssertFalse(a.alerts.contains { $0.message.contains("Plan en repli") })
+    }
+
+    /// L'effondrement et le retard sont indépendants : une semaine issue
+    /// d'un arc effondré peut aussi être en retard, et les deux méritent
+    /// d'être dites. Enchaîner l'une sur l'autre (`else if`) en masquerait
+    /// une — c'est ce que ce test interdit.
+    func test_assess_collapseAndBehind_bothAppear() {
+        let g = goal()
+        // Samedi 09-05 : 2 jours restants (le retard peut se déclencher) et
+        // rien couru de la semaine.
+        let today = date("2026-09-05")
+        let plan = TrainingPlanner.plan(goal: g, history: comebackHistory, hrMax: 190,
+                                        today: today, calendar: calendar)
+        let a = TrainingLoadMonitor.assess(history: comebackHistory, plan: plan, readiness: nil,
+                                           today: today, calendar: calendar)
+
+        XCTAssertTrue(a.alerts.contains { $0.message.contains("Plan en repli") })
+        XCTAssertTrue(a.alerts.contains { $0.message.contains("Semaine en retard") })
+    }
+
     // MARK: - Frontière des 28 jours de weeksWithARun
 
     /// Une sortie exactement 28 jours avant `today` compte (fenêtre

@@ -97,7 +97,7 @@ xcodebuild -scheme HealthCheck -destination 'platform=macOS' test
 xcodebuild -scheme HealthCheckCompanion -destination 'platform=iOS Simulator,name=iPhone 17' test
 ```
 
-179 tests côté Mac, tous sur les moteurs purs (scores, zones,
+187 tests côté Mac, tous sur les moteurs purs (scores, zones,
 corrélations, mapping Withings, parsing GPX, dédoublonnage, plan
 d'entraînement/rapprochement des séances/moniteur de charge), le store
 et la synchro compagnon (appairage, routeur HTTP, ingestion
@@ -131,7 +131,7 @@ HealthCheck/
 │   ├── ViewModels/      # Un par section, @MainActor, chargement unique
 │   └── Views/           # SwiftUI + Swift Charts + Sankey maison
 ├── HealthCheckShared/    # DTO d'échange + protocole compagnon, partagés Mac/iOS
-├── HealthCheckTests/    # 179 tests (moteurs + store + mapping + synchro compagnon + entraînement)
+├── HealthCheckTests/    # 187 tests (moteurs + store + mapping + synchro compagnon + entraînement)
 ├── Companion/            # App iOS (HealthKit, synchro, appairage, UI)
 ├── CompanionTests/       # 41 tests (mapping HealthKit, ancres, synchro, view model)
 ├── Scripts/release.sh   # Release signée + notarisée

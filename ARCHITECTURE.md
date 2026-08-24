@@ -220,8 +220,16 @@ peut jamais être dépassée de 25 %. Un coureur faisant le double du
 volume prescrit ne recevait aucun avertissement. Le plafond
 `min(mesuré, ciblePrécédente)` est la règle de non-rattrapage : une
 semaine courue en deçà rebase les suivantes vers le bas, une semaine
-dépassée ne les relève jamais. Il n'a pas de plancher, donc une
-inactivité totale prolongée fait tomber un plan vers zéro (spec §5.2bis).
+dépassée ne les relève jamais. Il n'a pas de plancher, donc une semaine
+sautée peut faire tomber tout l'arc restant — 78 % de chute mesurée sur
+le cas d'or. Le choix retenu est de garder ce rebasage et de le **dire**
+plutôt que d'ajouter un plancher qui décrocherait le plan de la réalité :
+`TrainingLoadMonitor` lève un avertissement dès que la cible de la
+semaine en cours passe sous `collapseFactor` (0,6) de celle de la semaine
+de plan précédente, les deux étant des semaines de rampe (un relâchement
+baisse par construction). Le message nomme les deux cibles et la sortie
+de secours — recréer l'objectif réancre la semaine 0 sur
+`max(charge mesurée, 10 km)` (spec §5.2bis).
 
 **Le dénivelé est prescrit, jamais vérifié.** Chaque `PlannedSession`
 porte un `targetClimbM`, monté vers `goal.elevationGainM` de la même
