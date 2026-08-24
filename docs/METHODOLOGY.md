@@ -477,31 +477,39 @@ l'export :
 "min"       → duration
 "s" / "sec" → duration / 60
 "hr" / "h"  → duration × 60
-autre       → duration            // repli : suppose des minutes
+autre       → nil                 // jamais de nombre fabriqué
 ```
-(`WorkoutStatsEngine.swift:69-76`) Le repli sur une unité inconnue **ne
-convertit rien et suppose silencieusement que `duration` est déjà en
-minutes** — voir la note à ce sujet en fin de document.
+(`WorkoutStatsEngine.swift:74-81`) Une unité non reconnue rend `nil` — la
+fonction ne convertit rien plutôt que de supposer silencieusement que
+`duration` est déjà en minutes. Chaque appelant décide explicitement de ce
+que « pas de durée exploitable » signifie pour lui : `weeklyVolumes` et le
+total de la semaine affiché à l'écran font contribuer 0 minute à la séance
+concernée (une omission visible plutôt qu'un chiffre inventé), et
+`TrainingPlanner.distanceKm` (§11.1) fait de même pour le kilométrage plutôt
+que d'estimer une distance à partir d'une durée qu'on n'a pas pu interpréter.
 
-`weeklyVolumes` regroupe les séances par semaine calendaire
-(`calendar.dateInterval(of: .weekOfYear, ...)`) et par type d'activité
+`weeklyVolumes` regroupe les séances par semaine et par type d'activité
 traduit en français (une table de 20 libellés,
 `WorkoutStatsEngine.swift:15-36`, repli sur l'identifiant HealthKit sans son
 préfixe `HKWorkoutActivityType` pour un type non traduit). Les semaines sans
 séance sont incluses (minutes à zéro) pour que le graphique ne saute pas de
 colonne.
 
-**Ce que ça ne fait pas — nuance importante sur la définition de
-« semaine ».** `weeklyVolumes` découpe les semaines selon
-`calendar.dateInterval(of: .weekOfYear, for:)`, qui suit le
-`firstWeekday` du `Calendar` reçu (donc, en pratique, la locale de
-l'appareil). C'est **différent** de la semaine utilisée par le plan
-d'entraînement (§11-13), qui est toujours ancrée au lundi, quelle que soit la
-locale, par un calcul explicite (`TrainingPlanner.monday`,
-`TrainingPlanner.swift:125-131`, dont le commentaire précise justement que ce
-calcul est *indépendant* de `firstWeekday`). Sur un appareil réglé en
-français (semaine commençant le lundi), les deux découpages coïncident ; ce
-n'est pas garanti en toute généralité.
+**Une seule définition de « semaine » dans tout le projet.** `weeklyVolumes`
+découpe les semaines via `TrainingPlanner.monday`
+(`WorkoutStatsEngine.swift:92-111`) — la même fonction, ancrée au lundi de
+façon *indépendante* du
+`firstWeekday` du `Calendar` reçu, qu'utilisent les moteurs d'entraînement
+(§11-13, `TrainingPlanner.swift:130-136`). Ce n'a pas toujours été le cas :
+`weeklyVolumes` découpait auparavant les semaines avec
+`calendar.dateInterval(of: .weekOfYear, for:)`, qui suit le `firstWeekday` de
+la locale de l'appareil. Sur un appareil réglé en français (semaine
+commençant le lundi), les deux découpages coïncidaient et le bug restait
+invisible ; sur un appareil réglé en anglais américain (semaine commençant
+le dimanche), un dimanche couru aurait rejoint des semaines différentes selon
+l'écran consulté — le graphique de volume hebdomadaire et l'onglet
+Entraînement auraient pu afficher deux totaux « cette semaine » différents
+pour le même historique.
 
 ---
 
@@ -529,21 +537,26 @@ qu'ils appellent « charge » :
 acuteKm         = somme des km courus sur les 7 derniers jours (aujourd'hui inclus)
 chronicWeeklyKm = somme des km courus sur les 28 derniers jours / 4
 ```
-(`TrainingPlanner.swift:104-121`)
+(`TrainingPlanner.swift:109-126`)
 
 **La distance d'une séance sans distance mesurée est une estimation, pas une
-mesure.** Certaines séances importées (anciens imports Strava) n'ont pas de
-distance ; le repli est `durationMinutes / 7.0`, une hypothèse d'allure
-confortable à 7:00 min/km (`fallbackPaceMinutesPerKm = 7.0`,
-`TrainingPlanner.swift:89,99-102`). Ce même repli est utilisé partout où une
-distance de séance est lue — charge aiguë, charge chronique, appariement des
-séances (§13) — pour qu'il n'existe qu'une seule définition de « la distance
-d'une séance » dans tout le projet.
+mesure — et seulement quand l'estimation est possible.** Certaines séances
+importées (anciens imports Strava) n'ont pas de distance ; le repli est
+`durationMinutes / 7.0`, une hypothèse d'allure confortable à 7:00 min/km
+(`fallbackPaceMinutesPerKm = 7.0`, `TrainingPlanner.swift:89,103-107`). Si la
+séance n'a ni distance mesurée **ni** durée exploitable — `durationMinutes`
+rend `nil` pour une unité non reconnue (§10) — la séance contribue **0 km**
+plutôt qu'un chiffre fabriqué à partir d'une unité qu'on ne comprend pas : un
+0 rate silencieusement une séance dans le calcul de charge, mais une distance
+inventée aurait faussé la base d'ancrage qui détermine tout l'arc du plan.
+Ce même repli est utilisé partout où une distance de séance est lue — charge
+aiguë, charge chronique, appariement des séances (§13) — pour qu'il n'existe
+qu'une seule définition de « la distance d'une séance » dans tout le projet.
 
 ### 11.2 L'ancrage : ce qui est fixé une fois, ce qui suit la réalité
 
 C'est la partie la plus subtile du moteur, et celle que le code documente le
-plus abondamment (`TrainingPlanner.swift:141-177`, §5.2bis de la spec) parce
+plus abondamment (`TrainingPlanner.swift:146-182`, §5.2bis de la spec) parce
 qu'une première implémentation s'était trompée trois fois de suite sur le
 même problème : une quantité censée être fixée une fois était recalculée
 depuis `today` à chaque reconstruction.
@@ -556,11 +569,11 @@ creationMonday = lundi de la semaine de création
 takesTargets   = jours restants dans la semaine de création ≥ minimumDaysForTargets (3)
 candidate      = takesTargets ? creationMonday : creationMonday + 7 jours
 ```
-(`TrainingPlanner.swift:153-159`) — sauf un cas limite : si l'objectif est
+(`TrainingPlanner.swift:158-164`) — sauf un cas limite : si l'objectif est
 créé le samedi ou le dimanche qui précède immédiatement sa propre course, ce
 qui rendrait `candidate` postérieur au lundi de la course, le moteur revient
 à `creationMonday` pour que la semaine de course existe quand même
-(`TrainingPlanner.swift:160-165`).
+(`TrainingPlanner.swift:165-170`).
 
 Pourquoi ne jamais relire `today` : si la séquence de semaines dépendait de
 la date du jour, l'horizon rétrécirait à mesure que la course approche,
@@ -570,7 +583,7 @@ jusqu'à tomber dans la branche « objectif de maintien » à deux semaines
 l'arc depuis la charge du moment** — un acte explicite de l'utilisateur, pas
 un effet de bord silencieux.
 
-Le tableau ci-dessous (repris du code, `TrainingPlanner.swift:141-306`)
+Le tableau ci-dessous (repris du code, `TrainingPlanner.swift:146-320`)
 résume ce qui est figé à la création contre ce qui se relit à chaque
 affichage :
 
@@ -589,9 +602,9 @@ anchorBaseKm = max(measuredBaseKm(avant firstMonday), minimumStartVolumeKm)  // 
 rampFactor   = anchorBaseKm < goal.distanceKm ? 1.15 : 1.10
               // comebackRampFactor         steadyRampFactor
 ```
-(`TrainingPlanner.swift:83-85,209-211`) où `measuredBaseKm` est
+(`TrainingPlanner.swift:83-85,214-216`) où `measuredBaseKm` est
 `max(chronicWeeklyKm, acuteKm)` mesurée strictement avant le lundi considéré
-(`TrainingPlanner.swift:172-177`) — le plus favorable des deux lectures
+(`TrainingPlanner.swift:177-182`) — le plus favorable des deux lectures
 crédite la semaine de reprise déjà en cours (`acuteKm`) sans réinitialiser un
 coureur déjà entraîné à un volume débutant (`chronicWeeklyKm`).
 
@@ -604,7 +617,7 @@ recalculer cet ancrage (`TrainingPlanner.swift:47-53`).
 
 Chaque semaine de montée applique ce facteur, plafonné pour que la **semaine
 de pic** ne dépasse jamais `goal.distanceKm × 1,5` (`volumeCap`,
-`peakVolumeMultiplier = 1.5`, `TrainingPlanner.swift:86,227,280`).
+`peakVolumeMultiplier = 1.5`, `TrainingPlanner.swift:86,232,294`).
 
 ### 11.4 La règle de non-rattrapage — et son absence de plancher
 
@@ -621,7 +634,7 @@ base = previousTarget          // aucune lecture de charge
 
 target = min(base × rampFactor, volumeCap)
 ```
-(`TrainingPlanner.swift:260-280`) C'est la règle de non-rattrapage : une
+(`TrainingPlanner.swift:274-294`) C'est la règle de non-rattrapage : une
 semaine courue en dessous de sa cible re-base les semaines suivantes vers le
 bas (le `min` avec la charge mesurée) ; une semaine dépassée ne les remonte
 jamais au-delà de la progression normale (le `min` avec `previousTarget`
@@ -641,7 +654,7 @@ existe pour préserver.
 ### 11.5 Le pic, l'affûtage, et la branche de maintien
 
 Le pic est toujours à *course − 2 semaines*
-(`peakIndex = mondays.count - 3`, `TrainingPlanner.swift:254`). Après le
+(`peakIndex = mondays.count - 3`, `TrainingPlanner.swift:268`). Après le
 pic :
 
 ```swift
@@ -650,7 +663,7 @@ taper     = peakVolume × taperFactor      // 0.75  (l'affûtage : réduire le
                                            //  volume avant la course pour
                                            //  arriver frais)
 ```
-(`TrainingPlanner.swift:88,283-289`)
+(`TrainingPlanner.swift:88,297-303`)
 
 **Cas particulier : objectif créé à ≤ 2 semaines de la course.** Toutes les
 semaines restantes sont des semaines d'affûtage — y compris ce qui serait la
@@ -660,16 +673,23 @@ semaine de course :
 target = anchorBaseKm × taperFactor    // 0.75, pour TOUTES les semaines,
                                         // semaine de course comprise
 ```
-(`TrainingPlanner.swift:239-251`) **Cette semaine de course-là n'utilise donc
+(`TrainingPlanner.swift:244-265`) **Cette semaine de course-là n'utilise donc
 pas `raceWeekFactor` (0,5) comme dans le déroulé normal — elle reste à
 `× 0,75` comme le reste de la branche de maintien**, alors même qu'elle porte
 le rôle `.raceWeek`. C'est délibéré et testé : il n'y a jamais eu de semaine de
 pic dans cette branche, donc rien dont `raceWeekFactor` pourrait prendre la
-moitié — le test `test_plan_raceTooClose_isTaperOnlyAndNeverRamps`
-(`TrainingPlannerTests.swift:148-154`) pin précisément cette borne
-(`targetKm <= startVolume × 0,75`) pour toutes les semaines de cette branche,
-course comprise. `isMaintenance = true` marque ce cas sur `TrainingPlan`, et
-l'écran affiche un avertissement dédié.
+moitié. Un commentaire à cet endroit du code le dit explicitement, pour que
+la prochaine personne à lire cette ligne ne « corrige » pas ce qui ressemble
+à une incohérence entre le rôle et le facteur. Le test
+`test_plan_raceTooClose_isTaperOnlyAndNeverRamps`
+(`TrainingPlannerTests.swift:161-177`) pin à la fois la borne large
+(`targetKm <= startVolume × 0,75`, insuffisante à elle seule pour distinguer
+0,75 de 0,5) et, depuis ce correctif, la valeur exacte de la semaine
+`.raceWeek` — `anchorBaseKm × taperFactor` précisément, pas
+`anchorBaseKm × raceWeekFactor` — pour que toute confusion future entre les
+deux facteurs fasse échouer ce test plutôt que de passer inaperçue.
+`isMaintenance = true` marque ce cas sur `TrainingPlan`, et l'écran affiche
+un avertissement dédié.
 
 ### 11.6 Les séances de la semaine
 
@@ -681,7 +701,7 @@ longRunShare  = 0.60   // sortie longue : jusqu'à 60 % du volume de la semaine
 hillsShare    = 0.25   // côtes : 25 %
 baseEndurance = reste (volume − longue − côtes), plancher minimumBaseKm = 3.0 km
 ```
-(`TrainingPlanner.swift:310-313,360-408`)
+(`TrainingPlanner.swift:324-327,374-422`)
 
 **Sortie longue :**
 
@@ -693,9 +713,9 @@ longKm = min(
 )
 if affûtage: longKm = min(longKm, goal.distanceKm × 0.4)
 ```
-(`TrainingPlanner.swift:363-366`) où `previousLongKm` part de la plus longue
+(`TrainingPlanner.swift:377-380`) où `previousLongKm` part de la plus longue
 sortie des 14 jours précédant la première semaine de construction (repli
-`defaultPreviousLongKm = 5.0` km si aucune, `TrainingPlanner.swift:327-336`)
+`defaultPreviousLongKm = 5.0` km si aucune, `TrainingPlanner.swift:341-350`)
 et progresse ensuite semaine après semaine à partir de la sortie longue
 *planifiée* de la semaine précédente — pas de la sortie réellement courue.
 
@@ -703,11 +723,11 @@ et progresse ensuite semaine après semaine à partir de la sortie longue
 `firstWeekClimbM = 100` m (première semaine) jusqu'au pic
 `peakClimb = min(maximumClimbM, elevationGainM × 0,75)`, plafonné à
 `maximumClimbM = 300` m
-(`TrainingPlanner.swift:290-297,315-316,235`) ; ×0,5 en affûtage ; nul en
+(`TrainingPlanner.swift:304-311,329-330,240`) ; ×0,5 en affûtage ; nul en
 semaine de course (remplacée par un « déverrouillage » de 15 minutes,
 `legOpener`) et pendant la semaine de clôture (voir plus bas).
 
-**Zones de fréquence cardiaque** (`TrainingPlanner.swift:318-320,368-370`) :
+**Zones de fréquence cardiaque** (`TrainingPlanner.swift:332-334,382-384`) :
 
 | Zone | Bornes (% de `hrMax`) |
 |---|---|
