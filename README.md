@@ -169,5 +169,6 @@ les identifiants et jetons vivent hors du dépôt.
 - [x] Spec 3 — écran Séances + traces GPX sur carte MapKit
 - [x] Spec 4 — corrélations santé (Pearson sur 180 j, 5 questions)
 - [x] Release v1.0.0 signée et notarisée
+- [x] Release v1.1.0 signée et notarisée (compagnon iOS + plans d'entraînement)
 - [x] (Optionnel) App compagnon iOS pour supprimer l'export manuel — récepteur Mac + app iOS livrés (serveur, appairage, ingestion, lecture HealthKit, synchro manuelle/arrière-plan) ; validation sur iPhone physique restante
 - [x] Écran Entraînement — objectif de course, plan hebdomadaire (`TrainingPlanner`), rapprochement des séances (`SessionMatcher`), moniteur de charge relatif au plan (`TrainingLoadMonitor`)

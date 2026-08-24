@@ -49,8 +49,8 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: fr.vincentlauriat.healthcheck
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         SWIFT_VERSION: "5.9"
-        MARKETING_VERSION: "1.0.0"
-        CURRENT_PROJECT_VERSION: "1"
+        MARKETING_VERSION: "1.1.0"
+        CURRENT_PROJECT_VERSION: "2"
         MACOSX_DEPLOYMENT_TARGET: "15.0"
         CODE_SIGN_ENTITLEMENTS: HealthCheck/HealthCheck.entitlements
         CODE_SIGN_IDENTITY: ""
