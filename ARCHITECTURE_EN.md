@@ -149,6 +149,19 @@ engines would produce for the same inputs.
   4-week-average) volume and turns it into `LoadAlert`s, in one of two
   regimes (below).
 
+**The session's motive lives in the engine, not the view.** Each
+`PlannedSession` carries a `rationale` distinct from `note`: `note` is
+the instruction (how to run it), `rationale` is why it exists — and it
+depends on both the session kind *and* the week's role, since a long
+run in a peak week and one in a taper week are not justified the same
+way. Only `TrainingPlanner` knows both, so it is the only layer that
+can produce the text. For the same reason, `TrainingPlan` exposes the
+`anchorBaseKm` and `rampFactor` it already computed at anchoring, plus
+a computed `longestPlannedRunKm`, so the training screen can explain
+itself — what the plan ramps from, by how much, and how far its
+longest run falls short of race distance — without recomputing
+anything the engine already knows.
+
 **One chronic-load definition, shared.** `TrainingPlanner.chronicWeeklyKm`
 and `TrainingPlanner.acuteKm` are the single definitions of "chronic"
 and "acute" load in the codebase — `TrainingLoadMonitor` calls them
