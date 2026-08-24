@@ -129,12 +129,22 @@ final class TrainingLoadMonitorTests: XCTestCase {
     func test_assess_withPlan_exceedingTargetByMoreThanAQuarterWarns() {
         let g = goal()
         let comeback = [run("2026-08-18", km: 5.0), run("2026-08-22", km: 2.0), run("2026-08-23", km: 5.6)]
-        let plan = TrainingPlanner.plan(goal: g, history: comeback, hrMax: 190,
-                                        today: date("2026-08-24"), calendar: calendar)
-        let target = plan.weeks.first { $0.role != .currentWeekClosing }!.targetKm
+        // Cible calculée sur l'historique de reprise seul, avant les
+        // sorties en dépassement : `measuredBaseKm` lit strictement avant
+        // le lundi de construction (08-24), donc `overPlan` (08-25, 08-27)
+        // ne peut de toute façon pas influencer cette cible.
+        let planBeforeOverrun = TrainingPlanner.plan(goal: g, history: comeback, hrMax: 190,
+                                                      today: date("2026-08-24"), calendar: calendar)
+        let target = planBeforeOverrun.weeks.first { $0.role != .currentWeekClosing }!.targetKm
         // 1,4 × la cible : dépasse le seuil de +25 %.
         let overPlan = [run("2026-08-25", km: target * 0.8), run("2026-08-27", km: target * 0.6)]
-        let a = TrainingLoadMonitor.assess(history: comeback + overPlan, plan: plan, readiness: nil,
+        // Le plan évalué par `assess` doit être construit sur le même
+        // historique que celui qu'on lui passe — sinon la branche du plan
+        // ne peut jamais voir le dépassement qu'elle est censée détecter.
+        let history = comeback + overPlan
+        let plan = TrainingPlanner.plan(goal: g, history: history, hrMax: 190,
+                                        today: date("2026-08-24"), calendar: calendar)
+        let a = TrainingLoadMonitor.assess(history: history, plan: plan, readiness: nil,
                                            today: date("2026-08-28"), calendar: calendar)
         XCTAssertTrue(a.alerts.contains { $0.severity == .warning && $0.message.contains("dépassez le plan") })
     }

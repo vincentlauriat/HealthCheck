@@ -252,6 +252,33 @@ final class TrainingPlannerTests: XCTestCase {
                        busy.weeks.map { w in w.sessions.first { $0.kind == .longRun }?.targetKm })
     }
 
+    /// **Non-rattrapage, moitié haute.** Une semaine dépassée ne doit pas
+    /// remonter la cible suivante : `base` est plafonné par `target_{i-1}`.
+    /// Sans ce `min`, la charge mesurée (~30 km courus en semaine 1) ferait
+    /// grimper la cible de la semaine 2 jusqu'au plafond (25,50 km) au lieu
+    /// de rester bornée à 16,66 km.
+    func test_plan_overshotWeek_doesNotRaiseTheNextTarget() {
+        let g = goal()  // créé dimanche 2026-08-23 → semaine 1 le 08-24, semaine 2 le 08-31
+        let history = comebackHistory + [run("2026-08-25", km: 30.0)]
+        let plan = TrainingPlanner.plan(goal: g, history: history, hrMax: 190,
+                                        today: date("2026-09-02"), calendar: calendar)
+        let week2 = plan.weeks.first { $0.monday == calendar.startOfDay(for: date("2026-08-31")) }
+        XCTAssertEqual(week2?.targetKm ?? -1, 16.66, accuracy: 0.05)
+    }
+
+    /// **Non-rattrapage, moitié basse.** Une semaine sautée doit re-baser la
+    /// cible suivante vers le bas : `base` relit la charge mesurée plutôt
+    /// que de recopier `target_{i-1}`. Si `base` restait simplement la
+    /// cible précédente, la cible de la semaine 2 resterait à 16,66 km au
+    /// lieu de retomber à 3,62 km.
+    func test_plan_skippedWeek_rebasesTheNextTargetDown() {
+        let g = goal()  // comebackHistory ne contient aucune sortie du 08-24 au 08-30
+        let plan = TrainingPlanner.plan(goal: g, history: comebackHistory, hrMax: 190,
+                                        today: date("2026-09-02"), calendar: calendar)
+        let week2 = plan.weeks.first { $0.monday == calendar.startOfDay(for: date("2026-08-31")) }
+        XCTAssertEqual(week2?.targetKm ?? -1, 3.62, accuracy: 0.05)
+    }
+
     /// La semaine de clôture n'appartient qu'à la semaine de création :
     /// passée celle-ci, il n'y a plus rien à clore.
     func test_plan_closingWeek_disappearsOnceTheCreationWeekIsOver() {
