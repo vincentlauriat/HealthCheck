@@ -426,6 +426,24 @@ final class TrainingLoadMonitorTests: XCTestCase {
         XCTAssertFalse(a.alerts.contains { $0.message.contains("Plan en repli") })
     }
 
+    /// L'effondrement et le retard sont indépendants : une semaine issue
+    /// d'un arc effondré peut aussi être en retard, et les deux méritent
+    /// d'être dites. Enchaîner l'une sur l'autre (`else if`) en masquerait
+    /// une — c'est ce que ce test interdit.
+    func test_assess_collapseAndBehind_bothAppear() {
+        let g = goal()
+        // Samedi 09-05 : 2 jours restants (le retard peut se déclencher) et
+        // rien couru de la semaine.
+        let today = date("2026-09-05")
+        let plan = TrainingPlanner.plan(goal: g, history: comebackHistory, hrMax: 190,
+                                        today: today, calendar: calendar)
+        let a = TrainingLoadMonitor.assess(history: comebackHistory, plan: plan, readiness: nil,
+                                           today: today, calendar: calendar)
+
+        XCTAssertTrue(a.alerts.contains { $0.message.contains("Plan en repli") })
+        XCTAssertTrue(a.alerts.contains { $0.message.contains("Semaine en retard") })
+    }
+
     // MARK: - Frontière des 28 jours de weeksWithARun
 
     /// Une sortie exactement 28 jours avant `today` compte (fenêtre
