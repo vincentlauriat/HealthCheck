@@ -2,7 +2,7 @@
 
 ![Release](https://img.shields.io/github/v/release/vincentlauriat/HealthCheck)
 ![Platform](https://img.shields.io/badge/platform-macOS%2015%2B-blue)
-![Tests](https://img.shields.io/badge/tests-194%2F194-brightgreen)
+![Tests](https://img.shields.io/badge/tests-197%2F197-brightgreen)
 ![License](https://img.shields.io/badge/license-MIT-green)
 
 Application macOS native (SwiftUI) d'analyse de santé personnelle :
@@ -113,7 +113,7 @@ xcodebuild -scheme HealthCheck -destination 'platform=macOS' test
 xcodebuild -scheme HealthCheckCompanion -destination 'platform=iOS Simulator,name=iPhone 17' test
 ```
 
-194 tests côté Mac, tous sur les moteurs purs (scores, zones,
+197 tests côté Mac, tous sur les moteurs purs (scores, zones,
 corrélations, mapping Withings, parsing GPX, dédoublonnage, plan
 d'entraînement/rapprochement des séances/moniteur de charge), le store
 et la synchro compagnon (appairage, routeur HTTP, ingestion
@@ -154,7 +154,7 @@ HealthCheck/
 │   ├── ViewModels/      # Un par section, @MainActor, chargement unique
 │   └── Views/           # SwiftUI + Swift Charts + Sankey maison
 ├── HealthCheckShared/    # DTO d'échange + protocole compagnon, partagés Mac/iOS
-├── HealthCheckTests/    # 194 tests (moteurs + store + mapping + synchro compagnon + entraînement)
+├── HealthCheckTests/    # 197 tests (moteurs + store + mapping + synchro compagnon + entraînement)
 ├── Companion/            # App iOS (HealthKit, synchro, appairage, UI)
 ├── CompanionTests/       # 41 tests (mapping HealthKit, ancres, synchro, view model)
 ├── Scripts/release.sh   # Release signée + notarisée
