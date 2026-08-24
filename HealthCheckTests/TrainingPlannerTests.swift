@@ -164,6 +164,16 @@ final class TrainingPlannerTests: XCTestCase {
         let planned = plan.weeks.filter { $0.role != .currentWeekClosing }
         XCTAssertTrue(planned.allSatisfy { $0.role == .taper || $0.role == .raceWeek })
         XCTAssertTrue(planned.allSatisfy { $0.targetKm <= 12.6 * 0.75 + 0.001 })
+
+        // La borne `<=` ci-dessus ne suffit pas à distinguer 0.75 de 0.5 —
+        // les deux la respectent. La semaine `.raceWeek` de cette branche
+        // doit utiliser exactement `taperFactor` (0.75), pas
+        // `raceWeekFactor` (0.5) : il n'y a jamais eu de semaine de pic
+        // dans cette branche de maintien, donc rien dont `raceWeekFactor`
+        // pourrait prendre la moitié (TrainingPlanner.swift:244-265).
+        let raceWeek = planned.first { $0.role == .raceWeek }
+        XCTAssertNotNil(raceWeek)
+        XCTAssertEqual(raceWeek?.targetKm ?? -1, 12.6 * TrainingPlanner.taperFactor, accuracy: 0.001)
     }
 
     func test_plan_isDeterministic() {
