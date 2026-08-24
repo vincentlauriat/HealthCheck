@@ -1,0 +1,17 @@
+<?xml version='1.0' encoding='utf-8'?>
+<rss xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle" version="2.0">
+    <channel>
+        <title>HealthCheck</title>
+        <link>https://raw.githubusercontent.com/vincentlauriat/HealthCheck/main/appcast.xml</link>
+        <description>Mises à jour de HealthCheck</description>
+        <language>fr</language>
+        <item>
+            <title>1.2.0</title>
+            <pubDate>Mon, 24 Aug 2026 12:46:11 +0000</pubDate>
+            <sparkle:version>3</sparkle:version>
+            <sparkle:shortVersionString>1.2.0</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
+            <enclosure url="https://github.com/vincentlauriat/HealthCheck/releases/download/v1.2.0/HealthCheck-1.2.0.dmg" sparkle:edSignature="aemSNwhALS5Fow9Z0VciUS3YHIYPEl8u8t00Sh9VJV5u83J1widTWWA81gN4Wq3cbNO3jI0mPo70Wu9l1f2uBg==" length="7822469" type="application/octet-stream" />
+        </item>
+    </channel>
+</rss>
