@@ -78,10 +78,8 @@ enum TrainingLoadMonitor {
                     message: "Plan en repli : cette semaine ne vise plus que "
                         + formatKm(week.targetKm) + " km contre "
                         + formatKm(plan.weeks[weekIndex - 1].targetKm)
-                        + " km la semaine précédente — une semaine largement sous-exécutée a "
-                        + "rebasé tout l'arc vers le bas. Supprimez puis recréez l'objectif "
-                        + "pour le réancrer sur votre charge actuelle : la première semaine "
-                        + "d'un nouveau plan ne part jamais d'une base inférieure à "
+                        + " km la précédente. Recréez l'objectif pour le réancrer — "
+                        + "un nouveau plan ne repart jamais sous "
                         + formatKm(TrainingPlanner.minimumStartVolumeKm) + " km."))
             }
             if let readiness, readiness.value < lowReadinessScore,

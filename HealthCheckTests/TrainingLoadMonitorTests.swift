@@ -346,7 +346,7 @@ final class TrainingLoadMonitorTests: XCTestCase {
         XCTAssertTrue(alert?.message.contains("3,6 km") ?? false, alert?.message ?? "")
         XCTAssertTrue(alert?.message.contains("14,5 km") ?? false, alert?.message ?? "")
         // Et la sortie de secours est nommée.
-        XCTAssertTrue(alert?.message.contains("recréez l'objectif") ?? false, alert?.message ?? "")
+        XCTAssertTrue(alert?.message.contains("Recréez l'objectif") ?? false, alert?.message ?? "")
     }
 
     /// Un plan suivi ne doit jamais lever l'alerte : la chaîne d'or monte
@@ -369,20 +369,18 @@ final class TrainingLoadMonitorTests: XCTestCase {
         XCTAssertFalse(a.alerts.contains { $0.message.contains("Plan en repli") })
     }
 
-    /// Le relâchement baisse **par construction** (affûtage = pic × 0,75,
-    /// semaine de course = pic × 0,5) : ces baisses ne sont pas des
-    /// effondrements. Ce test parcourt les deux semaines et vérifie
-    /// qu'aucune ne lève l'alerte.
-    ///
-    /// Note de falsification (rapportée telle quelle) : au seuil retenu de
-    /// 0,6, retirer la restriction de rôle ne fait **pas** échouer ce test,
-    /// parce que les rapports du relâchement (0,75 puis 0,5/0,75 ≈ 0,67)
-    /// restent au-dessus de 0,6 quel que soit le fixture — c'est
-    /// structurel, pas un hasard de ce cas. La restriction de rôle est donc
-    /// une défense en profondeur : elle devient portante dès que
-    /// `collapseFactor` monte au-dessus de 0,67. C'est cette combinaison
-    /// (rôle retiré + seuil à 0,8) qui fait échouer ce test.
-    func test_assess_taperWeeks_areNotCollapses() {
+    /// **Ce test ne prouve pas que la restriction de rôle protège quoi que
+    /// ce soit** — il vérifie seulement qu'un plan suivi jusqu'au bout reste
+    /// silencieux sur l'affûtage et la semaine de course, bout en bout via
+    /// `assess`. Sur le cas d'or, les rapports du relâchement (affûtage =
+    /// pic × 0,75, semaine de course = pic × 0,5, soit ≈ 0,67 d'une semaine
+    /// à l'autre) restent tous deux au-dessus de `collapseFactor` (0,6) :
+    /// retirer la restriction de rôle dans `hasCollapsed` ne fait **pas**
+    /// échouer ce test, quel que soit le fixture — c'est structurel, pas un
+    /// hasard de ce cas précis. La restriction de rôle elle-même est testée
+    /// directement par `test_hasCollapsed_ignoresTaperDropBelowThreshold`,
+    /// avec une paire dont le rapport franchit réellement le seuil.
+    func test_assess_followedPlan_taperAndRaceWeek_endToEndStaysQuiet() {
         let g = goal()
         let executed = comebackHistory
             + [run("2026-08-25", km: 7.245), run("2026-08-27", km: 7.245)]      // 14,49
@@ -398,6 +396,20 @@ final class TrainingLoadMonitorTests: XCTestCase {
                                                today: today, calendar: calendar)
             XCTAssertFalse(a.alerts.contains { $0.message.contains("Plan en repli") }, day)
         }
+    }
+
+    /// Test direct de la restriction de rôle, avec une paire construite à la
+    /// main dont le rapport franchit réellement `collapseFactor` (0,6) — ce
+    /// qu'aucune paire affûtage/course issue de `TrainingPlanner` ne fait
+    /// jamais (voir le test précédent). `.taper` à 5 km contre `.peak` à
+    /// 19,16 km donne un rapport de 0,26 : sans le garde, `hasCollapsed`
+    /// répondrait `true`.
+    func test_hasCollapsed_ignoresTaperDropBelowThreshold() {
+        let peak = PlannedWeek(monday: date("2026-09-07"), role: .peak, targetKm: 19.16, sessions: [])
+        let taper = PlannedWeek(monday: date("2026-09-14"), role: .taper, targetKm: 5.0, sessions: [])
+        XCTAssertLessThan(taper.targetKm, peak.targetKm * TrainingLoadMonitor.collapseFactor,
+                          "le fixture doit franchir le seuil pour être un test utile")
+        XCTAssertFalse(TrainingLoadMonitor.hasCollapsed(current: taper, previous: peak))
     }
 
     /// Une semaine de clôture porte une cible nulle : elle ne doit lever
