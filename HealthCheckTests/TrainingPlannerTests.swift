@@ -172,6 +172,124 @@ final class TrainingPlannerTests: XCTestCase {
         XCTAssertEqual(plan.weeks[1].targetKm, 14.49, accuracy: 0.05)
     }
 
+    // MARK: - Ancrage à la création (spec §5.2bis)
+
+    /// **C1 — la cible ne bouge pas pendant la semaine.** Le plan est
+    /// reconstruit chaque jour de la semaine avec les sorties déjà courues
+    /// ajoutées à l'historique, exactement comme le fait l'app à chaque
+    /// affichage. Avant l'ancrage, la cible de la semaine en cours courait
+    /// après le réalisé : 14,49 le dimanche, puis 22,77 / 18,05 / 24,55 /
+    /// 25,50 les jours suivants — le plan bougeait sans action utilisateur.
+    func test_plan_currentWeekTarget_doesNotMoveAsTheWeekIsRun() {
+        let g = goal()  // créé dimanche 2026-08-23 → première semaine le 08-24
+        let executed = [run("2026-08-24", km: 8.1), run("2026-08-26", km: 3.6),
+                        run("2026-08-28", km: 2.8)]
+        let firstMonday = calendar.startOfDay(for: date("2026-08-24"))
+
+        for offset in 0...6 {
+            let day = dayString(from: "2026-08-24", offsetDays: offset)
+            let evening = date(day, "21:00")
+            let history = comebackHistory + executed.filter { $0.startDate <= evening }
+            let plan = TrainingPlanner.plan(goal: g, history: history, hrMax: 190,
+                                            today: evening, calendar: calendar)
+            let week = plan.weeks.first { $0.monday == firstMonday }
+            XCTAssertNotNil(week, "la semaine du 08-24 doit rester dans le plan le \(day)")
+            XCTAssertEqual(week?.targetKm ?? -1, 14.49, accuracy: 0.05,
+                           "la cible de la semaine en cours a bougé le \(day)")
+        }
+    }
+
+    /// **C3 — l'affûtage survit.** Deux semaines avant la course, un plan
+    /// créé des semaines plus tôt doit toujours porter un rôle `.peak` et
+    /// une semaine de course à ~9,58 km. Avant l'ancrage, `mondays` se
+    /// recalculait depuis `today`, ne comptait plus que deux semaines, et
+    /// la branche d'entretien produisait 14,4 km la semaine de la course —
+    /// 51 % plus lourd.
+    func test_plan_twoWeeksBeforeTheRace_stillTapersFromTheOriginalPeak() {
+        let g = goal()  // créé 2026-08-23, course 2026-09-27
+        // Le coureur a exécuté le plan : 14,49 puis 16,66 puis 19,16.
+        let history = comebackHistory + [
+            run("2026-08-26", km: 14.49), run("2026-09-02", km: 16.66), run("2026-09-09", km: 19.16)
+        ]
+        let plan = TrainingPlanner.plan(goal: g, history: history, hrMax: 190,
+                                        today: date("2026-09-14"), calendar: calendar)
+
+        XCTAssertFalse(plan.isMaintenance)
+        XCTAssertEqual(plan.weeks.map(\.role), [.build, .build, .peak, .taper, .raceWeek])
+        XCTAssertEqual(plan.weeks.first { $0.role == .peak }?.targetKm ?? 0, 19.16, accuracy: 0.05)
+        XCTAssertEqual(plan.weeks.last?.targetKm ?? 0, 9.58, accuracy: 0.05)
+    }
+
+    /// La chaîne dorée doit sortir du **repliage** (semaines mesurées), pas
+    /// seulement de la projection : pour un coureur qui exécute le plan à la
+    /// lettre, les trois premières cibles restent 14,49 / 16,66 / 19,16 —
+    /// la semaine 2 valant `min(14,49 ; 14,49) × 1,15`. Si le repliage ne
+    /// reproduit pas ces nombres, le plafond est mal implémenté.
+    func test_plan_foldReproducesTheGoldenChainForARunnerOnPlan() {
+        let g = goal()
+        let history = comebackHistory + [run("2026-08-26", km: 14.49), run("2026-09-02", km: 16.66)]
+        let plan = TrainingPlanner.plan(goal: g, history: history, hrMax: 190,
+                                        today: date("2026-09-07"), calendar: calendar)
+        for (got, want) in zip(plan.weeks.map(\.targetKm), [14.49, 16.66, 19.16, 14.37, 9.58]) {
+            XCTAssertEqual(got, want, accuracy: 0.05)
+        }
+    }
+
+    /// Les semaines à venir ne lisent aucune charge : sortir 30 km
+    /// aujourd'hui ne doit rien changer à l'aperçu « Semaines suivantes ».
+    func test_plan_futureWeeks_doNotMoveWhenTodaysLoadChanges() {
+        let g = goal()
+        let today = date("2026-08-25")  // mardi de la première semaine
+        let quiet = TrainingPlanner.plan(goal: g, history: comebackHistory, hrMax: 190,
+                                         today: today, calendar: calendar)
+        let busy = TrainingPlanner.plan(goal: g, history: comebackHistory + [run("2026-08-25", km: 30)],
+                                        hrMax: 190, today: today, calendar: calendar)
+        XCTAssertEqual(quiet.weeks.map(\.targetKm), busy.weeks.map(\.targetKm))
+        XCTAssertEqual(quiet.weeks.map { w in w.sessions.first { $0.kind == .longRun }?.targetKm },
+                       busy.weeks.map { w in w.sessions.first { $0.kind == .longRun }?.targetKm })
+    }
+
+    /// La semaine de clôture n'appartient qu'à la semaine de création :
+    /// passée celle-ci, il n'y a plus rien à clore.
+    func test_plan_closingWeek_disappearsOnceTheCreationWeekIsOver() {
+        let g = goal()  // créé dimanche 2026-08-23
+        let during = TrainingPlanner.plan(goal: g, history: comebackHistory, hrMax: 190,
+                                          today: date("2026-08-23"), calendar: calendar)
+        XCTAssertEqual(during.weeks.first?.role, .currentWeekClosing)
+
+        let after = TrainingPlanner.plan(goal: g, history: comebackHistory, hrMax: 190,
+                                         today: date("2026-08-24"), calendar: calendar)
+        XCTAssertFalse(after.weeks.contains { $0.role == .currentWeekClosing })
+        XCTAssertEqual(after.weeks.first?.monday, calendar.startOfDay(for: date("2026-08-24")))
+    }
+
+    /// **I2 — objectif créé le samedi qui précède sa propre course.**
+    /// Décaler la première semaine de construction au lundi suivant
+    /// sauterait la course et rendrait un plan vide ; on garde alors la
+    /// semaine de création.
+    func test_plan_goalCreatedTheSaturdayBeforeItsRace_stillProducesTheRaceWeek() {
+        let g = goal("2026-09-27", createdAt: "2026-09-26")  // samedi, course le lendemain
+        let plan = TrainingPlanner.plan(goal: g, history: comebackHistory, hrMax: 190,
+                                        today: date("2026-09-26"), calendar: calendar)
+
+        XCTAssertFalse(plan.weeks.isEmpty, "un plan ne doit jamais être vide pour une course à venir")
+        XCTAssertEqual(plan.weeks.map(\.role), [.raceWeek])
+        XCTAssertTrue(plan.isMaintenance)
+        XCTAssertTrue(plan.weeks[0].sessions.contains { $0.kind == .legOpener })
+    }
+
+    func test_firstBuildMonday_isReadFromCreationNotFromToday() {
+        // Créé un dimanche : la rampe démarre le lundi suivant, et cette
+        // réponse ne dépend d'aucune date « aujourd'hui ».
+        XCTAssertEqual(TrainingPlanner.firstBuildMonday(goal: goal(), calendar: calendar),
+                       calendar.startOfDay(for: date("2026-08-24")))
+        // Créé un vendredi : trois jours restants, la semaine de création
+        // reçoit les cibles.
+        XCTAssertEqual(TrainingPlanner.firstBuildMonday(goal: goal(createdAt: "2026-08-21"),
+                                                        calendar: calendar),
+                       calendar.startOfDay(for: date("2026-08-17")))
+    }
+
     // MARK: - Séances
 
     func plannedWeeks(_ today: String = "2026-08-23") -> [PlannedWeek] {

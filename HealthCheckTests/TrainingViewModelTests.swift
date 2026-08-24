@@ -117,6 +117,54 @@ final class TrainingViewModelTests: XCTestCase {
         XCTAssertNotEqual(vmWith.plan, vmWithout.plan)
     }
 
+    /// La fenêtre d'historique est dérivée de l'objectif (§5.2bis), pas
+    /// d'une constante : le repliage des cibles remonte à 28 jours avant la
+    /// première semaine de construction. Ce fixture est le seul qui
+    /// discrimine — l'objectif est créé le lundi 2026-04-20, soit 126 jours
+    /// avant `today`, donc `firstBuildMonday − 28 j` (2026-03-23) tombe très
+    /// au-delà de la fenêtre fixe de 90 jours (2026-05-26). L'assertion
+    /// porte sur `weeks[0]` : sur un plan aussi long, les semaines mesurées
+    /// suivantes valent 0 des deux côtés et ne distinguent rien.
+    func test_load_historyWindow_reachesBackBeforeTheFirstBuildWeek() throws {
+        let today = date("2026-08-24")
+        let g = goal("2026-09-27", createdAt: "2026-04-20")
+        let store = try HealthStore(path: ":memory:")
+        try store.saveRaceGoal(g)
+        // 2026-04-05 : dans les 28 jours qui précèdent le 2026-04-20, mais
+        // hors de la fenêtre de 90 jours qui se termine aujourd'hui.
+        try store.insertWorkouts([run("2026-04-05", km: 60.0)])
+        let vm = TrainingViewModel(store: store, calendar: calendar, now: { today })
+
+        try vm.load()
+
+        // 60 km sur les 28 jours → chronique 15 km/sem → 15 × 1,15 = 17,25.
+        // Avec 90 jours fixes la sortie est invisible et la première semaine
+        // retombe sur le plancher : 10 × 1,15 = 11,5.
+        XCTAssertEqual(vm.plan?.weeks.first?.targetKm ?? 0, 17.25, accuracy: 0.05)
+    }
+
+    /// Un second objectif futur était chargé puis silencieusement jeté :
+    /// `upcomingGoals` le publie pour que la vue puisse le nommer.
+    func test_load_publishesEveryUpcomingGoalEarliestFirst() throws {
+        let store = try HealthStore(path: ":memory:")
+        try store.saveRaceGoal(goal("2026-09-27"))
+        let second = RaceGoal(id: "g2", name: "Marathon de Paris",
+                              raceDate: date("2026-11-08", "10:00"), distanceKm: 42,
+                              elevationGainM: 200, objective: .finishComfortable,
+                              createdAt: date("2026-08-01"))
+        try store.saveRaceGoal(second)
+        // Course déjà passée : elle ne doit pas apparaître.
+        try store.saveRaceGoal(RaceGoal(id: "g0", name: "Ancienne", raceDate: date("2026-07-01", "10:00"),
+                                        distanceKm: 10, elevationGainM: 0,
+                                        objective: .finishComfortable, createdAt: date("2026-06-01")))
+        let vm = TrainingViewModel(store: store, calendar: calendar, now: { self.date("2026-08-23") })
+
+        try vm.load()
+
+        XCTAssertEqual(vm.upcomingGoals.map(\.id), ["g1", "g2"])
+        XCTAssertEqual(vm.goal?.id, "g1")
+    }
+
     func test_load_pastGoalOnly_isEmptyState() throws {
         let store = try HealthStore(path: ":memory:")
         try store.saveRaceGoal(goal("2026-08-01"))

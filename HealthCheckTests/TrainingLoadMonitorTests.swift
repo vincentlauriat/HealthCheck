@@ -275,6 +275,36 @@ final class TrainingLoadMonitorTests: XCTestCase {
         XCTAssertTrue(a.alerts.isEmpty, "un plan actif ne doit jamais laisser le ratio brut alerter")
     }
 
+    // MARK: - Ancrage : l'alerte de surdosage doit rester atteignable
+
+    /// **C2 — un coureur qui fait le double du volume prescrit doit être
+    /// alerté.** C'est la raison d'être de la fonctionnalité (§1 : le
+    /// sous-entraînement coûte du confort, le surentraînement coûte la
+    /// course). Le plan et l'évaluation lisent ici le **même** tableau
+    /// d'historique — c'est ce que fait `TrainingViewModel.load`, et c'est
+    /// précisément ce que les tests existants ne faisaient pas. Avant
+    /// l'ancrage, la cible courait après le réalisé (elle montait jusqu'au
+    /// plafond de 25,5 km), et `réalisé > cible × 1,25` devenait
+    /// arithmétiquement impossible : aucune alerte, jamais.
+    func test_assess_withPlan_twiceThePrescribedVolume_stillWarns() {
+        let g = goal()  // créé dimanche 2026-08-23 → première semaine le 08-24
+        // Deux fois la cible de 14,49 km, courue dans la semaine du 08-24.
+        let overshoot = [run("2026-08-25", km: 14.49), run("2026-08-27", km: 14.49)]
+        let history = comebackHistory + overshoot
+        let today = date("2026-08-28")
+
+        let plan = TrainingPlanner.plan(goal: g, history: history, hrMax: 190,
+                                        today: today, calendar: calendar)
+        let week = plan.weeks.first { $0.monday == TrainingPlanner.monday(of: today, calendar: calendar) }
+        XCTAssertEqual(week?.targetKm ?? -1, 14.49, accuracy: 0.05,
+                       "la cible de la semaine ne doit pas avoir suivi le réalisé")
+
+        let a = TrainingLoadMonitor.assess(history: history, plan: plan, readiness: nil,
+                                           today: today, calendar: calendar)
+        XCTAssertTrue(a.alerts.contains { $0.severity == .warning && $0.message.contains("dépassez le plan") },
+                      "2× le volume prescrit doit déclencher l'avertissement de surdosage")
+    }
+
     // MARK: - Frontière des 28 jours de weeksWithARun
 
     /// Une sortie exactement 28 jours avant `today` compte (fenêtre
