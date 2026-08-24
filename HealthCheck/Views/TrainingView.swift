@@ -308,6 +308,12 @@ struct TrainingView: View {
                              systemImage: alert.severity == .warning ? "exclamationmark.triangle.fill" : "info.circle.fill")
                             .font(.callout)
                             .foregroundStyle(alert.severity == .warning ? Color.orange : Color.secondary)
+                            // L'alerte d'effondrement tient sur deux phrases —
+                            // deux cibles chiffrées et la sortie de secours —
+                            // là où les autres en font une : elle doit
+                            // s'enrouler, jamais se tronquer.
+                            .multilineTextAlignment(.leading)
+                            .fixedSize(horizontal: false, vertical: true)
                     }
                 }
                 .padding(14)
