@@ -387,4 +387,71 @@ final class TrainingPlannerTests: XCTestCase {
         XCTAssertEqual(long.hrRange.lowerBound, 190 * 0.70, accuracy: 0.5)
         XCTAssertEqual(long.hrRange.upperBound, 190 * 0.80, accuracy: 0.5)
     }
+
+    // MARK: - Pédagogie (rationale, ancrage exposé, plus longue sortie)
+
+    /// Une sortie longue en semaine de pic et une en affûtage ne se
+    /// justifient pas de la même façon — `rationale` doit distinguer les
+    /// deux, avec le texte exact attendu par la vue.
+    func test_sessions_longRun_rationaleDiffersBetweenPeakAndTaper() {
+        let peak = TrainingPlanner.sessions(role: .peak, targetKm: 20, previousLongKm: 10,
+                                            climbTargetM: 100, goal: goal(), hrMax: 190)
+        let taper = TrainingPlanner.sessions(role: .taper, targetKm: 10, previousLongKm: 10,
+                                             climbTargetM: 50, goal: goal(), hrMax: 190)
+        let peakLong = peak.first { $0.kind == .longRun }!
+        let taperLong = taper.first { $0.kind == .longRun }!
+        XCTAssertNotEqual(peakLong.rationale, taperLong.rationale)
+        XCTAssertEqual(peakLong.rationale,
+            "Elle construit votre distance : plus de capillaires, plus de mitochondries, une meilleure utilisation des graisses comme carburant. C'est 60 % du volume de la semaine — la séance à ne jamais sacrifier.")
+        XCTAssertEqual(taperLong.rationale,
+            "Allégée volontairement. À ce stade, entretenir suffit : ce que vous gagnez maintenant, c'est de la fraîcheur, pas de la forme.")
+    }
+
+    /// Garde contre un genre de séance ajouté plus tard sans motif : chaque
+    /// séance de chaque semaine d'un plan complet doit porter un
+    /// `rationale` non vide. Le compte de séances vérifiées est asserté
+    /// pour empêcher un test qui n'itérerait rien de passer à vide.
+    func test_sessions_everySessionInEveryWeek_hasNonEmptyRationale() {
+        let plan = TrainingPlanner.plan(goal: goal(), history: comebackHistory, hrMax: 190,
+                                        today: date("2026-08-23"), calendar: calendar)
+        var checkedCount = 0
+        for week in plan.weeks {
+            for session in week.sessions {
+                checkedCount += 1
+                XCTAssertFalse(session.rationale.isEmpty,
+                               "\(session.kind) dans la semaine du \(week.monday) a un rationale vide")
+            }
+        }
+        // Le plan golden couvre build/build/peak/taper/raceWeek : s'assurer
+        // qu'on a bien inspecté des séances réelles, pas une liste vide.
+        XCTAssertGreaterThan(checkedCount, 10)
+    }
+
+    /// `anchorBaseKm`/`rampFactor` exposés sur `TrainingPlan` doivent
+    /// refléter exactement la base mesurée à l'ancrage : ~12,6 km/semaine
+    /// et le facteur de reprise pour un coureur qui reprend, 21 km/semaine
+    /// et le facteur établi pour un coureur déjà entraîné.
+    func test_plan_anchorBaseKmAndRampFactor_matchTheMeasuredBase() {
+        let comebackPlan = TrainingPlanner.plan(goal: goal(), history: comebackHistory, hrMax: 190,
+                                                 today: date("2026-08-23"), calendar: calendar)
+        XCTAssertEqual(comebackPlan.anchorBaseKm, 12.6, accuracy: 0.05)
+        XCTAssertEqual(comebackPlan.rampFactor, TrainingPlanner.comebackRampFactor, accuracy: 0.001)
+
+        let establishedPlan = TrainingPlanner.plan(goal: goal(), history: trainedHistory(), hrMax: 190,
+                                                    today: date("2026-08-23"), calendar: calendar)
+        XCTAssertEqual(establishedPlan.anchorBaseKm, 21.0, accuracy: 0.05)
+        XCTAssertEqual(establishedPlan.rampFactor, TrainingPlanner.steadyRampFactor, accuracy: 0.001)
+    }
+
+    /// `longestPlannedRunKm` doit être le maximum réel des sorties longues
+    /// du plan, pas une valeur recalculée séparément — donc égal à la
+    /// sortie longue de la semaine de pic sur la chaîne dorée.
+    func test_longestPlannedRunKm_equalsThePeakWeeksLongRun() {
+        let plan = TrainingPlanner.plan(goal: goal(), history: comebackHistory, hrMax: 190,
+                                        today: date("2026-08-23"), calendar: calendar)
+        let peakLong = plan.weeks.first { $0.role == .peak }?.sessions.first { $0.kind == .longRun }?.targetKm
+        XCTAssertNotNil(peakLong)
+        XCTAssertEqual(plan.longestPlannedRunKm, peakLong!, accuracy: 0.001)
+        XCTAssertEqual(plan.longestPlannedRunKm, 11.5, accuracy: 0.05)
+    }
 }
