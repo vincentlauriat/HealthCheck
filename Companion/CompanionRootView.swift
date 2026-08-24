@@ -4,12 +4,14 @@ import SwiftUI
 struct CompanionRootView: View {
     @ObservedObject var viewModel: CompanionViewModel
     @State private var code = ""
+    @State private var showUnpairConfirmation = false
 
     var body: some View {
         NavigationStack {
             Form {
                 if viewModel.isPaired {
                     syncSection
+                    unpairSection
                 } else {
                     pairingSection
                 }
@@ -21,6 +23,31 @@ struct CompanionRootView: View {
                 }
             }
             .navigationTitle("HealthCheck")
+            // Attaché au Form plutôt qu'à unpairSection : la section qui
+            // porte le bouton disparaît (isPaired passe à false) dès que
+            // l'action « Oublier » s'exécute, alors qu'elle contiendrait
+            // encore la présentation du dialogue si elle en restait la
+            // propriétaire.
+            .confirmationDialog(
+                "Oublier ce Mac ?",
+                isPresented: $showUnpairConfirmation,
+                titleVisibility: .visible
+            ) {
+                Button("Oublier", role: .destructive) {
+                    viewModel.unpair()
+                }
+                Button("Annuler", role: .cancel) {}
+            } message: {
+                Text("L'appairage sera supprimé et la synchronisation s'arrêtera. Vous devrez saisir un nouveau code depuis votre Mac pour la reprendre.")
+            }
+        }
+    }
+
+    private var unpairSection: some View {
+        Section {
+            Button("Oublier ce Mac", role: .destructive) {
+                showUnpairConfirmation = true
+            }
         }
     }
 
