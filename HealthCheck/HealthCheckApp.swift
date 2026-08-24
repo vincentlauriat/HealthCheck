@@ -19,11 +19,18 @@ struct HealthCheckApp: App {
 
     // Démarre le cycle Sparkle dès le lancement : la recherche périodique en
     // arrière-plan et l'entrée de menu partagent le même updater.
+    //
+    // Absent des builds Debug : un build de développement n'a rien à faire
+    // branché sur le flux de mises à jour public. Il proposerait de remplacer
+    // la copie de travail par la dernière version publiée, et interrogerait
+    // GitHub à chaque lancement pendant le développement.
+    #if !DEBUG
     private let updaterController = SPUStandardUpdaterController(
         startingUpdater: true,
         updaterDelegate: nil,
         userDriverDelegate: nil
     )
+    #endif
 
     init() {
         // Base illisible, disque plein, droits refusés : on ne crashe pas au
@@ -83,9 +90,11 @@ struct HealthCheckApp: App {
         }
         .environment(\.locale, Locale(identifier: "fr_FR"))
         .commands {
+            #if !DEBUG
             CommandGroup(after: .appInfo) {
                 CheckForUpdatesView(updater: updaterController.updater)
             }
+            #endif
         }
     }
 }
