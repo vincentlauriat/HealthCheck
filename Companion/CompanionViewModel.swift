@@ -25,13 +25,15 @@ final class CompanionViewModel: ObservableObject {
     private let engine: Syncing
     private let pairer: Pairing
     private let tokenStore: KeychainTokenStore
+    private let anchors: AnchorStore
     private let defaults: UserDefaults
 
-    init(engine: Syncing, pairer: Pairing, tokenStore: KeychainTokenStore,
+    init(engine: Syncing, pairer: Pairing, tokenStore: KeychainTokenStore, anchors: AnchorStore,
          defaults: UserDefaults = .standard) {
         self.engine = engine
         self.pairer = pairer
         self.tokenStore = tokenStore
+        self.anchors = anchors
         self.defaults = defaults
         self.isPaired = tokenStore.currentToken() != nil
         self.lastSyncDate = defaults.object(forKey: Self.lastSyncKey) as? Date
@@ -39,6 +41,27 @@ final class CompanionViewModel: ObservableObject {
 
     func refreshPairedState() {
         isPaired = tokenStore.currentToken() != nil
+    }
+
+    /// Rompt l'appairage depuis l'app, sans dépendre du Mac. Efface le jeton
+    /// *et* les ancres HealthKit — les deux, pas seulement le jeton.
+    ///
+    /// Les ancres sont des curseurs par type qui mémorisent ce qui a déjà été
+    /// envoyé. Si elles survivaient à un dépairage, un *nouveau* Mac ne
+    /// recevrait que les échantillons créés après la dernière synchro avec
+    /// l'ancien — tout l'historique antérieur manquerait silencieusement,
+    /// sans rien pour le signaler. Se ré-appairer au même Mac ne coûte qu'une
+    /// première synchro plus lente, car son ingestion est idempotente
+    /// (dédupliquée sur `dedupKey`). Correction avant vitesse : toujours
+    /// tout effacer.
+    func unpair() {
+        tokenStore.clear()
+        anchors.clearAll()
+        isPaired = false
+        lastSyncDate = nil
+        lastReportSummary = nil
+        errorMessage = nil
+        defaults.removeObject(forKey: Self.lastSyncKey)
     }
 
     func submitPairingCode(_ code: String) async {

@@ -16,12 +16,13 @@ struct CompanionApp: App {
         let reader = HealthKitReaderLive(store: store)
         let tokenStore = KeychainTokenStore()
         let client = MacClient(endpointProvider: BonjourEndpointProvider(), tokenStore: tokenStore)
-        let engine = SyncEngine(reader: reader, pusher: client, anchors: AnchorStore())
+        let anchors = AnchorStore()
+        let engine = SyncEngine(reader: reader, pusher: client, anchors: anchors)
         self.reader = reader
         self.client = client
         self.engine = engine
         _viewModel = StateObject(wrappedValue: CompanionViewModel(
-            engine: engine, pairer: client, tokenStore: tokenStore))
+            engine: engine, pairer: client, tokenStore: tokenStore, anchors: anchors))
     }
 
     var body: some Scene {
