@@ -8,6 +8,14 @@ packages:
   GRDB:
     url: https://github.com/groue/GRDB.swift
     from: 6.29.0
+  # Épinglé à l'exact, contrairement à GRDB : Package.resolved vit dans le
+  # .xcodeproj, qui est gitignoré et régénéré par XcodeGen. Rien ne fige donc
+  # la résolution pour qui clone le dépôt, et c'est la seule dépendance dont le
+  # rôle est de télécharger et d'installer du code exécutable sur la machine de
+  # l'utilisateur. Une borne haute floue y vaut une dépendance non auditée.
+  Sparkle:
+    url: https://github.com/sparkle-project/Sparkle
+    exactVersion: 2.9.6
 
 schemes:
   HealthCheck:
@@ -43,14 +51,16 @@ targets:
     dependencies:
       - package: GRDB
         product: GRDB
+      - package: Sparkle
+        product: Sparkle
     settings:
       base:
         PRODUCT_NAME: HealthCheck
         PRODUCT_BUNDLE_IDENTIFIER: fr.vincentlauriat.healthcheck
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         SWIFT_VERSION: "5.9"
-        MARKETING_VERSION: "1.1.0"
-        CURRENT_PROJECT_VERSION: "2"
+        MARKETING_VERSION: "1.2.0"
+        CURRENT_PROJECT_VERSION: "3"
         MACOSX_DEPLOYMENT_TARGET: "15.0"
         CODE_SIGN_ENTITLEMENTS: HealthCheck/HealthCheck.entitlements
         CODE_SIGN_IDENTITY: ""
@@ -67,6 +77,9 @@ targets:
         CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
         LSMinimumSystemVersion: "15.0"
         NSHumanReadableCopyright: ""
+        SUFeedURL: https://raw.githubusercontent.com/vincentlauriat/HealthCheck/main/appcast.xml
+        SUPublicEDKey: 3Ej5k2vC6CalsUx/FHSk5ATejzdSOqZCPi0A0VpiJ40=
+        SUEnableInstallerLauncherService: true
 
   HealthCheckTests:
     type: bundle.unit-test

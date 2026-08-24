@@ -10,5 +10,16 @@
     <true/>
     <key>com.apple.security.network.server</key>
     <true/>
+    <!-- Sparkle : le service d'installation et le launcher XPC vivent hors du
+         bac à sable. Les noms sont écrits en dur et non via
+         $(PRODUCT_BUNDLE_IDENTIFIER) : Scripts/release.sh signe avec ce fichier
+         source tel quel (le build tourne en CODE_SIGNING_ALLOWED=NO), donc
+         aucune substitution de variable n'a lieu et la variable partirait
+         littéralement dans le binaire signé. -->
+    <key>com.apple.security.temporary-exception.mach-lookup.global-name</key>
+    <array>
+        <string>fr.vincentlauriat.healthcheck-spks</string>
+        <string>fr.vincentlauriat.healthcheck-spki</string>
+    </array>
 </dict>
 </plist>
