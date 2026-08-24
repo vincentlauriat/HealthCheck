@@ -159,6 +159,19 @@ pour les mêmes entrées.
   le volume chronique (28 jours, moyenne sur 4 semaines) et en tire des
   `LoadAlert`, selon l'un de deux régimes (ci-dessous).
 
+**Le motif de la séance vit dans le moteur, pas dans la vue.** Chaque
+`PlannedSession` porte un `rationale` distinct de `note` : `note` est
+l'instruction (comment la faire), `rationale` est le pourquoi — et il
+dépend à la fois du genre de séance *et* du rôle de la semaine, car une
+sortie longue en semaine de pic et une en affûtage ne se justifient pas
+de la même façon. Seul `TrainingPlanner` connaît les deux, donc seul
+lui peut produire ce texte. Pour la même raison, `TrainingPlan` expose
+`anchorBaseKm` et `rampFactor`, déjà calculés à l'ancrage, ainsi qu'un
+`longestPlannedRunKm` calculé, pour que l'écran d'entraînement puisse
+s'expliquer lui-même — d'où part le plan, de combien il monte, et à
+quel point sa plus longue sortie reste en-deçà de la distance de
+course — sans rien recalculer que le moteur sait déjà.
+
 **Une seule définition de la charge chronique, partagée.**
 `TrainingPlanner.chronicWeeklyKm` et `TrainingPlanner.acuteKm` sont les
 seules définitions de charge « chronique » et « aiguë » de tout le
