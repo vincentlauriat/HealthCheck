@@ -64,6 +64,19 @@ final class TrainingPlannerTests: XCTestCase {
                        5.0, accuracy: 0.001)
     }
 
+    /// Sans distance mesurée et sans durée exploitable (unité non
+    /// reconnue), la séance ne doit fabriquer aucun kilomètre — 0, pas une
+    /// estimation à partir d'une unité devinée.
+    func test_distanceKm_withoutDistanceAndUnusableDuration_contributesZero() {
+        let unusable = Workout(activityType: "HKWorkoutActivityTypeRunning", sourceName: "Watch",
+                               duration: 35, durationUnit: "furlong",
+                               totalDistance: nil, totalDistanceUnit: nil,
+                               totalEnergyBurned: nil, totalEnergyBurnedUnit: nil,
+                               startDate: date("2026-06-13"), endDate: date("2026-06-13"),
+                               routeFileName: nil)
+        XCTAssertEqual(TrainingPlanner.distanceKm(unusable), 0, accuracy: 0.001)
+    }
+
     func test_acuteKm_sumsTheLastSevenDaysInclusive() {
         XCTAssertEqual(TrainingPlanner.acuteKm(history: comebackHistory,
                                                today: date("2026-08-23"), calendar: calendar),

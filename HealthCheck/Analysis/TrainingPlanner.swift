@@ -93,12 +93,17 @@ enum TrainingPlanner {
     // MARK: - Lectures de charge
 
     /// Distance d'une séance : la valeur réelle si elle existe, sinon une
-    /// estimation à 7:00/km. Le même repli partout — deux définitions
-    /// laisseraient le planificateur et le moniteur lire des charges
-    /// différentes pour le même historique.
+    /// estimation à 7:00/km à partir de la durée. Le même repli partout —
+    /// deux définitions laisseraient le planificateur et le moniteur lire
+    /// des charges différentes pour le même historique. Sans distance
+    /// mesurée **et** sans durée exploitable (unité non reconnue), la
+    /// séance contribue 0 km plutôt qu'un chiffre fabriqué à partir d'une
+    /// unité qu'on ne comprend pas — un 0 rate silencieusement une séance,
+    /// une distance inventée fausserait la base d'ancrage du plan.
     static func distanceKm(_ workout: Workout) -> Double {
         if let d = workout.totalDistance { return d }
-        return WorkoutStatsEngine.durationMinutes(workout) / fallbackPaceMinutesPerKm
+        guard let minutes = WorkoutStatsEngine.durationMinutes(workout) else { return 0 }
+        return minutes / fallbackPaceMinutesPerKm
     }
 
     static func acuteKm(history: [Workout], today: Date, calendar: Calendar) -> Double {

@@ -66,12 +66,17 @@ enum WorkoutStatsEngine {
     }
 
     /// Durée en minutes quelle que soit l'unité stockée dans l'export.
-    static func durationMinutes(_ workout: Workout) -> Double {
+    /// `nil` pour une unité non reconnue — ne jamais inventer un nombre à
+    /// partir d'une unité qu'on ne comprend pas. Chaque appelant décide
+    /// explicitement de ce que « pas de durée exploitable » signifie pour
+    /// lui, plutôt que de recevoir une valeur en minutes fabriquée en
+    /// silence à partir d'une unité inconnue.
+    static func durationMinutes(_ workout: Workout) -> Double? {
         switch workout.durationUnit {
         case "min": return workout.duration
         case "s", "sec": return workout.duration / 60
         case "hr", "h": return workout.duration * 60
-        default: return workout.duration
+        default: return nil
         }
     }
 
@@ -87,7 +92,7 @@ enum WorkoutStatsEngine {
         }
         return starts.map { weekStart in
             let byActivity = Dictionary(grouping: grouped[weekStart] ?? []) { label(for: $0.activityType) }
-                .mapValues { $0.reduce(0) { $0 + durationMinutes($1) } }
+                .mapValues { $0.reduce(0) { $0 + (durationMinutes($1) ?? 0) } }
             return WeekVolume(weekStart: weekStart, minutesByActivity: byActivity)
         }
     }

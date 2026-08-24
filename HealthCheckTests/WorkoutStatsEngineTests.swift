@@ -22,6 +22,13 @@ final class WorkoutStatsEngineTests: XCTestCase {
         XCTAssertEqual(WorkoutStatsEngine.durationMinutes(workout("t", start: base, minutes: 1.5, unit: "hr")), 90)
     }
 
+    /// Une unité non reconnue doit rendre `nil`, jamais une durée fabriquée
+    /// en supposant silencieusement des minutes.
+    func test_durationMinutes_unrecognisedUnit_returnsNilRatherThanGuessing() {
+        let base = Date(timeIntervalSince1970: 1_700_000_000)
+        XCTAssertNil(WorkoutStatsEngine.durationMinutes(workout("t", start: base, minutes: 42, unit: "furlong")))
+    }
+
     func test_label_mapsKnownTypesAndStripsPrefixOtherwise() {
         XCTAssertEqual(WorkoutStatsEngine.label(for: "HKWorkoutActivityTypeRunning"), "Course")
         XCTAssertEqual(WorkoutStatsEngine.label(for: "HKWorkoutActivityTypePickleball"), "Pickleball")
