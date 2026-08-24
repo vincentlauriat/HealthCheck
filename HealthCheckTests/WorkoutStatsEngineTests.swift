@@ -2,7 +2,15 @@ import XCTest
 @testable import HealthCheck
 
 final class WorkoutStatsEngineTests: XCTestCase {
-    private let calendar = Calendar.current
+    /// Calendrier explicite (lundi premier jour, UTC) — jamais `Calendar.current`
+    /// ni `Date()`, pour que ces tests ne dépendent ni de la locale ni de
+    /// l'horloge de la machine qui les exécute.
+    private let calendar: Calendar = {
+        var c = Calendar(identifier: .gregorian)
+        c.timeZone = TimeZone(identifier: "UTC")!
+        c.firstWeekday = 2 // lundi
+        return c
+    }()
 
     private func workout(_ type: String, start: Date, minutes: Double, unit: String = "min") -> Workout {
         Workout(
@@ -35,9 +43,13 @@ final class WorkoutStatsEngineTests: XCTestCase {
     }
 
     func test_weeklyVolumes_groupsByWeekAndFillsEmptyWeeks() {
-        let now = Date(timeIntervalSince1970: 1_755_600_000)
-        let thisWeekStart = calendar.dateInterval(of: .weekOfYear, for: now)!.start
-        let lastWeekStart = calendar.date(byAdding: .weekOfYear, value: -1, to: thisWeekStart)!
+        let now = Date(timeIntervalSince1970: 1_755_600_000)  // mardi 2025-08-19
+        // Lundis attendus donnés en dur plutôt que recalculés via
+        // `calendar.dateInterval`/`TrainingPlanner.monday` — sinon
+        // l'attente se recalculerait avec le même mécanisme que le code
+        // testé, et ne prouverait rien.
+        let thisWeekStart = calendar.date(from: DateComponents(year: 2025, month: 8, day: 18))! // lundi
+        let lastWeekStart = calendar.date(from: DateComponents(year: 2025, month: 8, day: 11))! // lundi précédent
         let workouts = [
             workout("HKWorkoutActivityTypeRunning", start: thisWeekStart.addingTimeInterval(3600), minutes: 30),
             workout("HKWorkoutActivityTypeRunning", start: thisWeekStart.addingTimeInterval(90_000), minutes: 20),
@@ -51,5 +63,44 @@ final class WorkoutStatsEngineTests: XCTestCase {
         XCTAssertEqual(volumes[2].minutesByActivity["Marche"], 45)
         XCTAssertEqual(volumes[3].minutesByActivity["Course"], 50, "les deux courses de la semaine s'additionnent")
         XCTAssertEqual(volumes[3].weekStart, thisWeekStart)
+    }
+
+    /// `weeklyVolumes` doit découper les semaines au lundi, comme
+    /// `TrainingPlanner`, quel que soit le `firstWeekday` du calendrier
+    /// reçu — pas `calendar.dateInterval(of: .weekOfYear, for:)`, qui suit
+    /// la locale. Le fixture est un calendrier explicitement réglé en
+    /// dimanche-premier-jour (simule un appareil en anglais US) : c'est le
+    /// seul qui peut discriminer, un calendrier français (lundi premier
+    /// jour) ferait coïncider les deux découpages et ne prouverait rien.
+    func test_weeklyVolumes_anchorsToMondayEvenOnASundayFirstCalendar() {
+        var sundayFirst = Calendar(identifier: .gregorian)
+        sundayFirst.timeZone = TimeZone(identifier: "UTC")!
+        sundayFirst.firstWeekday = 1 // dimanche
+
+        func day(_ year: Int, _ month: Int, _ dayOfMonth: Int, hour: Int = 9) -> Date {
+            var comps = DateComponents()
+            comps.year = year; comps.month = month; comps.day = dayOfMonth; comps.hour = hour
+            return sundayFirst.date(from: comps)!
+        }
+
+        let sunday = day(2026, 8, 16)  // dimanche
+        let monday = day(2026, 8, 17)  // lundi qui le suit immédiatement
+
+        let workouts = [
+            workout("HKWorkoutActivityTypeRunning", start: sunday, minutes: 20),
+            workout("HKWorkoutActivityTypeRunning", start: monday, minutes: 30)
+        ]
+
+        let volumes = WorkoutStatsEngine.weeklyVolumes(workouts, weeks: 2, now: monday, calendar: sundayFirst)
+
+        XCTAssertEqual(volumes.count, 2)
+        // Le dimanche appartient à la semaine du lundi PRÉCÉDENT (08-10),
+        // pas à celle du lundi qui le suit (08-17) — même si le calendrier
+        // du device dit que dimanche ouvre une nouvelle semaine.
+        XCTAssertEqual(volumes[0].weekStart, day(2026, 8, 10, hour: 0))
+        XCTAssertEqual(volumes[0].totalMinutes, 20,
+                       "le dimanche doit rejoindre la semaine du lundi 08-10, pas celle du 08-17")
+        XCTAssertEqual(volumes[1].weekStart, day(2026, 8, 17, hour: 0))
+        XCTAssertEqual(volumes[1].totalMinutes, 30)
     }
 }

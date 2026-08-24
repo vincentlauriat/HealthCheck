@@ -80,15 +80,28 @@ enum WorkoutStatsEngine {
         }
     }
 
-    /// Volume par semaine calendaire, ventilé par activité, semaines vides
-    /// incluses pour que le graphique ne saute pas de colonnes.
+    /// Volume par semaine, ventilé par activité, semaines vides incluses
+    /// pour que le graphique ne saute pas de colonnes.
+    ///
+    /// La semaine est ancrée au lundi via `TrainingPlanner.monday`, la même
+    /// définition que celle utilisée par les moteurs d'entraînement — pas
+    /// `calendar.dateInterval(of: .weekOfYear, for:)`, qui suit le
+    /// `firstWeekday` de la locale et découperait donc les semaines
+    /// différemment sur un appareil réglé en anglais américain. Une seule
+    /// définition de « semaine » dans tout le projet.
     static func weeklyVolumes(_ workouts: [Workout], weeks: Int, now: Date, calendar: Calendar) -> [WeekVolume] {
-        guard weeks > 0,
-              let currentWeekStart = calendar.dateInterval(of: .weekOfYear, for: now)?.start else { return [] }
-        let starts = (0..<weeks).compactMap { calendar.date(byAdding: .weekOfYear, value: -$0, to: currentWeekStart) }.reversed()
+        guard weeks > 0 else { return [] }
+        let currentWeekStart = TrainingPlanner.monday(of: now, calendar: calendar)
+        // -7 jours par pas, pas `.weekOfYear` : les clés du dictionnaire
+        // ci-dessous viennent de `TrainingPlanner.monday` (jours), donc les
+        // lundis générés ici doivent venir du même calcul en jours plutôt
+        // que d'une addition de composant `.weekOfYear` — les deux
+        // coïncident en pratique, mais ce ne serait plus « une seule
+        // définition de semaine » si un jour ils divergeaient.
+        let starts = (0..<weeks).compactMap { calendar.date(byAdding: .day, value: -7 * $0, to: currentWeekStart) }.reversed()
 
         let grouped = Dictionary(grouping: workouts) { workout in
-            calendar.dateInterval(of: .weekOfYear, for: workout.startDate)?.start ?? workout.startDate
+            TrainingPlanner.monday(of: workout.startDate, calendar: calendar)
         }
         return starts.map { weekStart in
             let byActivity = Dictionary(grouping: grouped[weekStart] ?? []) { label(for: $0.activityType) }
