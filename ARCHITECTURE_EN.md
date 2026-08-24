@@ -202,8 +202,15 @@ a target that grows to match what was run can never be exceeded by
 25%. A runner doing twice the prescribed volume got no warning at all.
 The `min(measured, previousTarget)` cap is the no-catch-up rule: a week
 run short re-bases the following weeks downward, a week overshot never
-raises them. It has no floor, so prolonged total inactivity ratchets a
-plan toward zero (design spec §5.2bis).
+raises them. It has no floor, so a single missed week can drag the whole
+remaining arc down — a 78% collapse measured on the golden fixture. The
+decision is to keep that re-basing and **surface** it rather than add a
+floor that would detach the plan from reality: `TrainingLoadMonitor`
+raises a warning as soon as the current week's target falls below
+`collapseFactor` (0.6) of the previous plan week's, both being ramp weeks
+(a taper drops by design). The message names both targets and the way
+out — recreating the goal re-anchors week 0 on
+`max(measured load, 10 km)` (design spec §5.2bis).
 
 **Climb is prescribed, never verified.** Every `PlannedSession` carries
 a `targetClimbM`, ramped toward `goal.elevationGainM` the same way

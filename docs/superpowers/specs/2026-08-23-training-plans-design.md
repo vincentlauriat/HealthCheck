@@ -178,6 +178,25 @@ Consequences that are requirements, not side effects:
   runner executing the plan exactly, the fold must still produce
   14.49 / 16.66 / 19.16 — week 2 being `min(load-based, 14.49 × 1.15)`. If the
   fold does not reproduce those numbers, the cap is implemented wrongly.
+- **The fold has no floor, and the collapse is surfaced rather than
+  padded.** `min(measured, previousTarget)` re-bases downward without a
+  lower bound, and it bites hardest exactly where the plan matters most. On
+  this spec's own golden fixture, **one** missed week takes the arc from
+  14.49 / 16.66 / 19.16 / 14.37 / 9.58 to
+  14.49 / 3.62 / 4.17 / 3.12 / 2.08 — a **78 % collapse** — because the
+  anchor base came from acute load (12.6 km) while chronic load was only
+  3.15 km, and one empty week zeroes acute. From there the plan is
+  effectively dead while still rendering as a plan. The decision is to keep
+  the re-basing and **tell the user**, not to add a floor: a floor would
+  detach the plan from reality, which is the one property the whole fold
+  exists to preserve. `TrainingLoadMonitor` therefore raises a `.warning`
+  when the current week's target falls below `collapseFactor` (0.6) of the
+  previous plan week's, both weeks being ramp weeks (`.build` / `.peak` —
+  a taper drop is the plan working as designed). The message names both
+  targets and the way out: recreating the goal re-anchors week 0 on
+  `max(measuredLoad, minimumStartVolumeKm)`, and that 10 km floor exists
+  only at week 0, so a recreated goal restarts an order of magnitude above
+  where the collapsed plan sits.
 - **Stated consequence:** anchoring on `goal.createdAt` means deleting and
   recreating a goal restarts the whole arc from the current load. That is
   acceptable — recreating a goal is an explicit user act — but it is a
