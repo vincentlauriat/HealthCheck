@@ -24,5 +24,11 @@
 	<string>15.0</string>
 	<key>NSHumanReadableCopyright</key>
 	<string></string>
+	<key>SUEnableInstallerLauncherService</key>
+	<true/>
+	<key>SUFeedURL</key>
+	<string>https://raw.githubusercontent.com/vincentlauriat/HealthCheck/main/appcast.xml</string>
+	<key>SUPublicEDKey</key>
+	<string>3Ej5k2vC6CalsUx/FHSk5ATejzdSOqZCPi0A0VpiJ40=</string>
 </dict>
 </plist>

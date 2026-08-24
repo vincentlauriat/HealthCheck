@@ -8,6 +8,9 @@ packages:
   GRDB:
     url: https://github.com/groue/GRDB.swift
     from: 6.29.0
+  Sparkle:
+    url: https://github.com/sparkle-project/Sparkle
+    from: 2.6.0
 
 schemes:
   HealthCheck:
@@ -43,6 +46,8 @@ targets:
     dependencies:
       - package: GRDB
         product: GRDB
+      - package: Sparkle
+        product: Sparkle
     settings:
       base:
         PRODUCT_NAME: HealthCheck
@@ -67,6 +72,9 @@ targets:
         CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
         LSMinimumSystemVersion: "15.0"
         NSHumanReadableCopyright: ""
+        SUFeedURL: https://raw.githubusercontent.com/vincentlauriat/HealthCheck/main/appcast.xml
+        SUPublicEDKey: 3Ej5k2vC6CalsUx/FHSk5ATejzdSOqZCPi0A0VpiJ40=
+        SUEnableInstallerLauncherService: true
 
   HealthCheckTests:
     type: bundle.unit-test
