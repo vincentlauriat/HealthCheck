@@ -9,8 +9,8 @@ Application macOS native (SwiftUI) d'analyse de santé personnelle :
 elle importe l'export Apple Santé et calcule, entièrement en local,
 des scores composites, des piliers dédiés (sommeil, effort, corps,
 entraînement) et des corrélations entre métriques. Seule connexion
-réseau optionnelle : l'API Withings, si tu choisis de connecter ton
-compte — aucun autre cloud tiers.
+réseau optionnelle : l'API Withings, si vous choisissez de connecter
+votre compte — aucun autre cloud tiers.
 
 C'est l'outil personnel d'un seul développeur, publié en source
 ouverte par souci de transparence — ce n'est pas un produit avec
@@ -36,13 +36,13 @@ L'app est organisée en neuf sections :
 
 | Section | Contenu |
 |---|---|
-| **Accueil** | Score de forme quotidien 0-100 calculé sur tes baselines personnelles 30 j (sommeil 35 %, FC repos 30 %, HRV 25 %, activité 10 %), observations générées en français, cartes jour/semaine avec deltas honnêtes (comparaison à la même portion écoulée de la semaine précédente). |
+| **Accueil** | Score de forme quotidien 0-100 calculé sur vos baselines personnelles 30 j (sommeil 35 %, FC repos 30 %, HRV 25 %, activité 10 %), observations générées en français, cartes jour/semaine avec deltas honnêtes (comparaison à la même portion écoulée de la semaine précédente). |
 | **Sommeil** | Score de nuit 0-100 (durée vs cible 8 h, % profond, % REM, continuité), phases empilées sur 14 nuits, moyennes. |
 | **Effort** | Minutes par zone cardiaque Z1-Z5 (bornées sur la FC max réellement observée), score d'effort quotidien pondéré, historique 14 j coloré par intensité. |
 | **Séances** | Volume hebdomadaire par activité sur 12 semaines, 25 dernières séances (durée, distance, kcal, FC moyenne), trace GPS dépliable sur carte MapKit. |
 | **Entraînement** | Objectif de course (nom, date, distance, dénivelé) → plan hebdomadaire généré (volume, sortie longue, côtes, endurance), rapprochement automatique des séances courues, moniteur de charge aiguë/chronique avec alertes relatives au plan. |
 | **Corps** | Composition corporelle complète : poids, masses grasse/maigre, muscle, eau, os, graisse viscérale ; deltas 30 j / 1 an ancrés sur la dernière pesée ; diagramme de Sankey de la répartition du poids ; courbes poids/maigre avec bande de graisse. |
-| **Corrélations** | 5 questions sur 180 j (ex. « mieux dormir améliore-t-il ta HRV du lendemain ? ») — Pearson avec garde-fous : minimum 10 paires, variance nulle refusée, avertissement corrélation ≠ causalité. |
+| **Corrélations** | 5 questions sur 180 j (ex. « mieux dormir améliore-t-il votre HRV du lendemain ? ») — Pearson avec garde-fous : minimum 10 paires, variance nulle refusée, avertissement corrélation ≠ causalité. |
 | **Tendances** | FC repos, poids, VO₂ max, sommeil — aire + moyenne mobile 7 j, périodes 1 sem → tout. |
 | **Données** | Import de l'export Apple Santé (bouton ou glisser-déposer), connexion/synchro Withings, et appairage compagnon iPhone (récepteur Mac, réseau local). |
 
@@ -67,7 +67,7 @@ même export n'insère rien deux fois. Testé à l'échelle réelle : 844 Mo,
 > renvoie `false`). L'export manuel est la seule voie pour les données
 > Apple Watch/iPhone.
 
-**API Withings** (optionnelle, recommandée si tu as une balance
+**API Withings** (optionnelle, recommandée si vous avez une balance
 Withings) : synchronisation directe du cloud Withings — y compris
 muscle, eau, os et graisse viscérale, qui n'existent pas dans
 HealthKit et ne seront jamais dans l'export Apple. Auto-synchro au
@@ -102,7 +102,7 @@ code y est désactivée (`CODE_SIGNING_ALLOWED: NO` dans `project.yml`).
 Le scheme iOS **HealthCheckCompanion** pointe en revanche vers
 l'équipe Apple Developer de l'auteur (`DEVELOPMENT_TEAM: KFLACS69T9`,
 `CODE_SIGN_STYLE: Automatic`) — pour le compiler, remplacer cette
-valeur par ton propre identifiant d'équipe dans `project.yml` (cible
+valeur par votre propre identifiant d'équipe dans `project.yml` (cible
 `HealthCheckCompanion` → `settings` → `DEVELOPMENT_TEAM`), puis
 relancer `xcodegen generate`.
 
@@ -138,8 +138,8 @@ Apple (`--wait`), staple, vérification `spctl`. Voir les prérequis
 `IDENTITY` (certificat Developer ID) et `NOTARY_PROFILE` (profil
 trousseau `notarytool`) sont ceux de l'auteur par défaut et ne
 fonctionneront pour personne d'autre ; le script les lit depuis des
-variables d'environnement du même nom, à surcharger avec ta propre
-identité de signature et ton propre profil de notarisation pour
+variables d'environnement du même nom, à surcharger avec votre propre
+identité de signature et votre propre profil de notarisation pour
 produire une release depuis un fork.
 
 ## Arborescence du projet
@@ -184,7 +184,7 @@ Toutes les données restent en local sur le Mac, dans
 (`companion-token.json`, chmod 600 — côté iPhone ce même jeton vit
 dans le trousseau iOS). Aucune télémétrie, aucun compte HealthCheck :
 la seule requête réseau sortante part vers l'API Withings, uniquement
-si tu connectes ton compte Withings. La synchro avec l'app compagnon
+si vous connectez votre compte Withings. La synchro avec l'app compagnon
 iPhone passe exclusivement par le réseau local (découverte Bonjour,
 `_healthcheck._tcp`) — jamais par Internet. Rien n'est committé : les
 identifiants et jetons vivent hors du dépôt.
