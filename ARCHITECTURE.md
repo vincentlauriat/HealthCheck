@@ -201,6 +201,28 @@ n'émet aucune alerte : il n'y a pas de cible à laquelle comparer, et le
 ratio brut est précisément le nombre qui ne doit pas piloter d'alerte
 tant qu'un plan est actif.
 
+**Ancré à la création, jamais recalculé depuis aujourd'hui.** La
+séquence des semaines se déduit de `goal.createdAt` — la règle de
+semaine de départ du §5.2 s'applique une seule fois, à la création — et
+la cible d'une semaine se reporte de proche en proche au lieu d'être
+redérivée. Une semaine passée ou en cours monte depuis la charge
+mesurée **strictement avant son propre lundi**, plafonnée par la cible
+de la semaine précédente ; une semaine **future** est une pure
+projection depuis la cible précédente et ne lit aucune charge. Recalculer
+l'une ou l'autre depuis `today` semblait anodin et cassait trois choses
+à la fois : la cible de la semaine en cours courait après le volume
+déjà réalisé (le plan bougeait donc tout seul chaque jour), l'horizon
+se réduisait jusqu'à faire basculer tout plan dans la branche de
+maintien `<= 2` à deux semaines de l'échéance (détruisant le relâchement),
+et — le pire — l'alerte de surdosage devenait arithmétiquement
+inatteignable, puisqu'une cible qui grandit pour rejoindre le réalisé ne
+peut jamais être dépassée de 25 %. Un coureur faisant le double du
+volume prescrit ne recevait aucun avertissement. Le plafond
+`min(mesuré, ciblePrécédente)` est la règle de non-rattrapage : une
+semaine courue en deçà rebase les suivantes vers le bas, une semaine
+dépassée ne les relève jamais. Il n'a pas de plancher, donc une
+inactivité totale prolongée fait tomber un plan vers zéro (spec §5.2bis).
+
 **Le dénivelé est prescrit, jamais vérifié.** Chaque `PlannedSession`
 porte un `targetClimbM`, monté vers `goal.elevationGainM` de la même
 façon que la distance — mais aucune partie de l'import, de la synchro
@@ -463,4 +485,5 @@ Accepted).
 | Eau hors de l'arbre du Sankey | l'eau corporelle est contenue dans muscle/organes ; en faire un compartiment frère double-compterait |
 | ECG (`export_cda.xml`) exclu | format clinique CDA, hors des quatre axes d'analyse |
 | Plan/progression/évaluation d'entraînement recalculés à chaque `load()`, rien persisté | l'écran ne peut jamais diverger de ce que produirait un appel direct à `TrainingPlanner`/`SessionMatcher`/`TrainingLoadMonitor` pour le même historique |
+| Plan ancré sur `goal.createdAt`, cibles reportées de proche en proche | une grandeur recalculée depuis `today` fait bouger le plan chaque jour, effondre le relâchement et rend l'alerte de surdosage inatteignable ; en contrepartie, recréer un objectif repart de zéro |
 | Cibles de dénivelé prescrites mais jamais vérifiées | aucune donnée d'altitude n'existe nulle part dans le pipeline (import, synchro compagnon, ou modèle `Workout`) pour les contrôler |

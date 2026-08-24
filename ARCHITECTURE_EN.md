@@ -186,6 +186,25 @@ load and the ratio for display, but raises no alert: there is no target
 to compare against, and the raw ratio is precisely the number that must
 not drive an alert while a plan is active.
 
+**Anchored at creation, not recomputed from today.** The week sequence
+is derived from `goal.createdAt` — the §5.2 start-week rule is applied
+once, at creation — and a week's target volume is folded forward rather
+than re-derived. A past or current week ramps from the load measured
+**strictly before its own Monday**, capped against the previous week's
+target; a **future** week is pure projection from the previous target
+and reads no load at all. Recomputing either quantity from `today`
+looked harmless and broke three things at once: the current week's
+target chased the volume already run (so the plan moved daily with no
+user action), the horizon counted down until every plan fell into the
+`<= 2` maintenance branch two weeks out (destroying the taper), and —
+worst — the overshoot alert became arithmetically unreachable, because
+a target that grows to match what was run can never be exceeded by
+25%. A runner doing twice the prescribed volume got no warning at all.
+The `min(measured, previousTarget)` cap is the no-catch-up rule: a week
+run short re-bases the following weeks downward, a week overshot never
+raises them. It has no floor, so prolonged total inactivity ratchets a
+plan toward zero (design spec §5.2bis).
+
 **Climb is prescribed, never verified.** Every `PlannedSession` carries
 a `targetClimbM`, ramped toward `goal.elevationGainM` the same way
 distance is ramped — but no part of the import, companion sync, or
@@ -427,4 +446,5 @@ submit --wait` (keychain profile `AppliMacVincentGithub`) → staple →
 | Water outside the Sankey tree | total body water is contained in muscle/organs; adding it as a sibling compartment would double-count |
 | ECG (`export_cda.xml`) excluded | clinical CDA format, outside the four analysis axes |
 | Training plan/progress/assessment recomputed on every `load()`, nothing persisted | the screen can never diverge from what a fresh call to `TrainingPlanner`/`SessionMatcher`/`TrainingLoadMonitor` would produce for the same history |
+| Plan anchored at `goal.createdAt`, targets folded forward | a quantity recomputed from `today` makes the plan move daily, collapses the taper, and renders the overshoot alert unreachable; the cost is that recreating a goal restarts the arc |
 | Climb targets prescribed but never verified | no elevation data exists anywhere in the pipeline (import, companion sync, or the `Workout` model) to check them against |
