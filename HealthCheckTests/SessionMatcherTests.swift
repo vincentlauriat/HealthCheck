@@ -4,7 +4,7 @@ import XCTest
 final class SessionMatcherTests: XCTestCase {
     private func session(_ kind: SessionKind, km: Double = 0, minutes: Double? = nil) -> PlannedSession {
         PlannedSession(kind: kind, targetKm: km, targetMinutes: minutes,
-                       targetClimbM: 0, hrRange: 120...150, note: "")
+                       targetClimbM: 0, hrRange: 120...150, note: "", rationale: "")
     }
 
     private func week(_ sessions: [PlannedSession]) -> PlannedWeek {

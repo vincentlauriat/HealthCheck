@@ -23,7 +23,8 @@ struct PlannedSession: Equatable {
     let targetMinutes: Double?      // renseigné pour optionalEasy / legOpener
     let targetClimbM: Double        // consigne seulement — jamais vérifiée (spec §6.1)
     let hrRange: ClosedRange<Double>
-    let note: String
+    let note: String                 // l'instruction : comment faire la séance
+    let rationale: String            // le motif : ce qu'elle entraîne et pourquoi elle existe
 
     var isOptional: Bool { kind == .optionalEasy }
 }
@@ -43,6 +44,23 @@ struct TrainingPlan: Equatable {
     /// course : plus le temps de progresser, on entretient (spec §5.2).
     /// La vue s'en sert pour afficher la mise en garde de §9.
     let isMaintenance: Bool
+    /// Base mesurée dont tout l'arc part : `max(charge mesurée avant la
+    /// première semaine de construction, minimumStartVolumeKm)`. Exposée
+    /// pour que la vue explique le plan sans recalculer l'ancrage.
+    let anchorBaseKm: Double
+    /// 1.15 (reprise) ou 1.10 (base établie) — le facteur choisi une seule
+    /// fois à l'ancrage, exposé pour la même raison que `anchorBaseKm`.
+    let rampFactor: Double
+
+    /// Plus longue sortie longue du plan, toutes semaines confondues.
+    /// Calculée, pas stockée : elle ne peut pas se désynchroniser des
+    /// séances réellement produites.
+    var longestPlannedRunKm: Double {
+        weeks.flatMap(\.sessions)
+            .filter { $0.kind == .longRun }
+            .map(\.targetKm)
+            .max() ?? 0
+    }
 }
 
 /// Construit un plan déterministe : mêmes entrées, même plan. Rien n'est
@@ -169,6 +187,16 @@ enum TrainingPlanner {
             cursor = calendar.date(byAdding: .day, value: 7, to: cursor)!
         }
 
+        // Base d'ancrage : la charge mesurée strictement avant la première
+        // semaine de construction. Le facteur de rampe s'en déduit une fois
+        // pour toutes — pas une fois par semaine — pour que le plan ne
+        // change pas de régime au fil des sorties. Calculée avant la garde
+        // `mondays.isEmpty` ci-dessous : elle est exposée sur `TrainingPlan`
+        // même quand le plan ne contient aucune semaine de cibles.
+        let anchorBase = max(measuredBaseKm(history: runs, before: firstMonday, calendar: calendar),
+                             minimumStartVolumeKm)
+        let factor = anchorBase < goal.distanceKm ? comebackRampFactor : steadyRampFactor
+
         var weeks: [PlannedWeek] = []
         // La semaine de création trop entamée n'est affichée que pendant
         // cette semaine-là : une fois passée, il n'y a plus rien à clore.
@@ -179,16 +207,10 @@ enum TrainingPlanner {
                                      targetKm: 0, sessions: []))
         }
         guard !mondays.isEmpty else {
-            return TrainingPlan(goal: goal, weeks: weeks, hrMax: hrMax, isMaintenance: false)
+            return TrainingPlan(goal: goal, weeks: weeks, hrMax: hrMax, isMaintenance: false,
+                                anchorBaseKm: anchorBase, rampFactor: factor)
         }
 
-        // Base d'ancrage : la charge mesurée strictement avant la première
-        // semaine de construction. Le facteur de rampe s'en déduit une fois
-        // pour toutes — pas une fois par semaine — pour que le plan ne
-        // change pas de régime au fil des sorties.
-        let anchorBase = max(measuredBaseKm(history: runs, before: firstMonday, calendar: calendar),
-                             minimumStartVolumeKm)
-        let factor = anchorBase < goal.distanceKm ? comebackRampFactor : steadyRampFactor
         let volumeCap = goal.distanceKm * peakVolumeMultiplier
 
         // Même ancrage pour la graine de sortie longue : lue avant la
@@ -211,7 +233,8 @@ enum TrainingPlanner {
                 if let long = weekSessions.first(where: { $0.kind == .longRun }) { previousLong = long.targetKm }
                 weeks.append(PlannedWeek(monday: monday, role: role, targetKm: target, sessions: weekSessions))
             }
-            return TrainingPlan(goal: goal, weeks: weeks, hrMax: hrMax, isMaintenance: true)
+            return TrainingPlan(goal: goal, weeks: weeks, hrMax: hrMax, isMaintenance: true,
+                                anchorBaseKm: anchorBase, rampFactor: factor)
         }
 
         // Le pic est à course − 2 ; on monte jusqu'à lui, puis on relâche.
@@ -265,7 +288,8 @@ enum TrainingPlanner {
             previousTarget = target
             weeks.append(PlannedWeek(monday: monday, role: role, targetKm: target, sessions: weekSessions))
         }
-        return TrainingPlan(goal: goal, weeks: weeks, hrMax: hrMax, isMaintenance: false)
+        return TrainingPlan(goal: goal, weeks: weeks, hrMax: hrMax, isMaintenance: false,
+                            anchorBaseKm: anchorBase, rampFactor: factor)
     }
 }
 
@@ -298,6 +322,28 @@ extension TrainingPlanner {
         return recent.max() ?? defaultPreviousLongKm
     }
 
+    /// Le motif de la séance : ce qu'elle entraîne et pourquoi elle existe,
+    /// distinct de `note` (l'instruction). Ne dépend que du genre et — pour
+    /// la sortie longue seulement — du rôle de la semaine : une sortie
+    /// longue en semaine de pic ne se justifie pas comme une sortie longue
+    /// allégée en affûtage.
+    static func rationale(for kind: SessionKind, isTaper: Bool) -> String {
+        switch kind {
+        case .longRun:
+            return isTaper
+                ? "Allégée volontairement. À ce stade, entretenir suffit : ce que vous gagnez maintenant, c'est de la fraîcheur, pas de la forme."
+                : "Elle construit votre distance : plus de capillaires, plus de mitochondries, une meilleure utilisation des graisses comme carburant. C'est 60 % du volume de la semaine — la séance à ne jamais sacrifier."
+        case .hills:
+            return "La seule séance dure de la semaine, et la seule qui prépare le dénivelé du parcours. La descente compte autant que la montée : c'est elle qui use les quadriceps en course."
+        case .baseEndurance:
+            return "Du volume à bas coût : du kilométrage sans fatigue supplémentaire, pour que la sortie longue et les côtes restent des séances de qualité. C'est celle que tout le monde court trop vite."
+        case .optionalEasy:
+            return "Elle absorbe les bonnes semaines, elle ne rattrape pas les mauvaises. À ne faire que si les trois autres sont faites."
+        case .legOpener:
+            return "Réveiller les jambes sans les fatiguer. Les accélérations sont courtes — quelques dizaines de secondes, pas du fractionné."
+        }
+    }
+
     static func sessions(role: WeekRole, targetKm: Double, previousLongKm: Double,
                          climbTargetM: Double, goal: RaceGoal, hrMax: Double) -> [PlannedSession] {
         let isTaper = role == .taper || role == .raceWeek
@@ -315,30 +361,35 @@ extension TrainingPlanner {
                            targetClimbM: 0, hrRange: isTaper ? easy : endurance,
                            note: isTaper
                                ? "Sortie longue allégée — restez très à l'aise."
-                               : "Sortie longue : la séance qui construit votre distance. Allure conversation.")
+                               : "Sortie longue : la séance qui construit votre distance. Allure conversation.",
+                           rationale: rationale(for: .longRun, isTaper: isTaper))
         ]
 
         if role == .raceWeek {
             result.append(PlannedSession(kind: .legOpener, targetKm: 0, targetMinutes: 15,
                                          targetClimbM: 0, hrRange: easy,
-                                         note: "Déverrouillage : 15 min souples avec deux ou trois accélérations courtes."))
+                                         note: "Déverrouillage : 15 min souples avec deux ou trois accélérations courtes.",
+                                         rationale: rationale(for: .legOpener, isTaper: isTaper)))
         } else {
             result.append(PlannedSession(kind: .hills, targetKm: targetKm * hillsShare,
                                          targetMinutes: nil, targetClimbM: climbTargetM,
                                          hrRange: isTaper ? endurance : hard,
-                                         note: "Parcours vallonné, visez environ \(Int(climbTargetM.rounded())) m de dénivelé positif."))
+                                         note: "Parcours vallonné, visez environ \(Int(climbTargetM.rounded())) m de dénivelé positif.",
+                                         rationale: rationale(for: .hills, isTaper: isTaper)))
         }
 
         let used = result.reduce(0) { $0 + $1.targetKm }
         result.append(PlannedSession(kind: .baseEndurance,
                                      targetKm: max(targetKm - used, minimumBaseKm),
                                      targetMinutes: nil, targetClimbM: 0, hrRange: easy,
-                                     note: "Endurance fondamentale : facile, vraiment facile."))
+                                     note: "Endurance fondamentale : facile, vraiment facile.",
+                                     rationale: rationale(for: .baseEndurance, isTaper: isTaper)))
 
         if !isTaper {
             result.append(PlannedSession(kind: .optionalEasy, targetKm: 0, targetMinutes: 30,
                                          targetClimbM: 0, hrRange: easy,
-                                         note: "Optionnelle : 30 min faciles, seulement si les trois autres séances sont faites et que vous vous sentez bien."))
+                                         note: "Optionnelle : 30 min faciles, seulement si les trois autres séances sont faites et que vous vous sentez bien.",
+                                         rationale: rationale(for: .optionalEasy, isTaper: isTaper)))
         }
         return result
     }
