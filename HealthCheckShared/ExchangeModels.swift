@@ -9,6 +9,7 @@ enum CompanionProtocol {
     static let pairPath = "/pair"
     static let batchPath = "/batch"
     static let statusPath = "/status"
+    static let trainingPlanPath = "/training-plan"
 }
 
 struct ExchangeRecord: Codable, Equatable {
@@ -73,6 +74,36 @@ struct BatchResponse: Codable, Equatable {
 struct StatusResponse: Codable, Equatable {
     let app: String
     let version: String
+}
+
+struct TrainingPlanResponse: Codable, Equatable {
+    let generatedAt: Date
+    let goal: TrainingGoalSummary?
+    let weeks: [TrainingWeekSummary]
+    let message: String?
+}
+
+struct TrainingGoalSummary: Codable, Equatable {
+    let name: String
+    let raceDate: Date
+    let distanceKm: Double
+    let elevationGainM: Double
+}
+
+struct TrainingWeekSummary: Codable, Equatable {
+    let monday: Date
+    let role: String
+    let targetKm: Double
+    let sessions: [TrainingSessionSummary]
+}
+
+struct TrainingSessionSummary: Codable, Equatable {
+    let kind: String
+    let targetText: String
+    let detailText: String
+    let note: String
+    let rationale: String
+    let isOptional: Bool
 }
 
 /// Coders JSON partagés : dates ISO8601 avec fractions de seconde,

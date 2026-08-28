@@ -24,6 +24,41 @@ private final class FakePairer: Pairing {
     }
 }
 
+private final class FakeTrainingPlanFetcher: TrainingPlanFetching {
+    private static let generatedAt = Date(timeIntervalSince1970: 1_777_000_000)
+
+    var plan = TrainingPlanResponse(
+        generatedAt: generatedAt,
+        goal: nil,
+        weeks: [
+            TrainingWeekSummary(
+                monday: generatedAt,
+                role: "Construction",
+                targetKm: 24,
+                sessions: [
+                    TrainingSessionSummary(
+                        kind: "Sortie longue",
+                        targetText: "10 km",
+                        detailText: "120-150 bpm",
+                        note: "Allure conversation.",
+                        rationale: "Construire l'endurance.",
+                        isOptional: false
+                    )
+                ]
+            )
+        ],
+        message: "Aucun objectif actif"
+    )
+    var error: Error?
+    private(set) var callCount = 0
+
+    func trainingPlan() async throws -> TrainingPlanResponse {
+        callCount += 1
+        if let error { throw error }
+        return plan
+    }
+}
+
 @MainActor
 final class CompanionViewModelTests: XCTestCase {
     private var tokenStore: KeychainTokenStore!
@@ -32,6 +67,7 @@ final class CompanionViewModelTests: XCTestCase {
     private var anchors: AnchorStore!
     private var anchorsDir: URL!
     private var defaults: UserDefaults!
+    private var planFetcher: FakeTrainingPlanFetcher!
     private var vm: CompanionViewModel!
 
     override func setUp() {
@@ -42,8 +78,9 @@ final class CompanionViewModelTests: XCTestCase {
             .appendingPathComponent("vm-anchors-\(UUID().uuidString)", isDirectory: true)
         anchors = AnchorStore(directory: anchorsDir)
         defaults = UserDefaults(suiteName: "vm-test-\(UUID().uuidString)")!
+        planFetcher = FakeTrainingPlanFetcher()
         vm = CompanionViewModel(engine: engine, pairer: pairer, tokenStore: tokenStore, anchors: anchors,
-                                 defaults: defaults)
+                                 planFetcher: planFetcher, defaults: defaults)
     }
 
     override func tearDown() {
@@ -80,14 +117,85 @@ final class CompanionViewModelTests: XCTestCase {
         XCTAssertEqual(vm.lastReportSummary, "12 échantillons envoyés, 10 nouveaux")
     }
 
-    func test_syncNow_needsPairing_resetsPairedState() async {
+    func test_initialization_whenAlreadyPaired_restoresCachedTrainingPlan_withoutFetching() async throws {
+        try tokenStore.save(token: "tok")
+        await vm.refreshTrainingPlan()
+
+        let relaunched = CompanionViewModel(engine: engine, pairer: pairer, tokenStore: tokenStore,
+                                             anchors: anchors, planFetcher: planFetcher, defaults: defaults)
+        await Task.yield()
+
+        XCTAssertTrue(relaunched.isPaired)
+        XCTAssertEqual(relaunched.trainingPlan, planFetcher.plan)
+        XCTAssertEqual(planFetcher.callCount, 1, "le démarrage restaure le cache sans lancer de découverte réseau automatiquement")
+    }
+
+    func test_refreshTrainingPlan_success_updatesPlan() async {
+        let generatedAt = Date(timeIntervalSince1970: 1_777_000_000)
+        planFetcher.plan = TrainingPlanResponse(
+            generatedAt: generatedAt,
+            goal: TrainingGoalSummary(name: "Trail", raceDate: generatedAt, distanceKm: 21.1, elevationGainM: 600),
+            weeks: [TrainingWeekSummary(monday: generatedAt, role: "Construction", targetKm: 30, sessions: [])],
+            message: nil
+        )
+
+        await vm.refreshTrainingPlan()
+
+        XCTAssertEqual(planFetcher.callCount, 1)
+        XCTAssertEqual(vm.trainingPlan, planFetcher.plan)
+        XCTAssertNil(vm.errorMessage)
+    }
+
+    func test_refreshTrainingPlan_unreachable_preservesCachedPlan() async {
+        await vm.refreshTrainingPlan()
+        let cached = vm.trainingPlan
+        planFetcher.error = MacClientError.unreachable
+
+        await vm.refreshTrainingPlan()
+
+        XCTAssertEqual(vm.trainingPlan, cached)
+        XCTAssertNotNil(vm.errorMessage)
+    }
+
+    func test_toggleTrainingSessionCompleted_persistsAcrossRelaunch() async {
+        await vm.refreshTrainingPlan()
+        let week = planFetcher.plan.weeks[0]
+        let session = week.sessions[0]
+        let id = vm.trainingSessionID(week: week, session: session, index: 0)
+
+        XCTAssertFalse(vm.isTrainingSessionCompleted(id: id))
+        vm.toggleTrainingSessionCompleted(id: id)
+        XCTAssertTrue(vm.isTrainingSessionCompleted(id: id))
+
+        let relaunched = CompanionViewModel(engine: engine, pairer: pairer, tokenStore: tokenStore,
+                                             anchors: anchors, planFetcher: planFetcher, defaults: defaults)
+        await Task.yield()
+        XCTAssertTrue(relaunched.isTrainingSessionCompleted(id: id))
+    }
+
+    func test_refreshTrainingPlan_unauthorized_keepsPairingToken() async throws {
+        try tokenStore.save(token: "tok")
+        vm.refreshPairedState()
+        planFetcher.error = MacClientError.unauthorized
+
+        await vm.refreshTrainingPlan()
+
+        XCTAssertTrue(vm.isPaired)
+        XCTAssertEqual(tokenStore.currentToken(), "tok")
+        XCTAssertNotNil(vm.errorMessage)
+    }
+
+    func test_syncNow_needsPairing_keepsLocalPairingToken() async {
         try? tokenStore.save(token: "tok")
         vm.refreshPairedState()
         XCTAssertTrue(vm.isPaired)
         engine.report = SyncReport(pushedSamples: 0, insertedRows: 0, failedTypes: ["x"], needsPairing: true)
+
         await vm.syncNow()
-        XCTAssertFalse(vm.isPaired) // jeton invalidé côté Mac → ré-appairage requis
-        XCTAssertNil(tokenStore.currentToken())
+
+        XCTAssertTrue(vm.isPaired)
+        XCTAssertEqual(tokenStore.currentToken(), "tok")
+        XCTAssertNotNil(vm.errorMessage)
     }
 
     // MARK: - C2 — succès partiel / échec complet réseau vs serveur
@@ -150,6 +258,12 @@ final class CompanionViewModelTests: XCTestCase {
         await vm.syncNow()
         XCTAssertNotNil(vm.lastSyncDate)
         XCTAssertNotNil(vm.lastReportSummary)
+        XCTAssertNotNil(vm.trainingPlan)
+        let week = planFetcher.plan.weeks[0]
+        let session = week.sessions[0]
+        let sessionID = vm.trainingSessionID(week: week, session: session, index: 0)
+        vm.toggleTrainingSessionCompleted(id: sessionID)
+        XCTAssertTrue(vm.isTrainingSessionCompleted(id: sessionID))
 
         pairer.shouldSucceed = false
         await vm.submitPairingCode("000000") // laisse un errorMessage résiduel à nettoyer
@@ -159,6 +273,8 @@ final class CompanionViewModelTests: XCTestCase {
 
         XCTAssertNil(vm.lastSyncDate, "pas de « dernière synchro » périmée à côté d'un état non appairé")
         XCTAssertNil(vm.lastReportSummary)
+        XCTAssertNil(vm.trainingPlan)
+        XCTAssertFalse(vm.isTrainingSessionCompleted(id: sessionID))
         XCTAssertNil(vm.errorMessage, "pas de bannière d'erreur périmée au-dessus de l'écran d'appairage")
 
         // Le vrai test : la persistance, pas seulement l'état en mémoire. Un
@@ -166,9 +282,14 @@ final class CompanionViewModelTests: XCTestCase {
         // (CompanionViewModel.init) — si unpair() n'efface que le @Published
         // en mémoire, la date périmée réapparaît après relance.
         let relaunched = CompanionViewModel(engine: engine, pairer: pairer, tokenStore: tokenStore,
-                                             anchors: anchors, defaults: defaults)
+                                             anchors: anchors, planFetcher: planFetcher, defaults: defaults)
+        await Task.yield()
         XCTAssertNil(relaunched.lastSyncDate,
                       "la date de dernière synchro doit être purgée d'UserDefaults, pas juste de l'état en mémoire")
+        XCTAssertNil(relaunched.trainingPlan,
+                     "le cache du plan doit être purgé d'UserDefaults, pas juste de l'état en mémoire")
+        XCTAssertFalse(relaunched.isTrainingSessionCompleted(id: sessionID),
+                       "les coches locales doivent aussi être purgées d'UserDefaults")
     }
 
     func test_unpair_thenSubmitPairingCode_pairsAgain() async {
