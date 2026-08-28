@@ -36,8 +36,36 @@ final class ExchangeModelsTests: XCTestCase {
         XCTAssertTrue(json.contains("1970-01-01T00:00:00.000Z"), json)
     }
 
+    func test_trainingPlan_roundTripsThroughJSON() throws {
+        let generatedAt = Date(timeIntervalSince1970: 1_777_000_000.456)
+        let response = TrainingPlanResponse(
+            generatedAt: generatedAt,
+            goal: TrainingGoalSummary(name: "Trail", raceDate: generatedAt, distanceKm: 21.1, elevationGainM: 600),
+            weeks: [TrainingWeekSummary(
+                monday: generatedAt,
+                role: "Construction",
+                targetKm: 32.5,
+                sessions: [TrainingSessionSummary(
+                    kind: "Sortie longue",
+                    targetText: "14,0 km",
+                    detailText: "126-145 bpm · endurance",
+                    note: "Terrain facile",
+                    rationale: "Construire l'endurance",
+                    isOptional: false
+                )]
+            )],
+            message: nil
+        )
+
+        let data = try ExchangeCoding.encoder.encode(response)
+        let decoded = try ExchangeCoding.decoder.decode(TrainingPlanResponse.self, from: data)
+
+        XCTAssertEqual(decoded, response)
+    }
+
     func test_protocolConstants() {
         XCTAssertEqual(CompanionProtocol.serviceType, "_healthcheck._tcp")
         XCTAssertEqual(CompanionProtocol.batchLimit, 500)
+        XCTAssertEqual(CompanionProtocol.trainingPlanPath, "/training-plan")
     }
 }

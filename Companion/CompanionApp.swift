@@ -22,7 +22,7 @@ struct CompanionApp: App {
         self.client = client
         self.engine = engine
         _viewModel = StateObject(wrappedValue: CompanionViewModel(
-            engine: engine, pairer: client, tokenStore: tokenStore, anchors: anchors))
+            engine: engine, pairer: client, tokenStore: tokenStore, anchors: anchors, planFetcher: client))
     }
 
     var body: some Scene {

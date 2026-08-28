@@ -8,8 +8,13 @@ protocol Pairing {
     func pair(code: String) async throws
 }
 
+protocol TrainingPlanFetching {
+    func trainingPlan() async throws -> TrainingPlanResponse
+}
+
 extension SyncEngine: Syncing {}
 extension MacClient: Pairing {}
+extension MacClient: TrainingPlanFetching {}
 
 /// État de l'unique écran. Tout est injectable : moteur, appairage, jeton.
 @MainActor
@@ -18,29 +23,65 @@ final class CompanionViewModel: ObservableObject {
     @Published private(set) var isSyncing = false
     @Published private(set) var lastSyncDate: Date?
     @Published private(set) var lastReportSummary: String?
+    @Published private(set) var trainingPlan: TrainingPlanResponse?
+    @Published private(set) var isLoadingTrainingPlan = false
+    @Published private var completedTrainingSessionIDs: Set<String>
     @Published var errorMessage: String?
 
     private static let lastSyncKey = "companionLastSyncDate"
+    private static let trainingPlanCacheKey = "companionTrainingPlanCache"
+    private static let completedTrainingSessionIDsKey = "companionCompletedTrainingSessionIDs"
 
     private let engine: Syncing
     private let pairer: Pairing
+    private let planFetcher: TrainingPlanFetching
     private let tokenStore: KeychainTokenStore
     private let anchors: AnchorStore
     private let defaults: UserDefaults
 
     init(engine: Syncing, pairer: Pairing, tokenStore: KeychainTokenStore, anchors: AnchorStore,
-         defaults: UserDefaults = .standard) {
+         planFetcher: TrainingPlanFetching, defaults: UserDefaults = .standard) {
         self.engine = engine
         self.pairer = pairer
+        self.planFetcher = planFetcher
         self.tokenStore = tokenStore
         self.anchors = anchors
         self.defaults = defaults
         self.isPaired = tokenStore.currentToken() != nil
         self.lastSyncDate = defaults.object(forKey: Self.lastSyncKey) as? Date
+        self.trainingPlan = defaults.data(forKey: Self.trainingPlanCacheKey).flatMap(Self.decodeTrainingPlan(from:))
+        self.completedTrainingSessionIDs = Set(defaults.stringArray(forKey: Self.completedTrainingSessionIDsKey) ?? [])
     }
 
     func refreshPairedState() {
         isPaired = tokenStore.currentToken() != nil
+    }
+
+    func trainingSessionID(week: TrainingWeekSummary, session: TrainingSessionSummary, index: Int) -> String {
+        let weekStamp = Int(week.monday.timeIntervalSince1970)
+        return [
+            String(weekStamp),
+            String(index),
+            session.kind,
+            session.targetText,
+            session.detailText,
+            session.note,
+            session.rationale,
+            String(session.isOptional)
+        ].joined(separator: "|")
+    }
+
+    func isTrainingSessionCompleted(id: String) -> Bool {
+        completedTrainingSessionIDs.contains(id)
+    }
+
+    func toggleTrainingSessionCompleted(id: String) {
+        if completedTrainingSessionIDs.contains(id) {
+            completedTrainingSessionIDs.remove(id)
+        } else {
+            completedTrainingSessionIDs.insert(id)
+        }
+        defaults.set(Array(completedTrainingSessionIDs).sorted(), forKey: Self.completedTrainingSessionIDsKey)
     }
 
     /// Rompt l'appairage depuis l'app, sans dépendre du Mac. Efface le jeton
@@ -60,8 +101,13 @@ final class CompanionViewModel: ObservableObject {
         isPaired = false
         lastSyncDate = nil
         lastReportSummary = nil
+        trainingPlan = nil
+        completedTrainingSessionIDs = []
+        isLoadingTrainingPlan = false
         errorMessage = nil
         defaults.removeObject(forKey: Self.lastSyncKey)
+        defaults.removeObject(forKey: Self.trainingPlanCacheKey)
+        defaults.removeObject(forKey: Self.completedTrainingSessionIDsKey)
     }
 
     func submitPairingCode(_ code: String) async {
@@ -69,12 +115,31 @@ final class CompanionViewModel: ObservableObject {
         do {
             try await pairer.pair(code: code)
             refreshPairedState()
+            await refreshTrainingPlan()
         } catch MacClientError.pairingRejected {
             errorMessage = "Code refusé. Vérifiez le code affiché sur votre Mac (il expire après 2 minutes)."
         } catch MacClientError.unreachable {
             errorMessage = "Mac introuvable. Vérifiez que HealthCheck est ouvert sur votre Mac et que les deux appareils sont sur le même réseau."
         } catch {
             errorMessage = "Échec de l'appairage : \(error.localizedDescription)"
+        }
+    }
+
+    func refreshTrainingPlan() async {
+        guard !isLoadingTrainingPlan else { return }
+        isLoadingTrainingPlan = true
+        defer { isLoadingTrainingPlan = false }
+        do {
+            let fetchedPlan = try await planFetcher.trainingPlan()
+            trainingPlan = fetchedPlan
+            cacheTrainingPlan(fetchedPlan)
+            errorMessage = nil
+        } catch MacClientError.unauthorized {
+            errorMessage = "Plan indisponible : synchronisez depuis l'iPhone ou vérifiez que HealthCheck est ouvert sur le Mac."
+        } catch MacClientError.unreachable {
+            errorMessage = "Mac injoignable — impossible de récupérer le plan pour l'instant."
+        } catch {
+            errorMessage = "Plan indisponible : \(error.localizedDescription)"
         }
     }
 
@@ -86,10 +151,7 @@ final class CompanionViewModel: ObservableObject {
         isSyncing = false
 
         if report.needsPairing {
-            // Jeton invalidé côté Mac (ré-appairage là-bas) : on repart proprement.
-            tokenStore.clear()
-            isPaired = false
-            errorMessage = "Le Mac ne reconnaît plus cet iPhone. Refaites l'appairage."
+            errorMessage = "Le Mac ne reconnaît pas encore cet iPhone. Ouvrez HealthCheck sur le Mac, puis réessayez ou utilisez Oublier ce Mac pour refaire l'appairage."
             return
         }
         guard !report.failedTypes.isEmpty else {
@@ -98,6 +160,7 @@ final class CompanionViewModel: ObservableObject {
             lastSyncDate = Date()
             defaults.set(lastSyncDate, forKey: Self.lastSyncKey)
             lastReportSummary = "\(report.pushedSamples) échantillons envoyés, \(report.insertedRows) nouveaux"
+            await refreshTrainingPlan()
             return
         }
         if report.pushedSamples == 0 {
@@ -114,5 +177,14 @@ final class CompanionViewModel: ObservableObject {
         // des types en échec n'a pas avancé, ils seront relivrés.
         lastReportSummary = "\(report.pushedSamples) échantillons envoyés, \(report.insertedRows) nouveaux — \(report.failedTypes.count) type(s) en échec, nouvel essai à la prochaine synchronisation"
         errorMessage = "Synchronisation partielle : certaines données n'ont pas pu être envoyées. Nouvel essai à la prochaine synchronisation."
+    }
+
+    private static func decodeTrainingPlan(from data: Data) -> TrainingPlanResponse? {
+        try? ExchangeCoding.decoder.decode(TrainingPlanResponse.self, from: data)
+    }
+
+    private func cacheTrainingPlan(_ plan: TrainingPlanResponse) {
+        guard let data = try? ExchangeCoding.encoder.encode(plan) else { return }
+        defaults.set(data, forKey: Self.trainingPlanCacheKey)
     }
 }
