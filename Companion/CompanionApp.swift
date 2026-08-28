@@ -17,7 +17,13 @@ struct CompanionApp: App {
         let tokenStore = KeychainTokenStore()
         let client = MacClient(endpointProvider: BonjourEndpointProvider(), tokenStore: tokenStore)
         let anchors = AnchorStore()
-        let engine = SyncEngine(reader: reader, pusher: client, anchors: anchors)
+        let localImporter: LocalIngesting
+        if let localStore = try? LocalStore() {
+            localImporter = localStore.importer
+        } else {
+            localImporter = NoOpImporter()
+        }
+        let engine = SyncEngine(reader: reader, pusher: client, anchors: anchors, localImporter: localImporter)
         self.reader = reader
         self.client = client
         self.engine = engine
