@@ -1,10 +1,5 @@
 import Foundation
 
-struct TrendPoint: Equatable {
-    let date: Date
-    let value: Double
-}
-
 enum TrendPeriod: Hashable {
     case oneWeek
     case oneMonth
