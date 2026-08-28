@@ -1,5 +1,6 @@
 import Foundation
 import HealthKit
+import os.log
 
 struct TypeDelta {
     let typeIdentifier: String
@@ -15,6 +16,18 @@ protocol DeltaReading {
 
 protocol BatchPushing {
     func push(batch: ExchangeBatch) async throws -> Int
+}
+
+protocol LocalIngesting {
+    func ingest(_ batch: ExchangeBatch) throws -> Int
+}
+
+extension CompanionImporter: LocalIngesting {}
+
+/// Repli par défaut tant que la Tâche 5 n'a pas câblé le vrai LocalStore —
+/// garde CompanionApp.swift compilable sans le modifier avant son tour.
+private struct NoLocalIngestion: LocalIngesting {
+    func ingest(_ batch: ExchangeBatch) throws -> Int { 0 }
 }
 
 struct SyncReport: Equatable {
@@ -50,13 +63,16 @@ final class SyncEngine {
     private let reader: DeltaReading
     private let pusher: BatchPushing
     private let anchors: AnchorStore
+    private let localImporter: LocalIngesting
     private let typeIdentifiers: [String]
 
     init(reader: DeltaReading, pusher: BatchPushing, anchors: AnchorStore,
+         localImporter: LocalIngesting = NoLocalIngestion(),
          typeIdentifiers: [String] = SyncEngine.defaultTypes) {
         self.reader = reader
         self.pusher = pusher
         self.anchors = anchors
+        self.localImporter = localImporter
         self.typeIdentifiers = typeIdentifiers
     }
 
@@ -86,10 +102,15 @@ final class SyncEngine {
                 let sampleCount = delta.records.count + delta.sleep.count + delta.workouts.count
                 guard sampleCount > 0 else { continue }
 
-                let batches = Self.chunk(
-                    ExchangeBatch(records: delta.records, sleep: delta.sleep, workouts: delta.workouts),
-                    limit: CompanionProtocol.batchLimit
-                )
+                let fullBatch = ExchangeBatch(records: delta.records, sleep: delta.sleep, workouts: delta.workouts)
+                do {
+                    _ = try localImporter.ingest(fullBatch)
+                } catch {
+                    os_log(.error, "Insertion locale échouée pour %{public}@: %{public}@",
+                           type, String(describing: error))
+                }
+
+                let batches = Self.chunk(fullBatch, limit: CompanionProtocol.batchLimit)
                 for batch in batches {
                     report.insertedRows += try await pusher.push(batch: batch)
                 }

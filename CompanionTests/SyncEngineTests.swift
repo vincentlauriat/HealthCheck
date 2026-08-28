@@ -26,11 +26,22 @@ private final class FakePusher: BatchPushing {
     }
 }
 
+private final class FakeImporter: LocalIngesting {
+    var ingestedBatches: [ExchangeBatch] = []
+    var shouldThrow = false
+    func ingest(_ batch: ExchangeBatch) throws -> Int {
+        if shouldThrow { throw NSError(domain: "FakeImporter", code: 1) }
+        ingestedBatches.append(batch)
+        return batch.records.count + batch.sleep.count + batch.workouts.count
+    }
+}
+
 final class SyncEngineTests: XCTestCase {
     private var tempDir: URL!
     private var anchors: AnchorStore!
     private var reader: FakeReader!
     private var pusher: FakePusher!
+    private var importer: FakeImporter!
 
     override func setUpWithError() throws {
         tempDir = URL(fileURLWithPath: NSTemporaryDirectory())
@@ -39,6 +50,7 @@ final class SyncEngineTests: XCTestCase {
         anchors = AnchorStore(directory: tempDir)
         reader = FakeReader()
         pusher = FakePusher()
+        importer = FakeImporter()
     }
 
     override func tearDownWithError() throws { try? FileManager.default.removeItem(at: tempDir) }
@@ -51,7 +63,7 @@ final class SyncEngineTests: XCTestCase {
     }
 
     private func engine(types: [String]) -> SyncEngine {
-        SyncEngine(reader: reader, pusher: pusher, anchors: anchors, typeIdentifiers: types)
+        SyncEngine(reader: reader, pusher: pusher, anchors: anchors, localImporter: importer, typeIdentifiers: types)
     }
 
     func test_chunk_splitsAtLimit_preservingOrder() {
@@ -141,5 +153,45 @@ final class SyncEngineTests: XCTestCase {
         let report = await engine(types: [type]).syncAll()
         XCTAssertEqual(report.failedTypes, [type])
         XCTAssertFalse(report.hadServerError)
+    }
+
+    func test_successfulSync_alsoIngestsLocally() async throws {
+        let type = "HKQuantityTypeIdentifierStepCount"
+        reader.deltas[type] = TypeDelta(typeIdentifier: type, records: [record(1), record(2)],
+                                        sleep: [], workouts: [], newAnchor: HKQueryAnchor(fromValue: 7))
+        _ = await engine(types: [type]).syncAll()
+        XCTAssertEqual(importer.ingestedBatches.count, 1)
+        XCTAssertEqual(importer.ingestedBatches[0].records.count, 2)
+    }
+
+    func test_pushFailure_stillIngestsLocally() async throws {
+        let type = "HKQuantityTypeIdentifierStepCount"
+        reader.deltas[type] = TypeDelta(typeIdentifier: type, records: [record(1)],
+                                        sleep: [], workouts: [], newAnchor: HKQueryAnchor(fromValue: 1))
+        pusher.results = [.failure(MacClientError.unreachable)]
+        _ = await engine(types: [type]).syncAll()
+        XCTAssertEqual(importer.ingestedBatches.count, 1) // insertion locale indépendante de l'échec du push
+    }
+
+    func test_localIngestFailure_doesNotBlockPush_orFailSync() async throws {
+        let type = "HKQuantityTypeIdentifierStepCount"
+        reader.deltas[type] = TypeDelta(typeIdentifier: type, records: [record(1)],
+                                        sleep: [], workouts: [], newAnchor: HKQueryAnchor(fromValue: 1))
+        importer.shouldThrow = true
+        let report = await engine(types: [type]).syncAll()
+        XCTAssertEqual(report.pushedSamples, 1)
+        XCTAssertTrue(report.failedTypes.isEmpty)
+        XCTAssertEqual(pusher.pushedBatches.count, 1)
+    }
+
+    func test_localIngestFailure_anchorStillAdvancesOnPushSuccess() async throws {
+        let type = "HKQuantityTypeIdentifierStepCount"
+        reader.deltas[type] = TypeDelta(typeIdentifier: type, records: [record(1)],
+                                        sleep: [], workouts: [], newAnchor: HKQueryAnchor(fromValue: 3))
+        importer.shouldThrow = true
+        _ = await engine(types: [type]).syncAll()
+        // Limite acceptée, spec §8 : l'ancre avance sur l'ack Mac seul, indépendamment
+        // du succès de l'insertion locale.
+        XCTAssertEqual(anchors.anchor(for: type), HKQueryAnchor(fromValue: 3))
     }
 }
