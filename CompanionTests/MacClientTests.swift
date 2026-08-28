@@ -107,6 +107,27 @@ final class MacClientTests: XCTestCase {
         XCTAssertEqual(StubURLProtocol.lastRequest?.url?.path, "/batch")
     }
 
+    func test_trainingPlan_sendsBearer_targetsTrainingPlanPath_andDecodes() async throws {
+        try tokenStore.save(token: "cafe01")
+        let generatedAt = Date(timeIntervalSince1970: 1_777_000_000)
+        let plan = TrainingPlanResponse(
+            generatedAt: generatedAt,
+            goal: TrainingGoalSummary(name: "Trail", raceDate: generatedAt, distanceKm: 21.1, elevationGainM: 600),
+            weeks: [TrainingWeekSummary(monday: generatedAt, role: "Construction", targetKm: 30, sessions: [])],
+            message: nil
+        )
+        StubURLProtocol.handler = { request in
+            XCTAssertEqual(request.value(forHTTPHeaderField: "Authorization"), "Bearer cafe01")
+            return (200, try! ExchangeCoding.encoder.encode(plan))
+        }
+
+        let fetched = try await client.trainingPlan()
+
+        XCTAssertEqual(fetched, plan)
+        XCTAssertEqual(StubURLProtocol.lastRequest?.url?.path, CompanionProtocol.trainingPlanPath)
+        XCTAssertEqual(StubURLProtocol.lastRequest?.httpMethod, "GET")
+    }
+
     func test_push_401_throwsUnauthorized_500_throwsServerError() async throws {
         try tokenStore.save(token: "cafe01")
         StubURLProtocol.handler = { _ in (401, Data()) }

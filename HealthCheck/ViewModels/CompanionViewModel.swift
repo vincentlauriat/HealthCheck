@@ -29,10 +29,12 @@ final class CompanionViewModel: ObservableObject {
         self.isPaired = tokenStore.currentToken() != nil
         self.lastSyncDate = defaults.object(forKey: Self.lastSyncKey) as? Date
         let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "0"
+        let trainingPlanProvider = TrainingPlanProvider(store: store)
         self.router = CompanionRouter(
             pairing: pairing, tokenStore: tokenStore,
             importer: CompanionImporter(store: store, routeStore: routeStore),
-            appVersion: version)
+            appVersion: version,
+            trainingPlanProvider: { try trainingPlanProvider.currentTrainingPlan() })
     }
 
     func startServer() {
@@ -55,7 +57,7 @@ final class CompanionViewModel: ObservableObject {
             } catch {
                 // Pas de port dispo : la carte restera « serveur arrêté », le
                 // reste de l'app fonctionne — pas de crash pour un listener.
-                await MainActor.run { self?.server = nil }
+                await MainActor.run { [weak self] in self?.server = nil }
             }
         }
     }

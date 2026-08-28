@@ -89,6 +89,33 @@ final class CompanionRouterTests: XCTestCase {
         XCTAssertEqual(status(of: router.handle(request("GET", "/nope", token: "goodtoken")).response), 404)
     }
 
+    func test_trainingPlan_authenticated_returnsPlan_badToken401() throws {
+        try tokenStore.save(token: "goodtoken")
+        let generatedAt = Date(timeIntervalSince1970: 1_777_000_000)
+        let plan = TrainingPlanResponse(
+            generatedAt: generatedAt,
+            goal: TrainingGoalSummary(name: "Trail", raceDate: generatedAt, distanceKm: 21.1, elevationGainM: 600),
+            weeks: [TrainingWeekSummary(monday: generatedAt, role: "Construction", targetKm: 30, sessions: [])],
+            message: nil
+        )
+        let planRouter = CompanionRouter(
+            pairing: pairing,
+            tokenStore: tokenStore,
+            importer: CompanionImporter(store: try HealthStore(path: ":memory:"), routeStore: RouteStore(directory: tempDir)),
+            appVersion: "1.0.0",
+            trainingPlanProvider: { plan }
+        )
+
+        let ok = planRouter.handle(request("GET", CompanionProtocol.trainingPlanPath, token: "goodtoken"))
+        XCTAssertEqual(status(of: ok.response), 200)
+        let jsonStart = ok.response.range(of: Data("\r\n\r\n".utf8))!.upperBound
+        let payload = try ExchangeCoding.decoder.decode(TrainingPlanResponse.self, from: ok.response[jsonStart...])
+        XCTAssertEqual(payload, plan)
+
+        let unauthorized = planRouter.handle(request("GET", CompanionProtocol.trainingPlanPath, token: "wrong"))
+        XCTAssertEqual(status(of: unauthorized.response), 401)
+    }
+
     func test_pair_malformedJSON_is400() throws {
         _ = pairing.openWindow()
         let result = router.handle(request("POST", "/pair", body: Data("{oops".utf8)))

@@ -94,6 +94,19 @@ final class MacClient {
         }
     }
 
+    func trainingPlan() async throws -> TrainingPlanResponse {
+        let (data, status) = try await send(path: CompanionProtocol.trainingPlanPath, method: "GET", body: nil, authenticated: true)
+        switch status {
+        case 200:
+            guard let payload = try? ExchangeCoding.decoder.decode(TrainingPlanResponse.self, from: data) else {
+                throw MacClientError.badResponse
+            }
+            return payload
+        case 401: throw MacClientError.unauthorized
+        default: throw MacClientError.serverError(status)
+        }
+    }
+
     private func send(path: String, method: String, body: Data?, authenticated: Bool) async throws -> (Data, Int) {
         let (resolved, wasCached) = await resolvedEndpoint()
         guard let endpoint = resolved,

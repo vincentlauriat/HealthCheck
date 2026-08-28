@@ -8,6 +8,7 @@ struct CompanionRouter {
     let tokenStore: CompanionTokenStore
     let importer: CompanionImporter
     let appVersion: String
+    var trainingPlanProvider: (() throws -> TrainingPlanResponse)? = nil
 
     func handle(_ request: SyncHTTPRequest) -> (response: Data, insertedRows: Int, didPair: Bool) {
         switch (request.method, request.path) {
@@ -19,6 +20,8 @@ struct CompanionRouter {
             return (response, inserted, false)
         case ("GET", CompanionProtocol.statusPath):
             return (handleStatus(request), 0, false)
+        case ("GET", CompanionProtocol.trainingPlanPath):
+            return (handleTrainingPlan(request), 0, false)
         default:
             return (SyncHTTPResponse.make(status: 404), 0, false)
         }
@@ -56,5 +59,21 @@ struct CompanionRouter {
         guard authorized(request) else { return SyncHTTPResponse.make(status: 401) }
         let body = try? ExchangeCoding.encoder.encode(StatusResponse(app: "HealthCheck", version: appVersion))
         return SyncHTTPResponse.make(status: 200, json: body)
+    }
+
+    private func handleTrainingPlan(_ request: SyncHTTPRequest) -> Data {
+        guard authorized(request) else { return SyncHTTPResponse.make(status: 401) }
+        do {
+            let response = try trainingPlanProvider?() ?? TrainingPlanResponse(
+                generatedAt: Date(),
+                goal: nil,
+                weeks: [],
+                message: "Aucun objectif de course actif. Créez un objectif sur le Mac pour afficher un plan ici."
+            )
+            let body = try? ExchangeCoding.encoder.encode(response)
+            return SyncHTTPResponse.make(status: 200, json: body)
+        } catch {
+            return SyncHTTPResponse.make(status: 500)
+        }
     }
 }
