@@ -172,6 +172,15 @@ the same growing window repeatedly while the Mac stays unreachable — harmless,
 since `CompanionImporter.ingest` is idempotent (`INSERT OR IGNORE` semantics,
 same guarantee the zip import and the HTTP batch path already rely on).
 
+This independence holds at the scope of the whole per-type loop in
+`syncAll()`, not just within a single iteration relative to its own push
+outcome: a per-type failure (including an `.unauthorized` Mac response) must
+stop only that type's push and any further push attempts for the remaining
+types — never the local ingestion already reached, and never the loop
+itself before it reaches local ingestion for the remaining types. An
+unpaired iPhone (the default state of a fresh install) still has every type
+ingested locally on each sync pass, even though none of them can push.
+
 ## 7. Historical backfill on first sync
 
 `HealthKitReaderLive.initialWindowDays` (currently `30`, chosen only because
@@ -260,3 +269,9 @@ Tests mirror these under `CompanionTests/` (new) and existing `HealthCheckTests/
   itself — no screen reads the new local store yet. It is deliberately inert
   until sub-project 4. Verification is therefore test-based, not a manual
   walkthrough.
+- The 180-day-window test (§7) covers only the extracted pure function
+  (`HealthKitReaderLive.initialSyncStart`), not the `anchor == nil` wiring in
+  `HealthKitReaderLive.delta(for:since:)` that actually calls it — that path
+  is untestable without live HealthKit access. Accepted: the pure function is
+  the part with logic worth testing; the wiring is a one-line call verified
+  by inspection.
