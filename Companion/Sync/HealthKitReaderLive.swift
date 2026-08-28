@@ -6,7 +6,11 @@ import CoreLocation
 /// Première synchro bornée à `initialWindowDays` par prédicat — sans lui,
 /// la première ancre renverrait TOUT l'historique (piège documenté, spec §7).
 final class HealthKitReaderLive: DeltaReading {
-    static let initialWindowDays = 30
+    static let initialWindowDays = 180
+
+    static func initialSyncStart(now: Date, calendar: Calendar = .current) -> Date {
+        calendar.date(byAdding: .day, value: -initialWindowDays, to: now)!
+    }
 
     private let store: HKHealthStore
     private let now: () -> Date
@@ -44,9 +48,7 @@ final class HealthKitReaderLive: DeltaReading {
         let type = sampleType(for: typeIdentifier)
         // Prédicat de première synchro seulement ; ensuite l'ancre fait foi.
         let predicate: NSPredicate? = anchor == nil
-            ? HKQuery.predicateForSamples(
-                withStart: Calendar.current.date(byAdding: .day, value: -Self.initialWindowDays, to: now()),
-                end: nil)
+            ? HKQuery.predicateForSamples(withStart: Self.initialSyncStart(now: now()), end: nil)
             : nil
 
         let (samples, newAnchor) = try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<([HKSample], HKQueryAnchor), Error>) in
