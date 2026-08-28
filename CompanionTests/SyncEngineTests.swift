@@ -114,15 +114,21 @@ final class SyncEngineTests: XCTestCase {
         XCTAssertNil(anchors.anchor(for: type)) // échec au milieu du delta → tout sera relivré (idempotent côté Mac)
     }
 
-    func test_unauthorized_setsNeedsPairing_andStops() async throws {
-        let type = "HKQuantityTypeIdentifierStepCount"
-        reader.deltas[type] = TypeDelta(typeIdentifier: type, records: [record(1)],
-                                        sleep: [], workouts: [], newAnchor: HKQueryAnchor(fromValue: 1))
+    func test_unauthorized_stopsPushing_butKeepsIngestingLocally() async throws {
+        let stepType = "HKQuantityTypeIdentifierStepCount"
+        let hrType = "HKQuantityTypeIdentifierHeartRate"
+        reader.deltas[stepType] = TypeDelta(typeIdentifier: stepType, records: [record(1)],
+                                            sleep: [], workouts: [], newAnchor: HKQueryAnchor(fromValue: 1))
+        reader.deltas[hrType] = TypeDelta(typeIdentifier: hrType, records: [record(2)],
+                                          sleep: [], workouts: [], newAnchor: HKQueryAnchor(fromValue: 2))
         pusher.results = [.failure(MacClientError.unauthorized)]
-        let report = await engine(types: [type, "HKQuantityTypeIdentifierHeartRate"]).syncAll()
+        let report = await engine(types: [stepType, hrType]).syncAll()
         XCTAssertTrue(report.needsPairing)
-        XCTAssertNil(anchors.anchor(for: type))
+        XCTAssertNil(anchors.anchor(for: stepType))
+        XCTAssertNil(anchors.anchor(for: hrType))
         XCTAssertEqual(pusher.pushedBatches.count, 1) // inutile d'insister sans jeton valide
+        XCTAssertEqual(importer.ingestedBatches.count, 2) // insertion locale indépendante de l'appairage
+        XCTAssertEqual(report.failedTypes, [stepType, hrType])
     }
 
     func test_emptyDelta_pushesNothing() async {

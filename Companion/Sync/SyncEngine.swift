@@ -24,12 +24,6 @@ protocol LocalIngesting {
 
 extension CompanionImporter: LocalIngesting {}
 
-/// Repli par défaut tant que la Tâche 5 n'a pas câblé le vrai LocalStore —
-/// garde CompanionApp.swift compilable sans le modifier avant son tour.
-private struct NoLocalIngestion: LocalIngesting {
-    func ingest(_ batch: ExchangeBatch) throws -> Int { 0 }
-}
-
 struct SyncReport: Equatable {
     var pushedSamples = 0
     var insertedRows = 0
@@ -67,8 +61,7 @@ final class SyncEngine {
     private let typeIdentifiers: [String]
 
     init(reader: DeltaReading, pusher: BatchPushing, anchors: AnchorStore,
-         localImporter: LocalIngesting = NoLocalIngestion(),
-         typeIdentifiers: [String] = SyncEngine.defaultTypes) {
+         localImporter: LocalIngesting, typeIdentifiers: [String] = SyncEngine.defaultTypes) {
         self.reader = reader
         self.pusher = pusher
         self.anchors = anchors
@@ -96,6 +89,7 @@ final class SyncEngine {
 
     func syncAll() async -> SyncReport {
         var report = SyncReport()
+        var pushDisabled = false
         for type in typeIdentifiers {
             do {
                 let delta = try await reader.delta(for: type, since: anchors.anchor(for: type))
@@ -110,6 +104,11 @@ final class SyncEngine {
                            type, String(describing: error))
                 }
 
+                guard !pushDisabled else {
+                    report.failedTypes.append(type) // ancre intacte, relivraison au prochain passage
+                    continue
+                }
+
                 let batches = Self.chunk(fullBatch, limit: CompanionProtocol.batchLimit)
                 for batch in batches {
                     report.insertedRows += try await pusher.push(batch: batch)
@@ -120,7 +119,10 @@ final class SyncEngine {
             } catch MacClientError.unauthorized {
                 report.needsPairing = true
                 report.failedTypes.append(type)
-                break // sans jeton valide, les types suivants échoueraient pareil
+                // Insertion locale continue pour les types suivants (spec §6 : l'autonomie
+                // ne doit jamais dépendre du Mac) ; seul le push s'arrête — sans jeton
+                // valide, insister échouerait pareil pour tous les types restants.
+                pushDisabled = true
             } catch {
                 report.failedTypes.append(type) // ancre intacte, relivraison au prochain passage
                 if let macClientError = error as? MacClientError, case .serverError = macClientError {

@@ -1,5 +1,6 @@
 import SwiftUI
 import HealthKit
+import os.log
 
 @main
 struct CompanionApp: App {
@@ -18,9 +19,10 @@ struct CompanionApp: App {
         let client = MacClient(endpointProvider: BonjourEndpointProvider(), tokenStore: tokenStore)
         let anchors = AnchorStore()
         let localImporter: LocalIngesting
-        if let localStore = try? LocalStore() {
-            localImporter = localStore.importer
-        } else {
+        do {
+            localImporter = try LocalStore().importer
+        } catch {
+            os_log(.error, "LocalStore indisponible, mode relais seul: %{public}@", String(describing: error))
             localImporter = NoOpImporter()
         }
         let engine = SyncEngine(reader: reader, pusher: client, anchors: anchors, localImporter: localImporter)
