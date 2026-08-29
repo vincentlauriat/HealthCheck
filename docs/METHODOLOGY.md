@@ -778,6 +778,37 @@ des séances, pas une somme garantie exacte des séances qui en sortent.
   volume — la séance de côtes dédiée est le seul mécanisme d'équilibrage,
   il n'y a pas de métrique ajustée à la pente.
 
+### 11.8 Alternance côtes / intervalles VO2max — `VO2MaxEngine`
+
+Une semaine de montée en charge (`.build`/`.peak`) sur deux remplace sa
+séance de côtes par une séance d'intervalles VO2max, dans une zone
+cardiaque quasi-maximale (`hrRange(0.90, 0.97, hrMax:)`, au-dessus de la
+zone `hard` 85–92 % des côtes). L'alternance est pilotée par
+`weekIndexInRamp` — la position (base 0) de la semaine parmi toutes les
+semaines `.build`/`.peak`, calculée par `TrainingPlanner.plan(...)` : index
+pair → côtes, index impair → intervalles (`TrainingPlanner.swift`). La
+première semaine de montée en charge (index 0) reste toujours en côtes.
+`.taper`, `.raceWeek` et la semaine de clôture ne reçoivent jamais
+d'intervalles.
+
+`VO2MaxEngine` (`HealthCheckShared/Analysis/VO2MaxEngine.swift`) interprète
+séparément la VO2max mesurée comme un signal de progression :
+
+```swift
+recentWindowDays = 30            // fenêtre récente, jusqu'à aujourd'hui inclus
+priorWindowDays = 90             // fenêtre antérieure, immédiatement avant
+meaningfulDeltaThreshold = 1.0   // mL/min·kg
+```
+
+`trend(records:today:calendar:)` retourne `nil` si l'une des deux fenêtres
+n'a aucun échantillon — pas de seuil de volume minimal, les échantillons
+VO2max étant déjà rares par nature (estimés par l'Apple Watch sur certaines
+sorties GPS). `stagnationAlert(trend:chronicKm:)` retourne une alerte
+(`.info` si stable, `.warning` si en baisse) seulement quand la charge
+chronique dépasse `TrainingLoadMonitor.meaningfulChronicKm` (8,0 km/semaine,
+la même constante que le moniteur de charge, référencée et non dupliquée) —
+en dessous, la stagnation n'est pas surprenante et ne mérite pas d'alerte.
+
 ---
 
 ## 12. Suivi de charge — `TrainingLoadMonitor`
