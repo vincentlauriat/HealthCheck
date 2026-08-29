@@ -12,6 +12,7 @@ enum WeekRole: Equatable {
 enum SessionKind: Equatable {
     case longRun
     case hills
+    case vo2MaxIntervals
     case baseEndurance
     case optionalEasy
     case legOpener
@@ -256,7 +257,8 @@ enum TrainingPlanner {
                 let target = anchorBase * taperFactor
                 let climb: Double = role == .raceWeek ? 0 : peakClimb * 0.5
                 let weekSessions = sessions(role: role, targetKm: target, previousLongKm: previousLong,
-                                            climbTargetM: climb, goal: goal, hrMax: hrMax)
+                                            climbTargetM: climb, goal: goal, hrMax: hrMax,
+                                            weekIndexInRamp: nil)
                 if let long = weekSessions.first(where: { $0.kind == .longRun }) { previousLong = long.targetKm }
                 weeks.append(PlannedWeek(monday: monday, role: role, targetKm: target, sessions: weekSessions))
             }
@@ -310,7 +312,8 @@ enum TrainingPlanner {
             default:         climb = 0
             }
             let weekSessions = sessions(role: role, targetKm: target, previousLongKm: previousLong,
-                                        climbTargetM: climb, goal: goal, hrMax: hrMax)
+                                        climbTargetM: climb, goal: goal, hrMax: hrMax,
+                                        weekIndexInRamp: i <= peakIndex ? i : nil)
             if let long = weekSessions.first(where: { $0.kind == .longRun }) { previousLong = long.targetKm }
             previousTarget = target
             weeks.append(PlannedWeek(monday: monday, role: role, targetKm: target, sessions: weekSessions))
@@ -362,6 +365,8 @@ extension TrainingPlanner {
                 : "Elle construit votre distance : plus de capillaires, plus de mitochondries, une meilleure utilisation des graisses comme carburant. C'est 60 % du volume de la semaine — la séance à ne jamais sacrifier."
         case .hills:
             return "La seule séance dure de la semaine, et la seule qui prépare le dénivelé du parcours. La descente compte autant que la montée : c'est elle qui use les quadriceps en course."
+        case .vo2MaxIntervals:
+            return "Les efforts proches du maximum sont ce qui fait progresser la VO2max le plus efficacement — les côtes travaillent la force, ceci travaille la capacité aérobie."
         case .baseEndurance:
             return "Du volume à bas coût : du kilométrage sans fatigue supplémentaire, pour que la sortie longue et les côtes restent des séances de qualité. C'est celle que tout le monde court trop vite."
         case .optionalEasy:
@@ -372,7 +377,8 @@ extension TrainingPlanner {
     }
 
     static func sessions(role: WeekRole, targetKm: Double, previousLongKm: Double,
-                         climbTargetM: Double, goal: RaceGoal, hrMax: Double) -> [PlannedSession] {
+                         climbTargetM: Double, goal: RaceGoal, hrMax: Double,
+                         weekIndexInRamp: Int? = nil) -> [PlannedSession] {
         let isTaper = role == .taper || role == .raceWeek
         var longKm = min(targetKm * longRunShare,
                          previousLongKm + longRunWeeklyGrowthKm,
@@ -382,6 +388,7 @@ extension TrainingPlanner {
         let easy = hrRange(0.60, 0.75, hrMax: hrMax)
         let endurance = hrRange(0.70, 0.80, hrMax: hrMax)
         let hard = hrRange(0.85, 0.92, hrMax: hrMax)
+        let intervals = hrRange(0.90, 0.97, hrMax: hrMax)
 
         var result = [
             PlannedSession(kind: .longRun, targetKm: longKm, targetMinutes: nil,
@@ -398,11 +405,24 @@ extension TrainingPlanner {
                                          note: "Déverrouillage : 15 min souples avec deux ou trois accélérations courtes.",
                                          rationale: rationale(for: .legOpener, isTaper: isTaper)))
         } else {
-            result.append(PlannedSession(kind: .hills, targetKm: targetKm * hillsShare,
-                                         targetMinutes: nil, targetClimbM: climbTargetM,
-                                         hrRange: isTaper ? endurance : hard,
-                                         note: "Parcours vallonné, visez environ \(Int(climbTargetM.rounded())) m de dénivelé positif.",
-                                         rationale: rationale(for: .hills, isTaper: isTaper)))
+            let usesIntervals: Bool
+            if let index = weekIndexInRamp, role == .build || role == .peak {
+                usesIntervals = index % 2 == 1
+            } else {
+                usesIntervals = false
+            }
+            if usesIntervals {
+                result.append(PlannedSession(kind: .vo2MaxIntervals, targetKm: targetKm * hillsShare,
+                                             targetMinutes: nil, targetClimbM: 0, hrRange: intervals,
+                                             note: "Fractionné : répétitions courtes et rapides, séparées de récupérations. L'intensité compte plus que la distance — visez la zone indiquée.",
+                                             rationale: rationale(for: .vo2MaxIntervals, isTaper: isTaper)))
+            } else {
+                result.append(PlannedSession(kind: .hills, targetKm: targetKm * hillsShare,
+                                             targetMinutes: nil, targetClimbM: climbTargetM,
+                                             hrRange: isTaper ? endurance : hard,
+                                             note: "Parcours vallonné, visez environ \(Int(climbTargetM.rounded())) m de dénivelé positif.",
+                                             rationale: rationale(for: .hills, isTaper: isTaper)))
+            }
         }
 
         let used = result.reduce(0) { $0 + $1.targetKm }

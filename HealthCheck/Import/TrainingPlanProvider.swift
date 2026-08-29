@@ -94,6 +94,7 @@ struct TrainingPlanProvider: TrainingPlanProviding {
         switch kind {
         case .longRun: return "Sortie longue"
         case .hills: return "Côtes"
+        case .vo2MaxIntervals: return "Intervalles VO2max"
         case .baseEndurance: return "Endurance"
         case .optionalEasy: return "Optionnelle"
         case .legOpener: return "Déverrouillage"
@@ -121,7 +122,7 @@ struct TrainingPlanProvider: TrainingPlanProviding {
     private func intensityLabel(_ kind: SessionKind) -> String {
         switch kind {
         case .longRun: return "endurance"
-        case .hills: return "intensité"
+        case .hills, .vo2MaxIntervals: return "intensité"
         case .baseEndurance, .optionalEasy: return "récupération active"
         case .legOpener: return "réveil"
         }

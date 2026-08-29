@@ -450,6 +450,60 @@ final class TrainingPlannerTests: XCTestCase {
         XCTAssertGreaterThan(checkedCount, 10)
     }
 
+    func test_sessions_weekIndexInRampOdd_usesVo2MaxIntervalsInsteadOfHills() {
+        let week = TrainingPlanner.sessions(role: .build, targetKm: 20, previousLongKm: 10,
+                                            climbTargetM: 100, goal: goal(), hrMax: 190,
+                                            weekIndexInRamp: 1)
+        XCTAssertFalse(week.contains { $0.kind == .hills })
+        let interval = week.first { $0.kind == .vo2MaxIntervals }
+        XCTAssertNotNil(interval)
+        XCTAssertEqual(interval?.targetKm ?? -1, 20 * TrainingPlanner.hillsShare, accuracy: 0.001)
+        XCTAssertEqual(interval?.targetClimbM, 0)
+        XCTAssertEqual(interval?.hrRange, TrainingPlanner.hrRange(0.90, 0.97, hrMax: 190))
+        XCTAssertFalse(interval?.rationale.isEmpty ?? true)
+    }
+
+    func test_sessions_weekIndexInRampEven_keepsHills() {
+        let week = TrainingPlanner.sessions(role: .build, targetKm: 20, previousLongKm: 10,
+                                            climbTargetM: 100, goal: goal(), hrMax: 190,
+                                            weekIndexInRamp: 0)
+        XCTAssertTrue(week.contains { $0.kind == .hills })
+        XCTAssertFalse(week.contains { $0.kind == .vo2MaxIntervals })
+    }
+
+    func test_sessions_weekIndexInRampOmitted_defaultsToHills() {
+        // Backward-compat: every pre-existing call site in this file omits
+        // the parameter and must keep producing hills, unchanged.
+        let week = TrainingPlanner.sessions(role: .build, targetKm: 20, previousLongKm: 10,
+                                            climbTargetM: 100, goal: goal(), hrMax: 190)
+        XCTAssertTrue(week.contains { $0.kind == .hills })
+    }
+
+    func test_sessions_taperWeek_ignoresAnOddWeekIndexInRamp_staysHills() {
+        // Role gates the alternation, not just index parity — a taper week
+        // must never receive vo2MaxIntervals even with an odd index.
+        let week = TrainingPlanner.sessions(role: .taper, targetKm: 15, previousLongKm: 10,
+                                            climbTargetM: 50, goal: goal(), hrMax: 190,
+                                            weekIndexInRamp: 1)
+        XCTAssertTrue(week.contains { $0.kind == .hills })
+        XCTAssertFalse(week.contains { $0.kind == .vo2MaxIntervals })
+    }
+
+    func test_plan_goldenCase_alternatesHillsAndVo2MaxIntervalsAcrossRampWeeks() {
+        // Same golden fixture as test_plan_goldenCase_volumesAndRolesFollowTheRamp:
+        // roles [.build, .build, .peak, .taper, .raceWeek] → ramp indices 0,1,2.
+        let plan = TrainingPlanner.plan(goal: goal(), history: comebackHistory, hrMax: 190,
+                                        today: date("2026-08-23"), calendar: calendar)
+        let planned = plan.weeks.filter { $0.role != .currentWeekClosing }
+        func hillsOrIntervalsKind(_ week: PlannedWeek) -> SessionKind? {
+            week.sessions.first { $0.kind == .hills || $0.kind == .vo2MaxIntervals }?.kind
+        }
+        // index 0 (.build) hills, index 1 (.build) intervals, index 2 (.peak)
+        // hills, index 3 (.taper) hills, index 4 (.raceWeek) neither (legOpener).
+        XCTAssertEqual(planned.map(hillsOrIntervalsKind),
+                       [.hills, .vo2MaxIntervals, .hills, .hills, nil])
+    }
+
     /// `anchorBaseKm`/`rampFactor` exposés sur `TrainingPlan` doivent
     /// refléter exactement la base mesurée à l'ancrage : ~12,6 km/semaine
     /// et le facteur de reprise pour un coureur qui reprend, 21 km/semaine
