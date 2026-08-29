@@ -90,6 +90,20 @@ final class DashboardViewModelTests: XCTestCase {
     }
 
     @MainActor
+    func test_load_marksDashboardAsLoaded() throws {
+        let store = try HealthStore(path: ":memory:")
+        let viewModel = DashboardViewModel(
+            store: store,
+            resolver: SourcePriorityResolver(priority: ["Watch", "iPhone"])
+        )
+
+        XCTAssertFalse(viewModel.hasLoaded)
+        try viewModel.load()
+
+        XCTAssertTrue(viewModel.hasLoaded)
+    }
+
+    @MainActor
     func test_loadWellness_scoresTodayAgainstPersonalBaseline() throws {
         let store = try HealthStore(path: ":memory:")
         // 23:00 aujourd'hui plutôt que l'horloge réelle : ces tests posent leurs

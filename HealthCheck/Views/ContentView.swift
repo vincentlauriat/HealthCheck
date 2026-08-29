@@ -98,9 +98,7 @@ struct ContentView: View {
         .task { withingsViewModel.autoSyncIfNeeded() }
         .task { companionViewModel.startServer() }
         .onChange(of: importViewModel.lastSummary?.recordsInserted) { _, _ in
-            try? dashboardViewModel.loadToday()
-            try? dashboardViewModel.loadThisWeek()
-            try? dashboardViewModel.loadWellness()
+            try? dashboardViewModel.load()
             try? trainingViewModel.load(readiness: dashboardViewModel.readiness)
             try? sleepViewModel.load()
             try? activityViewModel.load()
@@ -109,16 +107,12 @@ struct ContentView: View {
             try? correlationsViewModel.load()
         }
         .onChange(of: withingsViewModel.syncGeneration) { _, _ in
-            try? dashboardViewModel.loadToday()
-            try? dashboardViewModel.loadThisWeek()
-            try? dashboardViewModel.loadWellness()
+            try? dashboardViewModel.load()
             try? bodyViewModel.load(period: .oneYear)
             try? trendsViewModel.load(period: .sixMonths)
         }
         .onChange(of: companionViewModel.syncGeneration) { _, _ in
-            try? dashboardViewModel.loadToday()
-            try? dashboardViewModel.loadThisWeek()
-            try? dashboardViewModel.loadWellness()
+            try? dashboardViewModel.load()
             try? trainingViewModel.load(readiness: dashboardViewModel.readiness)
             try? sleepViewModel.load()
             try? activityViewModel.load()

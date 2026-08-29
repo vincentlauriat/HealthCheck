@@ -16,6 +16,10 @@ final class DashboardViewModel: ObservableObject {
     @Published private(set) var readiness: ReadinessScore?
     @Published private(set) var insights: [Insight] = []
 
+    /// Vrai après le premier chargement — l'accueil ne recalcule pas à chaque
+    /// retour de section, seulement via les refresh explicites d'import/synchro.
+    @Published private(set) var hasLoaded = false
+
     private let store: HealthStore
     private let resolver: SourcePriorityResolver
     private let calendar: Calendar
@@ -26,6 +30,13 @@ final class DashboardViewModel: ObservableObject {
         self.resolver = resolver
         self.calendar = calendar
         self.now = now
+    }
+
+    func load() throws {
+        hasLoaded = true
+        try loadToday()
+        try loadThisWeek()
+        try loadWellness()
     }
 
     func loadToday() throws {

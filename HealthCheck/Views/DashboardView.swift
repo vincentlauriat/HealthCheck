@@ -47,11 +47,7 @@ struct DashboardView: View {
             .padding(24)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .task {
-            try? viewModel.loadToday()
-            try? viewModel.loadThisWeek()
-            try? viewModel.loadWellness()
-        }
+        .task { if !viewModel.hasLoaded { try? viewModel.load() } }
     }
 
     @ViewBuilder
