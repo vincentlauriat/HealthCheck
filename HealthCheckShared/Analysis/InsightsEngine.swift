@@ -17,8 +17,7 @@ struct InsightInputs {
     var sleepHoursMean7: Double?
     var stepsThisWeek: Double?
     var stepsLastWeek: Double?
-    var vo2Latest: Double?
-    var vo2ThreeMonthsAgo: Double?
+    var vo2Trend: VO2MaxTrend?
     var weightDelta30d: Double?
 }
 
@@ -84,11 +83,11 @@ enum InsightsEngine {
             }
         }
 
-        if let latest = inputs.vo2Latest, let older = inputs.vo2ThreeMonthsAgo, latest - older >= 1 {
+        if let trend = inputs.vo2Trend, trend.verdict == .rising {
             insights.append(Insight(
                 systemImage: "lungs.fill",
                 title: "VO₂ max en progression",
-                message: String(format: "%.1f → %.1f ml/kg/min sur les trois derniers mois — votre capacité aérobie s'améliore.", older, latest),
+                message: String(format: "%.1f → %.1f ml/kg/min sur les trois derniers mois — votre capacité aérobie s'améliore.", trend.priorAverage, trend.recentAverage),
                 sentiment: .positive
             ))
         }

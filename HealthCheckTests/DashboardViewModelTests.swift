@@ -135,4 +135,25 @@ final class DashboardViewModelTests: XCTestCase {
         // +10 % au-dessus de la baseline → 100 − 0,10 × 600 = 40
         XCTAssertEqual(hrComponent!.score, 40, accuracy: 0.01)
     }
+
+    @MainActor
+    func test_loadWellness_vo2MaxRising_producesInsightViaTheSharedEngine() throws {
+        let store = try HealthStore(path: ":memory:")
+        let now = Calendar.current.startOfDay(for: Date()).addingTimeInterval(23 * 3600)
+        let calendar = Calendar.current
+
+        try store.insertRecords([
+            record(type: "HKQuantityTypeIdentifierVO2Max", sourceName: "Watch", value: 43.0,
+                  start: calendar.date(byAdding: .day, value: -5, to: now)!),
+            record(type: "HKQuantityTypeIdentifierVO2Max", sourceName: "Watch", value: 40.0,
+                  start: calendar.date(byAdding: .day, value: -60, to: now)!)
+        ])
+
+        let viewModel = DashboardViewModel(store: store,
+                                           resolver: SourcePriorityResolver(priority: ["Watch", "iPhone"]),
+                                           now: { now })
+        try viewModel.loadWellness()
+
+        XCTAssertTrue(viewModel.insights.contains { $0.title == "VO₂ max en progression" })
+    }
 }

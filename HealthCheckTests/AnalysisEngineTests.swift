@@ -82,12 +82,32 @@ final class InsightsEngineTests: XCTestCase {
 
     func test_vo2Progress_detected() {
         var inputs = InsightInputs()
-        inputs.vo2Latest = 42.5
-        inputs.vo2ThreeMonthsAgo = 40.8
+        inputs.vo2Trend = VO2MaxTrend(recentAverage: 42.5, priorAverage: 40.8, delta: 1.7, verdict: .rising)
 
         let insights = InsightsEngine.generate(from: inputs)
 
         XCTAssertEqual(insights.first?.title, "VO₂ max en progression")
         XCTAssertEqual(insights.first?.sentiment, .positive)
+        XCTAssertEqual(insights.first?.message, "40.8 → 42.5 ml/kg/min sur les trois derniers mois — votre capacité aérobie s'améliore.")
+    }
+
+    func test_vo2Stable_producesNoInsight() {
+        var inputs = InsightInputs()
+        inputs.vo2Trend = VO2MaxTrend(recentAverage: 41.0, priorAverage: 40.8, delta: 0.2, verdict: .stable)
+
+        XCTAssertTrue(InsightsEngine.generate(from: inputs).isEmpty)
+    }
+
+    func test_vo2Declining_producesNoInsight() {
+        // The insight only ever celebrates progress — a decline is not this
+        // engine's concern (the stagnation alert on TrainingViewModel covers it).
+        var inputs = InsightInputs()
+        inputs.vo2Trend = VO2MaxTrend(recentAverage: 38.0, priorAverage: 40.0, delta: -2.0, verdict: .declining)
+
+        XCTAssertTrue(InsightsEngine.generate(from: inputs).isEmpty)
+    }
+
+    func test_vo2NilTrend_producesNoInsight() {
+        XCTAssertTrue(InsightsEngine.generate(from: InsightInputs()).isEmpty)
     }
 }

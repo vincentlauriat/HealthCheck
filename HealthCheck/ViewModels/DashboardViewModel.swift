@@ -65,7 +65,7 @@ final class DashboardViewModel: ObservableObject {
         let end = now()
         guard
             let d30 = calendar.date(byAdding: .day, value: -30, to: end),
-            let d90 = calendar.date(byAdding: .day, value: -90, to: end),
+            let d120 = calendar.date(byAdding: .day, value: -120, to: end),
             let d7 = calendar.date(byAdding: .day, value: -7, to: end)
         else { return }
         let startOfToday = calendar.startOfDay(for: end)
@@ -116,9 +116,8 @@ final class DashboardViewModel: ObservableObject {
         inputs.sleepHoursMean7 = recentNights.count >= 3 ? mean(recentNights.map(\.value)) : nil
         inputs.stepsThisWeek = thisWeek?.steps
         inputs.stepsLastWeek = lastWeek?.steps
-        let vo2Daily = try dailyAverages(type: "HKQuantityTypeIdentifierVO2Max", from: d90, to: end)
-        inputs.vo2Latest = vo2Daily.last?.value
-        inputs.vo2ThreeMonthsAgo = vo2Daily.first?.value
+        let vo2Records = try store.records(type: "HKQuantityTypeIdentifierVO2Max", from: d120, to: end)
+        inputs.vo2Trend = VO2MaxEngine.trend(records: vo2Records, today: end, calendar: calendar)
         let weightDaily = try dailyAverages(type: "HKQuantityTypeIdentifierBodyMass", from: d30, to: end)
         if let first = weightDaily.first?.value, let last = weightDaily.last?.value {
             inputs.weightDelta30d = last - first
