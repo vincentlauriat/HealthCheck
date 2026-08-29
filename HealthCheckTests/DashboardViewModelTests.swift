@@ -137,7 +137,15 @@ final class DashboardViewModelTests: XCTestCase {
     }
 
     @MainActor
-    func test_loadWellness_vo2MaxRising_producesInsightViaTheSharedEngine() throws {
+    func test_loadWellness_vo2MaxOldRecordBeyond90Days_shiftsTrendToDecliningUnderTheD120Window() throws {
+        // Fixture discriminante vis-à-vis de l'ancienne logique (fenêtre d90,
+        // delta first/last) : un enregistrement à J-110 tombe hors de
+        // l'ancienne fenêtre (résultat inchangé, insight émis) mais dans la
+        // fenêtre "prior" de VO2MaxEngine.trend (-30..-120 j), ce qui fait
+        // basculer la moyenne "prior" à 45.0 contre 43.0 "recent" → verdict
+        // .declining → aucun insight. Une fixture à seulement deux points
+        // (43.0 @ J-5, 40.0 @ J-60) est vacueuse : elle produit le même
+        // résultat sous les deux implémentations (voir task-3-review.md).
         let store = try HealthStore(path: ":memory:")
         let now = Calendar.current.startOfDay(for: Date()).addingTimeInterval(23 * 3600)
         let calendar = Calendar.current
@@ -146,7 +154,9 @@ final class DashboardViewModelTests: XCTestCase {
             record(type: "HKQuantityTypeIdentifierVO2Max", sourceName: "Watch", value: 43.0,
                   start: calendar.date(byAdding: .day, value: -5, to: now)!),
             record(type: "HKQuantityTypeIdentifierVO2Max", sourceName: "Watch", value: 40.0,
-                  start: calendar.date(byAdding: .day, value: -60, to: now)!)
+                  start: calendar.date(byAdding: .day, value: -60, to: now)!),
+            record(type: "HKQuantityTypeIdentifierVO2Max", sourceName: "Watch", value: 50.0,
+                  start: calendar.date(byAdding: .day, value: -110, to: now)!)
         ])
 
         let viewModel = DashboardViewModel(store: store,
@@ -154,6 +164,6 @@ final class DashboardViewModelTests: XCTestCase {
                                            now: { now })
         try viewModel.loadWellness()
 
-        XCTAssertTrue(viewModel.insights.contains { $0.title == "VO₂ max en progression" })
+        XCTAssertFalse(viewModel.insights.contains { $0.title == "VO₂ max en progression" })
     }
 }
