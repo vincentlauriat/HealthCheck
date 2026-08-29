@@ -406,7 +406,7 @@ extension TrainingPlanner {
                                          rationale: rationale(for: .legOpener, isTaper: isTaper)))
         } else {
             let usesIntervals: Bool
-            if let index = weekIndexInRamp, role == .build || role == .peak {
+            if let index = weekIndexInRamp, role == .build {
                 usesIntervals = index % 2 == 1
             } else {
                 usesIntervals = false

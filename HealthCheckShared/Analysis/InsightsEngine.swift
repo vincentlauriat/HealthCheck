@@ -87,7 +87,7 @@ enum InsightsEngine {
             insights.append(Insight(
                 systemImage: "lungs.fill",
                 title: "VO₂ max en progression",
-                message: String(format: "%.1f → %.1f ml/kg/min sur les trois derniers mois — votre capacité aérobie s'améliore.", trend.priorAverage, trend.recentAverage),
+                message: String(format: "%.1f → %.1f ml/kg/min (30 derniers jours vs. les 90 jours précédents) — votre capacité aérobie s'améliore.", trend.priorAverage, trend.recentAverage),
                 sentiment: .positive
             ))
         }

@@ -88,7 +88,7 @@ final class InsightsEngineTests: XCTestCase {
 
         XCTAssertEqual(insights.first?.title, "VO₂ max en progression")
         XCTAssertEqual(insights.first?.sentiment, .positive)
-        XCTAssertEqual(insights.first?.message, "40.8 → 42.5 ml/kg/min sur les trois derniers mois — votre capacité aérobie s'améliore.")
+        XCTAssertEqual(insights.first?.message, "40.8 → 42.5 ml/kg/min (30 derniers jours vs. les 90 jours précédents) — votre capacité aérobie s'améliore.")
     }
 
     func test_vo2Stable_producesNoInsight() {

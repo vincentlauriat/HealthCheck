@@ -35,7 +35,6 @@ final class TrainingViewModel: ObservableObject {
     private static let hrMaxWindowDays = 180
     private static let heartRateType = "HKQuantityTypeIdentifierHeartRate"
     private static let defaultHRMax = 190.0
-    private static let vo2MaxType = "HKQuantityTypeIdentifierVO2Max"
     private static let vo2LookbackDays = 120
 
     init(store: HealthStore, calendar: Calendar = .current, now: @escaping () -> Date = Date.init) {
@@ -76,7 +75,7 @@ final class TrainingViewModel: ObservableObject {
         let history = try store.workouts(from: historyStart, to: end)
 
         let vo2LookbackStart = calendar.date(byAdding: .day, value: -Self.vo2LookbackDays, to: end)!
-        let vo2Records = try store.records(type: Self.vo2MaxType, from: vo2LookbackStart, to: end)
+        let vo2Records = try store.records(type: VO2MaxEngine.vo2MaxType, from: vo2LookbackStart, to: end)
         let vo2Trend = VO2MaxEngine.trend(records: vo2Records, today: end, calendar: calendar)
         let chronicKm = TrainingPlanner.chronicWeeklyKm(history: history, today: end, calendar: calendar)
         vo2MaxStatus = VO2MaxStatus(trend: vo2Trend,

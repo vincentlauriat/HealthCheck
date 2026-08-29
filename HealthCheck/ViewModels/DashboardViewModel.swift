@@ -116,7 +116,7 @@ final class DashboardViewModel: ObservableObject {
         inputs.sleepHoursMean7 = recentNights.count >= 3 ? mean(recentNights.map(\.value)) : nil
         inputs.stepsThisWeek = thisWeek?.steps
         inputs.stepsLastWeek = lastWeek?.steps
-        let vo2Records = try store.records(type: "HKQuantityTypeIdentifierVO2Max", from: d120, to: end)
+        let vo2Records = try store.records(type: VO2MaxEngine.vo2MaxType, from: d120, to: end)
         inputs.vo2Trend = VO2MaxEngine.trend(records: vo2Records, today: end, calendar: calendar)
         let weightDaily = try dailyAverages(type: "HKQuantityTypeIdentifierBodyMass", from: d30, to: end)
         if let first = weightDaily.first?.value, let last = weightDaily.last?.value {

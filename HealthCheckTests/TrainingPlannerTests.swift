@@ -489,6 +489,36 @@ final class TrainingPlannerTests: XCTestCase {
         XCTAssertFalse(week.contains { $0.kind == .vo2MaxIntervals })
     }
 
+    func test_sessions_peakWeek_ignoresAnOddWeekIndexInRamp_staysHills() {
+        // Role gates the alternation, not just index parity — the peak week
+        // carries peakClimb (the plan's max elevation target, rehearsing
+        // race-day climb) and must never fall to vo2MaxIntervals (which
+        // zeroes out targetClimbM), even with an odd index.
+        let week = TrainingPlanner.sessions(role: .peak, targetKm: 20, previousLongKm: 10,
+                                            climbTargetM: 300, goal: goal(), hrMax: 190,
+                                            weekIndexInRamp: 1)
+        let hills = week.first { $0.kind == .hills }
+        XCTAssertNotNil(hills)
+        XCTAssertEqual(hills?.targetClimbM, 300)
+        XCTAssertFalse(week.contains { $0.kind == .vo2MaxIntervals })
+    }
+
+    func test_plan_evenRampWeekCount_peakWeekStaysHillsDespiteOddIndex() {
+        // rampWeekCount=4 (even) puts peakIndex at 3 (odd) — before the fix
+        // the alternation would swap the peak week for vo2MaxIntervals.
+        let longerGoal = goal("2026-10-04")
+        let plan = TrainingPlanner.plan(goal: longerGoal, history: comebackHistory, hrMax: 190,
+                                        today: date("2026-08-23"), calendar: calendar)
+        XCTAssertEqual(plan.rampWeekCount, 4)
+        guard let peakWeek = plan.weeks.first(where: { $0.role == .peak }) else {
+            return XCTFail("expected a peak week")
+        }
+        let hills = peakWeek.sessions.first { $0.kind == .hills }
+        XCTAssertNotNil(hills)
+        XCTAssertEqual(hills?.targetClimbM ?? -1, 300, accuracy: 0.001)
+        XCTAssertFalse(peakWeek.sessions.contains { $0.kind == .vo2MaxIntervals })
+    }
+
     func test_plan_goldenCase_alternatesHillsAndVo2MaxIntervalsAcrossRampWeeks() {
         // Same golden fixture as test_plan_goldenCase_volumesAndRolesFollowTheRamp:
         // roles [.build, .build, .peak, .taper, .raceWeek] → ramp indices 0,1,2.

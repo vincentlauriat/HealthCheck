@@ -469,7 +469,7 @@ struct TrainingView: View {
                 Text("VO2max").font(.title2.bold())
                 VStack(alignment: .leading, spacing: 2) {
                     Text(vo2VerdictLabel(trend.verdict)).font(.callout.weight(.semibold))
-                    Text("\(trend.recentAverage.formatted(.number.precision(.fractionLength(1)))) mL/min·kg (\(trend.delta >= 0 ? "+" : "")\(trend.delta.formatted(.number.precision(.fractionLength(1)))) sur 3 mois)")
+                    Text("\(trend.recentAverage.formatted(.number.precision(.fractionLength(1)))) mL/min·kg (\(trend.delta >= 0 ? "+" : "")\(trend.delta.formatted(.number.precision(.fractionLength(1)))) vs. les 90 jours précédents)")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
