@@ -33,6 +33,12 @@ final class TrainingViewModelTests: XCTestCase {
                     creationDate: date(day))
     }
 
+    func vo2Record(_ day: String, value: Double) -> HealthRecord {
+        HealthRecord(type: "HKQuantityTypeIdentifierVO2Max", sourceName: "Watch", device: nil,
+                    unit: "mL/min·kg", value: value, startDate: date(day), endDate: date(day),
+                    creationDate: date(day))
+    }
+
     func goal(_ raceDay: String, km: Double = 17, climb: Double = 400,
               createdAt: String = "2026-08-01") -> RaceGoal {
         RaceGoal(id: "g1", name: "Paris-Versailles", raceDate: date(raceDay, "10:00"),
@@ -274,5 +280,69 @@ final class TrainingViewModelTests: XCTestCase {
         try vm.load(readiness: ReadinessScore(value: 42, label: "Fatigue", components: []))
 
         XCTAssertTrue(vm.assessment?.alerts.contains { $0.message.contains("Forme du jour basse") } ?? false)
+    }
+
+    // MARK: - VO2max
+
+    func test_load_vo2MaxStatus_computesTrendFromStoredRecords() throws {
+        let store = try HealthStore(path: ":memory:")
+        try store.insertRecords([
+            vo2Record("2026-08-20", value: 43.0), // dans les 30 derniers jours (today = 2026-08-23)
+            vo2Record("2026-06-20", value: 40.0)  // dans la fenêtre antérieure (30 à 120 jours avant)
+        ])
+        let vm = TrainingViewModel(store: store, calendar: calendar, now: { self.date("2026-08-23") })
+
+        try vm.load()
+
+        XCTAssertEqual(vm.vo2MaxStatus?.trend?.verdict, .rising)
+        XCTAssertEqual(vm.vo2MaxStatus?.trend?.recentAverage ?? -1, 43.0, accuracy: 0.01)
+    }
+
+    func test_load_vo2MaxStatus_nilTrend_whenNoVo2Samples() throws {
+        let store = try HealthStore(path: ":memory:")
+        let vm = TrainingViewModel(store: store, calendar: calendar, now: { self.date("2026-08-23") })
+
+        try vm.load()
+
+        XCTAssertNotNil(vm.vo2MaxStatus) // the status wrapper itself is always present
+        XCTAssertNil(vm.vo2MaxStatus?.trend)
+    }
+
+    func test_load_vo2MaxStatus_populatedWithoutActiveGoal() throws {
+        // Carry-over of the same regression the load-monitor already guards
+        // against (test_load_withoutGoal_computesRawAcwrAssessment): the
+        // no-goal branch must not skip vo2MaxStatus either.
+        let store = try HealthStore(path: ":memory:")
+        try store.insertRecords([
+            vo2Record("2026-08-20", value: 43.0),
+            vo2Record("2026-06-20", value: 40.0)
+        ])
+        let vm = TrainingViewModel(store: store, calendar: calendar, now: { self.date("2026-08-23") })
+
+        try vm.load()
+
+        XCTAssertNil(vm.goal)
+        XCTAssertEqual(vm.vo2MaxStatus?.trend?.verdict, .rising)
+    }
+
+    func test_load_vo2MaxStatus_stagnationAlert_whenStableUnderSustainedLoad() throws {
+        let store = try HealthStore(path: ":memory:")
+        try store.saveRaceGoal(goal("2026-09-27", createdAt: "2026-08-17"))
+        // 4 × 10 km within the last 28 days → chronic 10 km/week, above the
+        // 8.0 km/week meaningfulChronicKm threshold.
+        try store.insertWorkouts([
+            run("2026-08-01", km: 10.0), run("2026-08-08", km: 10.0),
+            run("2026-08-15", km: 10.0), run("2026-08-22", km: 10.0)
+        ])
+        try store.insertRecords([
+            vo2Record("2026-08-20", value: 41.0),
+            vo2Record("2026-06-20", value: 40.5) // delta 0.5 → stable
+        ])
+        let vm = TrainingViewModel(store: store, calendar: calendar, now: { self.date("2026-08-23") })
+
+        try vm.load()
+
+        XCTAssertEqual(vm.vo2MaxStatus?.trend?.verdict, .stable)
+        XCTAssertEqual(vm.vo2MaxStatus?.alert?.severity, .info)
     }
 }

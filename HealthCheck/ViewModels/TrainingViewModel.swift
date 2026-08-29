@@ -12,6 +12,7 @@ final class TrainingViewModel: ObservableObject {
     @Published private(set) var plan: TrainingPlan?
     @Published private(set) var progress: WeekProgress?
     @Published private(set) var assessment: LoadAssessment?
+    @Published private(set) var vo2MaxStatus: VO2MaxStatus?
 
     /// Toutes les courses encore à venir, la plus proche d'abord. La v1 ne
     /// planifie que la première (`goal`), mais la vue doit pouvoir dire
@@ -34,6 +35,8 @@ final class TrainingViewModel: ObservableObject {
     private static let hrMaxWindowDays = 180
     private static let heartRateType = "HKQuantityTypeIdentifierHeartRate"
     private static let defaultHRMax = 190.0
+    private static let vo2MaxType = "HKQuantityTypeIdentifierVO2Max"
+    private static let vo2LookbackDays = 120
 
     init(store: HealthStore, calendar: Calendar = .current, now: @escaping () -> Date = Date.init) {
         self.store = store
@@ -71,6 +74,13 @@ final class TrainingViewModel: ObservableObject {
             historyStart = min(defaultStart, foldStart)
         }
         let history = try store.workouts(from: historyStart, to: end)
+
+        let vo2LookbackStart = calendar.date(byAdding: .day, value: -Self.vo2LookbackDays, to: end)!
+        let vo2Records = try store.records(type: Self.vo2MaxType, from: vo2LookbackStart, to: end)
+        let vo2Trend = VO2MaxEngine.trend(records: vo2Records, today: end, calendar: calendar)
+        let chronicKm = TrainingPlanner.chronicWeeklyKm(history: history, today: end, calendar: calendar)
+        vo2MaxStatus = VO2MaxStatus(trend: vo2Trend,
+                                    alert: VO2MaxEngine.stagnationAlert(trend: vo2Trend, chronicKm: chronicKm))
 
         // Sans objectif actif, le plan et la progression n'ont pas de sens,
         // mais le moniteur de charge, lui, reste pertinent : la branche
