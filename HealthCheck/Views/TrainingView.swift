@@ -29,12 +29,18 @@ struct TrainingView: View {
                     if let assessment = viewModel.assessment {
                         loadSection(assessment)
                     }
+                    if let vo2Status = viewModel.vo2MaxStatus {
+                        vo2MaxSection(vo2Status)
+                    }
                     upcomingWeeksSection(plan)
                     deleteSection
                 } else {
                     emptyState
                     if let assessment = viewModel.assessment {
                         loadSection(assessment)
+                    }
+                    if let vo2Status = viewModel.vo2MaxStatus {
+                        vo2MaxSection(vo2Status)
                     }
                 }
             }
@@ -451,6 +457,42 @@ struct TrainingView: View {
                 .background(.background, in: RoundedRectangle(cornerRadius: 14))
                 .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(.separator.opacity(0.5)))
             }
+        }
+    }
+
+    // MARK: - VO2max
+
+    @ViewBuilder
+    private func vo2MaxSection(_ status: VO2MaxStatus) -> some View {
+        if let trend = status.trend {
+            VStack(alignment: .leading, spacing: 8) {
+                Text("VO2max").font(.title2.bold())
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(vo2VerdictLabel(trend.verdict)).font(.callout.weight(.semibold))
+                    Text("\(trend.recentAverage.formatted(.number.precision(.fractionLength(1)))) mL/min·kg (\(trend.delta >= 0 ? "+" : "")\(trend.delta.formatted(.number.precision(.fractionLength(1)))) sur 3 mois)")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                if let alert = status.alert {
+                    Label(alert.message,
+                         systemImage: alert.severity == .warning ? "exclamationmark.triangle.fill" : "info.circle.fill")
+                        .font(.callout)
+                        .foregroundStyle(alert.severity == .warning ? Color.orange : Color.secondary)
+                        .multilineTextAlignment(.leading)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            .padding(14)
+            .background(.background, in: RoundedRectangle(cornerRadius: 14))
+            .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(.separator.opacity(0.5)))
+        }
+    }
+
+    private func vo2VerdictLabel(_ verdict: VO2MaxVerdict) -> String {
+        switch verdict {
+        case .rising: return "VO2max : en hausse"
+        case .stable: return "VO2max : stable"
+        case .declining: return "VO2max : en baisse"
         }
     }
 
