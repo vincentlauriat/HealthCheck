@@ -54,6 +54,12 @@ final class VO2MaxEngineTests: XCTestCase {
         XCTAssertEqual(trend?.verdict, .declining)
     }
 
+    func test_trend_decliningAtExactlyTheNegativeThresholdBoundary() {
+        let records = [vo2("2026-08-20", 39.0), vo2("2026-06-01", 40.0)] // delta exactly -1.0
+        let trend = VO2MaxEngine.trend(records: records, today: date("2026-08-23"), calendar: calendar)
+        XCTAssertEqual(trend?.verdict, .declining)
+    }
+
     func test_trend_nilWhenRecentWindowHasNoSample() {
         let records = [vo2("2026-06-01", 40.0)] // only in the prior window
         let trend = VO2MaxEngine.trend(records: records, today: date("2026-08-23"), calendar: calendar)
@@ -87,6 +93,17 @@ final class VO2MaxEngineTests: XCTestCase {
             XCTAssertEqual(trend.recentAverage, 43.0, accuracy: 0.01) // (42 + 44) / 2
         } else {
             XCTFail("trend should not be nil")
+        }
+    }
+
+    func test_trend_includesTodayInRecentWindow() {
+        // Verify a sample dated exactly today is included in the recent window average.
+        let records = [vo2("2026-08-23", 45.0), vo2("2026-06-01", 40.0)]
+        let trend = VO2MaxEngine.trend(records: records, today: date("2026-08-23"), calendar: calendar)
+        if let trend = trend {
+            XCTAssertEqual(trend.recentAverage, 45.0, accuracy: 0.01)
+        } else {
+            XCTFail("trend should not be nil when today's sample is present")
         }
     }
 
