@@ -959,7 +959,55 @@ justement une côte que l'utilisateur a courue ce jour-là.
 
 ---
 
-## 14. Avertissement
+## 14. Conseil du jour — `DailyAdviceEngine`
+
+**Question :** « qu'est-ce que je fais aujourd'hui, en tenant compte de tout
+ce que l'app sait déjà ? » — un message unique sur l'Accueil, composé à
+partir de verdicts déjà calculés par d'autres moteurs, sans introduire de
+nouveau seuil.
+
+**Entrées.** Le score de forme du jour (optionnel, §4), les alertes de
+charge du jour (`TrainingLoadMonitor.assess(...).alerts`, §12, appelé
+depuis l'Accueil avec `plan: nil` — voir « Ce que ça ne fait pas »
+ci-dessous), et l'alerte de stagnation VO2max du jour
+(`VO2MaxEngine.stagnationAlert(...)`, §11.8).
+
+**Le palier est directement le label de `HealthScoreEngine.label(for:)`** —
+aucune nouvelle échelle :
+
+| `readiness.label` | Palier |
+|---|---|
+| Récupération conseillée | `.repos` |
+| Forme correcte | `.prudence` |
+| Bonne forme / Excellente forme | `.opportunite` |
+
+Sans score de forme (`readiness == nil`), aucun conseil n'est produit —
+`advise(...)` retourne `nil`, pas de texte de repli inventé
+(`DailyAdviceEngine.swift`).
+
+**Le texte.** Sous `.repos` ou `.prudence`, une alerte de sévérité
+`.warning` (charge ou VO2max) remplace le texte générique du palier si
+l'une existe — jamais sous `.opportunite`, où l'afficher contredirait
+« Bonne forme »/« Excellente forme ». Ordre de scan fixe et déterministe :
+les alertes de `TrainingLoadMonitor` d'abord (dans leur ordre de
+production), puis celle de `VO2MaxEngine` — la première trouvée l'emporte.
+Les alertes `.info` ne remontent jamais ici (déjà visibles sur
+Entraînement).
+
+**Ce que ça ne fait pas.** Le moteur ne recalcule rien : ni score de
+forme, ni charge, ni tendance VO2max — il compose des verdicts déjà
+produits et déjà documentés ailleurs dans ce fichier. Depuis l'Accueil,
+l'appel à `TrainingLoadMonitor.assess(...)` passe systématiquement
+`plan: nil` : le plan d'entraînement n'est pas encore calculé à ce point
+du chargement (`DashboardViewModel.loadWellness()` s'exécute avant
+`TrainingViewModel.load()`), et le recalculer dupliquerait le chargement
+d'objectif et de `hrMax` déjà fait par `TrainingViewModel`. Les alertes
+propres à un plan actif (dépassement, retard, effondrement) restent donc
+invisibles depuis l'Accueil et ne s'affichent que sur Entraînement.
+
+---
+
+## 15. Avertissement
 
 **Rien dans ce document ni dans l'application ne constitue un avis
 médical.** Les scores de forme, de sommeil et d'effort sont des heuristiques
