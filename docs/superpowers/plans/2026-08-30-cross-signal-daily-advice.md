@@ -18,7 +18,8 @@
 - Run `xcodegen generate` after adding `HealthCheckShared/Analysis/DailyAdviceEngine.swift` (new file in an already-declared source path) before the first build that references it.
 - Never touch `Companion/` or `CompanionTests/` — this sub-project is macOS-only for wiring and UI; the engine is shared but nothing wires it into the iPhone app in this plan.
 - Never `git add` the generated `HealthCheck.xcodeproj` — it is gitignored (`CLAUDE.md` at the repo root: "Le projet Xcode est généré par XcodeGen... et gitignoré").
-- Tier mapping is exactly `readiness.label` → tier, no new scale: `"Récupération conseillée"` → `.repos`; `"Forme correcte"` → `.prudence`; `"Bonne forme"` and `"Excellente forme"` → `.opportunite` (spec §5).
+- Tier mapping is exactly `readiness.label` → tier, no new scale: `"Récupération conseillée"` → `.repos`; `"Forme correcte"` → `.prudence`; `"Bonne forme"` and `"Excellente forme"` → `.opportunite` (spec §5). An unrecognized label (a future rename of `HealthScoreEngine.label(for:)`) fails safe to `.prudence`, never to the most optimistic tier — an optimistic default would silently swallow a real `.warning` alert (decision recorded 2026-08-30, advisor review).
+- Generic tier copy must add something the readiness label above it doesn't already say (an action, not a restatement) — the whole point of the card is to relate signals, and three restatements of one label in ~40 vertical pixels relates nothing (decision recorded 2026-08-30, advisor review).
 - A `.warning` `LoadAlert` may replace the tier's generic text only when the tier is `.repos` or `.prudence`, never `.opportunite` (spec §5). `.info` alerts never surface in this card.
 - Determinism: when both a `TrainingLoadMonitor` alert and the `VO2MaxEngine` alert are `.warning`, the `loadAlerts` one wins — fixed scan order `loadAlerts` then `vo2MaxAlert` (spec §5, §10).
 - `readiness == nil` → `DailyAdviceEngine.advise(...)` returns `nil` — no invented fallback text (spec §8).
@@ -62,7 +63,7 @@ final class DailyAdviceEngineTests: XCTestCase {
             vo2MaxAlert: nil
         )
         XCTAssertEqual(advice?.tier, .repos)
-        XCTAssertEqual(advice?.message, "Récupération conseillée aujourd'hui.")
+        XCTAssertEqual(advice?.message, "Repos ou séance très légère aujourd'hui — laissez la récupération primer sur la performance.")
     }
 
     func test_advise_prudenceTierAndGenericMessageWhenOnlyInfoAlertsPresent() {
@@ -72,7 +73,7 @@ final class DailyAdviceEngineTests: XCTestCase {
             vo2MaxAlert: nil
         )
         XCTAssertEqual(advice?.tier, .prudence)
-        XCTAssertEqual(advice?.message, "Forme correcte — restez à l'écoute de vos sensations.")
+        XCTAssertEqual(advice?.message, "Restez sur des séances modérées aujourd'hui — ce n'est pas le jour pour repousser vos limites.")
     }
 
     func test_advise_opportuniteTierWhenLabelIsBonneForme() {
@@ -129,6 +130,20 @@ final class DailyAdviceEngineTests: XCTestCase {
     func test_advise_nilReadinessReturnsNil() {
         XCTAssertNil(DailyAdviceEngine.advise(readiness: nil, loadAlerts: [], vo2MaxAlert: nil))
     }
+
+    // Un libellé inconnu (renommage futur de HealthScoreEngine.label(for:),
+    // par exemple) ne doit jamais retomber silencieusement sur le palier le
+    // plus optimiste — ça masquerait une vraie alerte .warning.
+    func test_advise_unknownLabelFailsSafeToPrudenceTier() {
+        let advice = DailyAdviceEngine.advise(
+            readiness: readiness(label: "Libellé inconnu"),
+            loadAlerts: [alert(.warning, "alerte de charge")],
+            vo2MaxAlert: nil
+        )
+        XCTAssertEqual(advice?.tier, .prudence)
+        XCTAssertEqual(advice?.message, "alerte de charge",
+                      "palier .prudence : la substitution d'alerte doit rester active")
+    }
 }
 ```
 
@@ -183,19 +198,23 @@ enum DailyAdviceEngine {
     }
 
     // Couplé aux libellés exacts de HealthScoreEngine.label(for:) — si ces
-    // libellés changent, ce switch doit changer avec.
+    // libellés changent, ce switch doit changer avec. Un libellé inconnu
+    // bascule vers .prudence (palier neutre, qui autorise toujours la
+    // substitution d'alerte) plutôt que vers .opportunite : un `default`
+    // optimiste masquerait silencieusement une vraie alerte .warning.
     private static func tier(for label: String) -> AdviceTier {
         switch label {
         case "Récupération conseillée": return .repos
         case "Forme correcte": return .prudence
-        default: return .opportunite // "Bonne forme" / "Excellente forme"
+        case "Bonne forme", "Excellente forme": return .opportunite
+        default: return .prudence
         }
     }
 
     private static func genericMessage(for tier: AdviceTier) -> String {
         switch tier {
-        case .repos: return "Récupération conseillée aujourd'hui."
-        case .prudence: return "Forme correcte — restez à l'écoute de vos sensations."
+        case .repos: return "Repos ou séance très légère aujourd'hui — laissez la récupération primer sur la performance."
+        case .prudence: return "Restez sur des séances modérées aujourd'hui — ce n'est pas le jour pour repousser vos limites."
         case .opportunite: return "Vous êtes en forme — bon moment pour une séance clé."
         }
     }
@@ -206,7 +225,7 @@ enum DailyAdviceEngine {
 
 Run: `xcodegen generate`
 Run: `xcodebuild test -scheme HealthCheck -destination 'platform=macOS' CODE_SIGNING_ALLOWED=NO -only-testing:HealthCheckTests/DailyAdviceEngineTests`
-Expected: PASS, all 9 tests.
+Expected: PASS, all 10 tests.
 
 - [ ] **Step 5: Document the engine in METHODOLOGY.md**
 

@@ -141,19 +141,35 @@ enum DailyAdviceEngine {
         switch label {
         case "Récupération conseillée": return .repos
         case "Forme correcte": return .prudence
-        default: return .opportunite // "Bonne forme" / "Excellente forme"
+        case "Bonne forme", "Excellente forme": return .opportunite
+        default: return .prudence // libellé inconnu : palier neutre, jamais le plus optimiste
         }
     }
 
     private static func genericMessage(for tier: AdviceTier) -> String {
         switch tier {
-        case .repos: return "Récupération conseillée aujourd'hui."
-        case .prudence: return "Forme correcte — restez à l'écoute de vos sensations."
+        case .repos: return "Repos ou séance très légère aujourd'hui — laissez la récupération primer sur la performance."
+        case .prudence: return "Restez sur des séances modérées aujourd'hui — ce n'est pas le jour pour repousser vos limites."
         case .opportunite: return "Vous êtes en forme — bon moment pour une séance clé."
         }
     }
 }
 ```
+
+**Décision prise avec Vincent (2026-08-30), sur revue du plan d'implémentation :**
+deux affinages par rapport à la première version de ce moteur. D'abord, le
+texte générique de `.repos`/`.prudence` ne doit jamais se contenter de
+répéter le label déjà affiché par la carte de forme du jour juste
+au-dessus — sur la majorité des jours, aucune alerte `.warning` n'est
+disponible (le seuil ACWR exige un historique significatif *et* un pic de
+30 %, l'alerte VO2max exige des échantillons dans deux fenêtres *et* une
+charge chronique ≥ 8 km/semaine), donc c'est ce texte générique qui
+s'affiche le plus souvent : il doit ajouter une action, pas répéter le
+label. Ensuite, un libellé de `readiness.label` non reconnu bascule vers
+`.prudence` (palier neutre, qui autorise toujours la substitution
+d'alerte), jamais vers `.opportunite` — un `default` optimiste masquerait
+silencieusement une vraie alerte `.warning` si `HealthScoreEngine.label(for:)`
+venait à changer ses libellés.
 
 Le `switch label` de `tier(for:)` dépend d'une chaîne produite par
 `HealthScoreEngine.label(for:)` — un couplage textuel assumé plutôt qu'un
