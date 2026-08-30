@@ -120,8 +120,8 @@ final class DashboardViewModel: ObservableObject {
         let vo2Records = try store.records(type: VO2MaxEngine.vo2MaxType, from: d120, to: end)
         inputs.vo2Trend = VO2MaxEngine.trend(records: vo2Records, today: end, calendar: calendar)
 
-        let d28 = calendar.date(byAdding: .day, value: -28, to: end)!
-        let recentHistory = try store.workouts(from: d28, to: end)
+        let d28 = calendar.date(byAdding: .day, value: -28, to: calendar.startOfDay(for: end))!
+        let recentHistory = try store.workouts(from: d28, to: calendar.date(byAdding: .day, value: 1, to: calendar.startOfDay(for: end))!)
         let loadAssessment = TrainingLoadMonitor.assess(history: recentHistory, plan: nil,
                                                          readiness: readiness, today: end, calendar: calendar)
         let vo2MaxAlert = VO2MaxEngine.stagnationAlert(trend: inputs.vo2Trend,
