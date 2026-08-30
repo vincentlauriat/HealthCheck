@@ -20,6 +20,10 @@ struct DashboardView: View {
                     }
                 }
 
+                if let dailyAdvice = viewModel.dailyAdvice {
+                    DailyAdviceCard(advice: dailyAdvice)
+                }
+
                 if !viewModel.insights.isEmpty {
                     VStack(alignment: .leading, spacing: 12) {
                         Text("Observations").font(.title2.bold())
