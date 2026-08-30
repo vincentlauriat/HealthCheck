@@ -83,7 +83,7 @@ et retourne un unique `DailyAdvice?` — `nil` quand `readiness` est `nil`.
 ```
 DashboardViewModel.loadWellness()
   ├── readiness = HealthScoreEngine.readiness(...)        [existant]
-  ├── loadAssessment = TrainingLoadMonitor.assess(...)     [nouveau câblage]
+  ├── loadAssessment = TrainingLoadMonitor.assess(plan: nil, ...) [nouveau câblage — voir §6]
   ├── vo2Status = VO2MaxStatus(trend:, stagnationAlert:)   [nouveau câblage]
   └── dailyAdvice = DailyAdviceEngine.advise(
         readiness: readiness,
@@ -179,10 +179,23 @@ sous-projet y ajoute :
 3. `dailyAdvice: DailyAdvice? = DailyAdviceEngine.advise(readiness:, loadAlerts:, vo2MaxAlert:)`,
    nouvelle propriété publiée sur `DashboardViewModel`.
 
-`TrainingLoadMonitor.assess(...)` a besoin d'un historique de `Workout` et
-d'un `TrainingPlan?` — que `DashboardViewModel` ne charge pas aujourd'hui.
-Ce sous-projet ajoute ce chargement à `loadWellness()`, sur le même modèle
-que `TrainingViewModel.load()`.
+`TrainingLoadMonitor.assess(...)` a besoin d'un historique de `Workout` —
+que `DashboardViewModel` ne charge pas aujourd'hui. Ce sous-projet ajoute
+ce chargement à `loadWellness()`.
+
+**Décision prise avec Vincent (2026-08-30), à la lecture du code réel de
+`TrainingViewModel.load()` :** l'appel passe `plan: nil`, jamais le
+`TrainingPlan` complet. `ContentView.swift` appelle
+`dashboardViewModel.load()` avant `trainingViewModel.load(readiness:)` —
+le plan n'existe donc pas encore à ce stade, et le recalculer dans
+`DashboardViewModel` demanderait de dupliquer le chargement des objectifs,
+le calcul de `hrMax` sur 180 jours et l'appel à `TrainingPlanner.plan(...)`
+de `TrainingViewModel.load()`. Avec `plan: nil`, `TrainingLoadMonitor.assess`
+suit sa branche ACWR déjà prévue pour « sans objectif actif » (`highRatio`/
+`lowRatio`) — les alertes spécifiques à un plan actif (dépassement, retard,
+effondrement) restent invisibles pour ce conseil et continuent de
+n'apparaître que sur Entraînement. Aucune duplication de code entre les
+deux view models.
 
 ## 7. UI — écran Accueil
 
