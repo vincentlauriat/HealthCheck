@@ -73,6 +73,14 @@ final class HealthStore {
                     createdAt TEXT NOT NULL
                 )
                 """)
+            try db.execute(sql: """
+                CREATE TABLE IF NOT EXISTS weight_goal (
+                    id TEXT PRIMARY KEY,
+                    targetWeightKg REAL NOT NULL,
+                    targetDate TEXT NOT NULL,
+                    createdAt TEXT NOT NULL
+                )
+                """)
         }
     }
 
@@ -314,6 +322,38 @@ final class HealthStore {
                                 distanceKm: row["distanceKm"],
                                 elevationGainM: row["elevationGainM"],
                                 objective: objective, createdAt: createdAt)
+            }
+        }
+    }
+
+    func saveWeightGoal(_ goal: WeightGoal) throws {
+        try queue().write { db in
+            try db.execute(sql: """
+                INSERT OR REPLACE INTO weight_goal
+                    (id, targetWeightKg, targetDate, createdAt)
+                VALUES (?, ?, ?, ?)
+                """,
+                arguments: [goal.id, goal.targetWeightKg,
+                            Self.isoFormatter.string(from: goal.targetDate),
+                            Self.isoFormatter.string(from: goal.createdAt)])
+        }
+    }
+
+    func deleteWeightGoal(id: String) throws {
+        try queue().write { db in
+            try db.execute(sql: "DELETE FROM weight_goal WHERE id = ?", arguments: [id])
+        }
+    }
+
+    func weightGoals() throws -> [WeightGoal] {
+        try queue().read { db in
+            let rows = try Row.fetchAll(db, sql: "SELECT * FROM weight_goal ORDER BY targetDate")
+            return rows.compactMap { row in
+                guard let targetDate = Self.isoFormatter.date(from: row["targetDate"]),
+                      let createdAt = Self.isoFormatter.date(from: row["createdAt"])
+                else { return nil }
+                return WeightGoal(id: row["id"], targetWeightKg: row["targetWeightKg"],
+                                  targetDate: targetDate, createdAt: createdAt)
             }
         }
     }
