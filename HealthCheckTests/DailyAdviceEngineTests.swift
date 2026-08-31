@@ -125,4 +125,15 @@ final class DailyAdviceEngineTests: XCTestCase {
         )
         XCTAssertEqual(advice?.message, "alerte VO2max")
     }
+
+    func test_advise_determinismLoadAlertsWinsOverAllOtherSourcesWhenAllThreeWarn() {
+        let advice = DailyAdviceEngine.advise(
+            readiness: readiness(label: "Forme correcte"),
+            loadAlerts: [alert(.warning, "alerte de charge")],
+            vo2MaxAlert: alert(.warning, "alerte VO2max"),
+            weightAlert: alert(.warning, "alerte de poids")
+        )
+        XCTAssertEqual(advice?.message, "alerte de charge",
+                      "loadAlerts doit toujours gagner quand les trois sources affichent une alerte .warning")
+    }
 }
