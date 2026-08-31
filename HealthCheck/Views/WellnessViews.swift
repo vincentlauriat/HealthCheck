@@ -125,3 +125,57 @@ struct InsightCard: View {
         .shadow(color: .black.opacity(0.06), radius: 5, y: 2)
     }
 }
+
+/// Carte « Conseil du jour » : message unique et priorisé, dérivé du score
+/// de forme et affiné par une alerte de charge/VO2max quand compatible
+/// (DailyAdviceEngine.advise). Même gabarit visuel qu'InsightCard, teinté
+/// par le palier plutôt que par le sentiment.
+struct DailyAdviceCard: View {
+    let advice: DailyAdvice
+
+    private var tint: Color {
+        switch advice.tier {
+        case .repos: return .orange
+        case .prudence: return .blue
+        case .opportunite: return .green
+        }
+    }
+
+    private var systemImage: String {
+        switch advice.tier {
+        case .repos: return "exclamationmark.triangle.fill"
+        case .prudence: return "info.circle.fill"
+        case .opportunite: return "checkmark.circle.fill"
+        }
+    }
+
+    private var title: String {
+        switch advice.tier {
+        case .repos: return "Repos conseillé"
+        case .prudence: return "Prudence"
+        case .opportunite: return "Opportunité"
+        }
+    }
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 12) {
+            Image(systemName: systemImage)
+                .font(.body.weight(.semibold))
+                .foregroundStyle(tint)
+                .frame(width: 30, height: 30)
+                .background(tint.opacity(0.14), in: RoundedRectangle(cornerRadius: 8))
+            VStack(alignment: .leading, spacing: 3) {
+                Text(title).font(.callout.weight(.semibold))
+                Text(advice.message)
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(14)
+        .background(.background, in: RoundedRectangle(cornerRadius: 14))
+        .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(.separator.opacity(0.5)))
+        .shadow(color: .black.opacity(0.06), radius: 5, y: 2)
+    }
+}

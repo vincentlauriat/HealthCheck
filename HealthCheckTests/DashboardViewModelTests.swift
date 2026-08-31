@@ -166,4 +166,53 @@ final class DashboardViewModelTests: XCTestCase {
 
         XCTAssertFalse(viewModel.insights.contains { $0.title == "VO₂ max en progression" })
     }
+
+    @MainActor
+    func test_loadWellness_dailyAdviceCombinesReadinessAndLoadWarning() throws {
+        let store = try HealthStore(path: ":memory:")
+        let now = Calendar.current.startOfDay(for: Date()).addingTimeInterval(23 * 3600)
+        let calendar = Calendar.current
+
+        // Readiness dégradée : FC repos +10 % vs. baseline de 10 jours à
+        // 60 bpm → score 40 → label "Récupération conseillée" → palier .repos.
+        var records: [HealthRecord] = (1...10).map { daysAgo in
+            record(
+                type: "HKQuantityTypeIdentifierRestingHeartRate",
+                sourceName: "Watch",
+                value: 60,
+                start: calendar.date(byAdding: .day, value: -daysAgo, to: calendar.startOfDay(for: now))!.addingTimeInterval(3600)
+            )
+        }
+        records.append(record(type: "HKQuantityTypeIdentifierRestingHeartRate", sourceName: "Watch",
+                              value: 66, start: calendar.startOfDay(for: now).addingTimeInterval(3600)))
+        try store.insertRecords(records)
+
+        // Charge : chronic = (10+10+10+20)/4 = 12.5 km/semaine (>= 8.0, donc
+        // "meaningful"), acute (7 derniers jours) = 20 km. ACWR = 20/12.5 =
+        // 1.6 > highRatio (1.3) → alerte .warning "Vous progressez trop
+        // vite — réduisez cette semaine.", branche sans-plan de
+        // TrainingLoadMonitor.assess.
+        func run(daysAgo: Int, km: Double) -> Workout {
+            let start = calendar.date(byAdding: .day, value: -daysAgo, to: now)!
+            return Workout(activityType: "HKWorkoutActivityTypeRunning", sourceName: "Watch",
+                           duration: 60, durationUnit: "min",
+                           totalDistance: km, totalDistanceUnit: "km",
+                           totalEnergyBurned: nil, totalEnergyBurnedUnit: nil,
+                           startDate: start, endDate: start.addingTimeInterval(3600),
+                           routeFileName: nil)
+        }
+        try store.insertWorkouts([
+            run(daysAgo: 25, km: 10.0),
+            run(daysAgo: 18, km: 10.0),
+            run(daysAgo: 11, km: 10.0),
+            run(daysAgo: 2, km: 20.0)
+        ])
+
+        let viewModel = DashboardViewModel(store: store, resolver: SourcePriorityResolver(priority: ["Watch", "iPhone"]), now: { now })
+        try viewModel.loadWellness()
+
+        XCTAssertEqual(viewModel.dailyAdvice?.tier, .repos)
+        XCTAssertEqual(viewModel.dailyAdvice?.message, "Vous progressez trop vite — réduisez cette semaine.",
+                      "le message doit venir de l'alerte de charge, pas du texte générique du palier — sinon la garde ne prouve pas que le câblage passe bien loadAlerts")
+    }
 }
