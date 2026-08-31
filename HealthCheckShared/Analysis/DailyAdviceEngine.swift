@@ -19,7 +19,8 @@ enum DailyAdviceEngine {
     static func advise(
         readiness: ReadinessScore?,
         loadAlerts: [LoadAlert],
-        vo2MaxAlert: LoadAlert?
+        vo2MaxAlert: LoadAlert?,
+        weightAlert: LoadAlert?
     ) -> DailyAdvice? {
         guard let readiness else { return nil }
         let tier = Self.tier(for: readiness.label)
@@ -27,10 +28,10 @@ enum DailyAdviceEngine {
         // Une alerte .warning ne peut affiner le conseil que sous REPOS ou
         // PRUDENCE — jamais sous OPPORTUNITÉ, où elle contredirait le label
         // déjà affiché. Ordre de scan fixe et déterministe : les alertes de
-        // charge d'abord (dans leur ordre de production), puis celle de
-        // VO2max.
+        // charge d'abord (dans leur ordre de production), puis VO2max, puis
+        // poids.
         if tier != .opportunite,
-           let warning = (loadAlerts + [vo2MaxAlert].compactMap { $0 })
+           let warning = (loadAlerts + [vo2MaxAlert, weightAlert].compactMap { $0 })
                .first(where: { $0.severity == .warning }) {
             return DailyAdvice(tier: tier, message: warning.message)
         }

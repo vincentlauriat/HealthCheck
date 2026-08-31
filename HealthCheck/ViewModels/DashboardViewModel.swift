@@ -120,19 +120,25 @@ final class DashboardViewModel: ObservableObject {
         let vo2Records = try store.records(type: VO2MaxEngine.vo2MaxType, from: d120, to: end)
         inputs.vo2Trend = VO2MaxEngine.trend(records: vo2Records, today: end, calendar: calendar)
 
+        let weightDaily = try dailyAverages(type: "HKQuantityTypeIdentifierBodyMass", from: d30, to: end)
+        if let first = weightDaily.first?.value, let last = weightDaily.last?.value {
+            inputs.weightDelta30d = last - first
+        }
+        let weightTrend = WeightEngine.trend(weights: weightDaily, today: end, calendar: calendar)
+
         let d28 = calendar.date(byAdding: .day, value: -28, to: calendar.startOfDay(for: end))!
         let recentHistory = try store.workouts(from: d28, to: calendar.date(byAdding: .day, value: 1, to: calendar.startOfDay(for: end))!)
         let loadAssessment = TrainingLoadMonitor.assess(history: recentHistory, plan: nil,
                                                          readiness: readiness, today: end, calendar: calendar)
         let vo2MaxAlert = VO2MaxEngine.stagnationAlert(trend: inputs.vo2Trend,
                                                         chronicKm: loadAssessment.chronicWeeklyKm)
+        let weightSafetyAlert = WeightEngine.safetyAlert(
+            trend: weightTrend,
+            trainingLoadElevated: loadAssessment.alerts.contains { $0.severity == .warning }
+        )
         dailyAdvice = DailyAdviceEngine.advise(readiness: readiness, loadAlerts: loadAssessment.alerts,
-                                               vo2MaxAlert: vo2MaxAlert)
+                                               vo2MaxAlert: vo2MaxAlert, weightAlert: weightSafetyAlert)
 
-        let weightDaily = try dailyAverages(type: "HKQuantityTypeIdentifierBodyMass", from: d30, to: end)
-        if let first = weightDaily.first?.value, let last = weightDaily.last?.value {
-            inputs.weightDelta30d = last - first
-        }
         insights = InsightsEngine.generate(from: inputs)
     }
 

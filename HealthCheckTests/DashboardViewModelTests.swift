@@ -215,4 +215,46 @@ final class DashboardViewModelTests: XCTestCase {
         XCTAssertEqual(viewModel.dailyAdvice?.message, "Vous progressez trop vite — réduisez cette semaine.",
                       "le message doit venir de l'alerte de charge, pas du texte générique du palier — sinon la garde ne prouve pas que le câblage passe bien loadAlerts")
     }
+
+    @MainActor
+    func test_loadWellness_dailyAdviceIncludesWeightSafetyAlertWhenNoOtherWarningPresent() throws {
+        let store = try HealthStore(path: ":memory:")
+        let now = Calendar.current.startOfDay(for: Date()).addingTimeInterval(23 * 3600)
+        let calendar = Calendar.current
+
+        // Readiness dégradée : FC repos +10 % vs. baseline de 10 jours à
+        // 60 bpm → score 40 → label "Récupération conseillée" → palier .repos.
+        var records: [HealthRecord] = (1...10).map { daysAgo in
+            record(
+                type: "HKQuantityTypeIdentifierRestingHeartRate",
+                sourceName: "Watch",
+                value: 60,
+                start: calendar.date(byAdding: .day, value: -daysAgo, to: calendar.startOfDay(for: now))!.addingTimeInterval(3600)
+            )
+        }
+        records.append(record(type: "HKQuantityTypeIdentifierRestingHeartRate", sourceName: "Watch",
+                              value: 66, start: calendar.startOfDay(for: now).addingTimeInterval(3600)))
+
+        // Poids : moyenne antérieure (14 jours avant la fenêtre récente)
+        // 100 kg, moyenne récente (14 derniers jours) 97 kg -> rythme
+        // -1.5 kg/semaine -> 1,5 % du poids corporel/semaine (recentAverage
+        // = 97), au-dessus de safeWarningRatePercent (1.0) -> alerte
+        // .warning. Aucun historique d'entraînement inséré, donc
+        // loadAssessment n'a pas d'alerte .warning (charge non
+        // significative) et vo2MaxAlert est nil (aucun échantillon VO2max) —
+        // seule l'alerte de poids peut donc remonter dans dailyAdvice.
+        records.append(record(type: "HKQuantityTypeIdentifierBodyMass", sourceName: "Watch",
+                              value: 100, start: calendar.date(byAdding: .day, value: -20, to: now)!))
+        records.append(record(type: "HKQuantityTypeIdentifierBodyMass", sourceName: "Watch",
+                              value: 97, start: calendar.date(byAdding: .day, value: -5, to: now)!))
+        try store.insertRecords(records)
+
+        let viewModel = DashboardViewModel(store: store, resolver: SourcePriorityResolver(priority: ["Watch", "iPhone"]), now: { now })
+        try viewModel.loadWellness()
+
+        XCTAssertEqual(viewModel.dailyAdvice?.tier, .repos)
+        XCTAssertEqual(viewModel.dailyAdvice?.message,
+                      "Rythme de variation du poids au-dessus du repère usuel (≈1 %/semaine).",
+                      "le message doit venir de l'alerte de poids, pas du texte générique du palier — sinon la garde ne prouve pas que le câblage passe bien weightAlert")
+    }
 }
