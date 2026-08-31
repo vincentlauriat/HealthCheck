@@ -847,6 +847,8 @@ This moves the `weightDaily`/`inputs.weightDelta30d` computation earlier (it now
 
 - [ ] **Step 5: Write the DashboardViewModel wiring test**
 
+The expected message below must match `WeightEngine.safetyAlert`'s `.warning` string **exactly** — copy it from the actual `HealthCheckShared/Analysis/WeightEngine.swift` produced by Task 2, not by retyping it from this plan text. A single dropped space or swapped `≈`/`~` character here would make this assertion pass against a typo instead of catching one.
+
 Add to `HealthCheckTests/DashboardViewModelTests.swift`, a new test at the end of the class, before its closing brace:
 
 ```swift
@@ -1115,14 +1117,20 @@ In `HealthCheck/Views/BodyView.swift`, add after `@State private var period: Tre
 
 - [ ] **Step 2: Render the two new cards**
 
-The existing `if let latest = viewModel.latest { ... } else { ContentUnavailableView(...) }` block currently ends at line 26, immediately followed by `if !viewModel.snapshots.isEmpty {` at line 28. Insert between them (still inside the outer `VStack(alignment: .leading, spacing: 24)`):
+`goalCard` falls back to `createGoalForm` whenever `viewModel.weightGoal == nil` — which is also true on a totally empty database (no weigh-ins imported yet). Rendering it unconditionally would show "Créer un objectif" directly below the "Aucune pesée en base" empty state, inviting a goal for data that doesn't exist. Both new cards belong inside the `if let latest = viewModel.latest { ... }` branch (currently lines 14-19, ending right before the `} else {` at line 20), after `sankeyCard`:
 
 ```swift
-
-                if let trend = viewModel.weightTrend {
-                    trendCard(trend)
-                }
-                goalCard
+                if let latest = viewModel.latest {
+                    latestCard(latest)
+                    metricsRow(latest)
+                    if let sankey = viewModel.weightSankey {
+                        sankeyCard(sankey)
+                    }
+                    if let trend = viewModel.weightTrend {
+                        trendCard(trend)
+                    }
+                    goalCard
+                } else {
 ```
 
 - [ ] **Step 3: Add the alert and confirmation dialog modifiers**
@@ -1286,7 +1294,16 @@ Run: `xcodegen generate`
 Run: `xcodebuild test -scheme HealthCheck -destination 'platform=macOS' CODE_SIGNING_ALLOWED=NO`
 Expected: PASS, full suite, 0 failures — this task adds no failing test of its own, so this step both confirms the build succeeds (a `View` file's compile errors would fail the whole target build before any test runs) and that nothing upstream regressed.
 
-- [ ] **Step 6: Commit**
+- [ ] **Step 6: Build the iOS Companion target**
+
+This plan's Tasks 1-3 modify `HealthCheckShared/Models/WeightGoal.swift` (new), `HealthCheckShared/Analysis/WeightEngine.swift` (new), `HealthCheckShared/Store/HealthStore.swift` (modified), and `HealthCheckShared/Analysis/DailyAdviceEngine.swift` (modified) — all four compile into the `HealthCheckCompanion` iOS target too (`project.yml:109`), which is never exercised by the macOS test command above. Confirm it still builds:
+
+Run: `xcrun simctl list devices available` and pick any listed iPhone simulator (do not assume one exists).
+Run: `xcodebuild build -scheme HealthCheckCompanion -destination 'platform=iOS Simulator,name=<simulator from the list above>'`
+
+Expected: BUILD SUCCEEDED. Per the repo's `CLAUDE.md`, this command runs **without** `CODE_SIGNING_ALLOWED=NO` — passing it here would leave the host app unsigned and unable to reach the Keychain, which is not what's being checked (this step is a compile check, not a Keychain-dependent test run). Nothing in this plan wires the weight advisor into the Companion UI — this step only confirms the shared module keeps compiling for both targets, matching sub-project 0's stated purpose for `HealthCheckShared/`.
+
+- [ ] **Step 7: Commit**
 
 ```bash
 git add HealthCheck/Views/BodyView.swift
