@@ -1007,7 +1007,65 @@ invisibles depuis l'Accueil et ne s'affichent que sur Entraînement.
 
 ---
 
-## 15. Avertissement
+## 15. Suivi de poids — `WeightEngine`
+
+**Question :** « est-ce que je perds/prends du poids, à quel rythme, et est-ce
+que ce rythme est sûr et cohérent avec mon objectif ? »
+
+**Entrées.** La série journalière de poids (`[TrendPoint]`), un objectif de
+poids optionnel (`WeightGoal` : poids cible + date cible), et un booléen
+indiquant si la charge d'entraînement du jour est déjà signalée comme
+élevée ailleurs (`TrainingLoadMonitor.assess(...).alerts` contient un
+`.warning` — jamais un second calcul de charge).
+
+**Tendance.** Comme `VO2MaxEngine` (§11.8), une comparaison de deux fenêtres
+glissantes plutôt qu'un delta premier/dernier point (fragile aux valeurs
+isolées) :
+
+```swift
+recentWindowDays = 14   // fenêtre récente, jusqu'à aujourd'hui inclus
+priorWindowDays = 14    // fenêtre antérieure, immédiatement avant
+stableNoiseThresholdKg = 0.15
+```
+
+`trend(weights:today:calendar:)` retourne `nil` si l'une des deux fenêtres
+n'a aucune pesée. Le rythme hebdomadaire est le delta entre les deux
+moyennes divisé par 2 (les deux semaines qui séparent les centres des
+fenêtres) ; la direction est `.stable` sous le seuil de bruit, `.gaining`/
+`.losing` sinon.
+
+**Trajectoire.** `nil` sans objectif actif, ou si la date cible est déjà
+dépassée. Avec un objectif, le rythme requis est
+`(poidsCible − moyenneRécente) / semainesRestantes`, comparé au rythme réel :
+
+| Condition | Constante | Verdict |
+|---|---|---|
+| rythme réel dans ±20 % du rythme requis | `onTrackToleranceRatio = 0.20` | `.onTrack` |
+| en dessous (y compris rythme de signe opposé) | | `.tooSlow` |
+| au-dessus | | `.tooFast` |
+
+**Alerte de sécurité.** Repère médical usuel, pas une constante validée
+spécifiquement pour cette application (réserve du §16) :
+
+```swift
+safeInfoRatePercent = 0.5      // % du poids corporel / semaine
+safeWarningRatePercent = 1.0
+```
+
+En dessous de 0,5 %/semaine, aucune alerte. Entre 0,5 % et 1 %, `.info`. Au
+delà de 1 %, `.warning` — le message est durci (mention explicite de la
+charge d'entraînement) quand `trainingLoadElevated` est vrai, sans jamais
+recalculer cette charge : c'est une alerte déjà produite par
+`TrainingLoadMonitor` qui est simplement transmise.
+
+**Ce que ça ne fait pas.** Le moteur ne lit ni le store ni l'horloge, ne
+recalcule jamais la charge d'entraînement, et n'ajuste le repère de rythme
+sûr à la morphologie ou à l'état de santé de l'utilisateur — un même
+pourcentage s'applique à tous.
+
+---
+
+## 16. Avertissement
 
 **Rien dans ce document ni dans l'application ne constitue un avis
 médical.** Les scores de forme, de sommeil et d'effort sont des heuristiques
