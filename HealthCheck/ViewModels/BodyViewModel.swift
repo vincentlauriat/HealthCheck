@@ -10,6 +10,10 @@ final class BodyViewModel: ObservableObject {
     @Published private(set) var fatMassDelta30d: Double?
     @Published private(set) var leanMassDelta30d: Double?
     @Published private(set) var weightDelta1y: Double?
+    @Published private(set) var weightGoal: WeightGoal?
+    @Published private(set) var weightTrend: WeightTrend?
+    @Published private(set) var weightTrajectory: WeightTrajectory?
+    @Published private(set) var weightSafetyAlert: LoadAlert?
     /// Mesures Withings sans équivalent HealthKit (présentes uniquement après
     /// une synchro API) : dernière valeur connue, nil si jamais synchronisé.
     @Published private(set) var latestMuscleMass: Double?
@@ -56,6 +60,19 @@ final class BodyViewModel: ObservableObject {
             leanMasses: try daily("HKQuantityTypeIdentifierLeanBodyMass", to: end),
             bmis: try daily("HKQuantityTypeIdentifierBodyMassIndex", to: end)
         )
+
+        // Tendance/objectif/trajectoire : à partir de l'historique complet
+        // déjà chargé ci-dessus (`all`), jamais de `snapshots` qui varie
+        // avec `period` et peut ne couvrir que quelques jours.
+        let weightPoints = all.map { TrendPoint(date: $0.day, value: $0.weight) }
+        weightTrend = WeightEngine.trend(weights: weightPoints, today: end, calendar: calendar)
+        weightGoal = WeightGoal.active(in: try store.weightGoals(), today: end, calendar: calendar)
+        weightTrajectory = WeightEngine.trajectory(trend: weightTrend, goal: weightGoal,
+                                                    today: end, calendar: calendar)
+        // Pas de LoadAssessment disponible ici (contrairement à
+        // DashboardViewModel) — toujours false, jamais de duplication du
+        // calcul de charge d'entraînement juste pour cette nuance.
+        weightSafetyAlert = WeightEngine.safetyAlert(trend: weightTrend, trainingLoadElevated: false)
         let start = period.startDate(now: end, calendar: calendar)
         snapshots = all.filter { $0.day >= start }
         latest = all.last
@@ -91,5 +108,16 @@ final class BodyViewModel: ObservableObject {
     private func sub(_ a: Double?, _ b: Double?) -> Double? {
         guard let a, let b else { return nil }
         return a - b
+    }
+
+    func createWeightGoal(targetWeightKg: Double, targetDate: Date) throws {
+        let newGoal = WeightGoal(id: UUID().uuidString, targetWeightKg: targetWeightKg,
+                                 targetDate: targetDate, createdAt: now())
+        try store.saveWeightGoal(newGoal)
+    }
+
+    func deleteActiveWeightGoal() throws {
+        guard let weightGoal else { return }
+        try store.deleteWeightGoal(id: weightGoal.id)
     }
 }
