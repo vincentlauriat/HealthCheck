@@ -6,7 +6,10 @@ enum HealthStoreError: Error {
     case unavailable
 }
 
-final class HealthStore {
+/// `@unchecked Sendable` : le seul état stocké est une `DatabaseQueue` GRDB,
+/// qui sérialise elle-même ses accès entre fils. C'est ce qui autorise
+/// `CompanionAdvisorViewModel.refresh()` à lire hors du `MainActor`.
+final class HealthStore: @unchecked Sendable {
     private let dbQueue: DatabaseQueue?
 
     init(path: String) throws {

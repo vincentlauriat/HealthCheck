@@ -387,9 +387,15 @@ to the Mac receiver above — HealthKit on the phone, no manual export.
   itself (windows, readiness score, VO2max trend, training load) is a
   pure function shared with the macOS Home screen —
   `HealthCheckShared/Analysis/WellnessOrchestrator.swift`, called by
-  both `CompanionAdvisorViewModel.compute()` and
+  both `CompanionAdvisorViewModel.refresh()` and
   `DashboardViewModel.loadWellness()` — so the two targets never
   silently diverge; only weight and activity insights stay Mac-only.
+  Unlike the macOS view models, `refresh()` is `async` and runs its
+  GRDB reads off the `MainActor` (`Task.detached`): on the iPhone they
+  share the database with the HealthKit import and can wait seconds on
+  its write lock. Only applying the result comes back on the
+  `MainActor`, and a generation counter drops a result that a newer
+  `refresh()` has superseded.
   "Synchro"
   (`CompanionSyncView`, unchanged historical content) carries the
   pairing section (6-digit code entry) while unpaired, then the sync

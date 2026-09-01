@@ -37,12 +37,12 @@ struct CompanionAdvisorView: View {
             .frame(maxWidth: .infinity)
         }
         .background(Color(.systemGroupedBackground))
-        .task { if !viewModel.hasLoaded { viewModel.refresh() } }
-        .onChange(of: lastSyncDate) { _, _ in viewModel.refresh() }
+        .task { if !viewModel.hasLoaded { await viewModel.refresh() } }
+        .onChange(of: lastSyncDate) { _, _ in Task { await viewModel.refresh() } }
         .onChange(of: scenePhase) { _, phase in
-            if phase == .active { viewModel.refresh() }
+            if phase == .active { Task { await viewModel.refresh() } }
         }
-        .refreshable { viewModel.refresh() }
+        .refreshable { await viewModel.refresh() }
     }
 
     private func readinessCard(_ readiness: ReadinessScore) -> some View {
@@ -52,6 +52,8 @@ struct CompanionAdvisorView: View {
             Text("\(Int(readiness.value.rounded())) / 100")
                 .font(.title2.bold())
                 .monospacedDigit()
+                // « 62 / 100 » se lit « 62 barre oblique 100 » sans ceci.
+                .accessibilityLabel("\(Int(readiness.value.rounded())) sur 100")
             Text(readiness.label)
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
@@ -59,6 +61,7 @@ struct CompanionAdvisorView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding()
         .background(.background, in: RoundedRectangle(cornerRadius: 8))
+        .accessibilityElement(children: .combine)
     }
 
     private func dailyAdviceCard(_ advice: DailyAdvice) -> some View {
@@ -74,6 +77,7 @@ struct CompanionAdvisorView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding()
         .background(.background, in: RoundedRectangle(cornerRadius: 8))
+        .accessibilityElement(children: .combine)
     }
 
     private func adviceTint(_ tier: AdviceTier) -> Color {
@@ -109,6 +113,8 @@ struct CompanionAdvisorView: View {
             Text("\(trend.recentAverage.formatted(.number.precision(.fractionLength(1)))) mL/min·kg (\(trend.delta >= 0 ? "+" : "")\(trend.delta.formatted(.number.precision(.fractionLength(1)))) vs. les 90 jours précédents)")
                 .font(.caption)
                 .foregroundStyle(.secondary)
+                // « mL/min·kg » se lit caractère par caractère sans ceci.
+                .accessibilityLabel(vo2DetailAccessibilityLabel(trend))
             if let alert {
                 Label(alert.message,
                      systemImage: alert.severity == .warning ? "exclamationmark.triangle.fill" : "info.circle.fill")
@@ -121,6 +127,14 @@ struct CompanionAdvisorView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding()
         .background(.background, in: RoundedRectangle(cornerRadius: 8))
+        .accessibilityElement(children: .combine)
+    }
+
+    private func vo2DetailAccessibilityLabel(_ trend: VO2MaxTrend) -> String {
+        let average = trend.recentAverage.formatted(.number.precision(.fractionLength(1)))
+        let delta = abs(trend.delta).formatted(.number.precision(.fractionLength(1)))
+        let direction = trend.delta >= 0 ? "en hausse de" : "en baisse de"
+        return "\(average) millilitres par minute et par kilo, \(direction) \(delta) par rapport aux 90 jours précédents"
     }
 
     private func vo2VerdictLabel(_ verdict: VO2MaxVerdict) -> String {

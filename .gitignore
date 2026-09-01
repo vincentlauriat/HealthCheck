@@ -31,3 +31,6 @@ release/
 
 # oh-my-claudecode session state
 .omc/
+
+# rtk (Rust Token Killer) local state
+.rtk/

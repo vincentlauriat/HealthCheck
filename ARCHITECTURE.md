@@ -421,10 +421,16 @@ manuel.
   lui-même (fenêtres, score de forme, tendance VO2max, charge
   d'entraînement) est une fonction pure partagée avec l'Accueil macOS —
   `HealthCheckShared/Analysis/WellnessOrchestrator.swift`, appelée par
-  `CompanionAdvisorViewModel.compute()` et par
+  `CompanionAdvisorViewModel.refresh()` et par
   `DashboardViewModel.loadWellness()` — pour que les deux cibles ne
   divergent jamais silencieusement ; seuls le poids et les insights
-  d'activité restent propres au Mac. « Synchro »
+  d'activité restent propres au Mac. Contrairement aux view models
+  macOS, `refresh()` est `async` et exécute ses lectures GRDB hors du
+  `MainActor` (`Task.detached`) : sur l'iPhone elles partagent la base
+  avec l'import HealthKit et peuvent attendre son verrou d'écriture
+  plusieurs secondes. Seule l'application du résultat revient sur le
+  `MainActor`, et un compteur de génération jette le résultat qu'un
+  `refresh()` plus récent a rendu périmé. « Synchro »
   (`CompanionSyncView`, contenu historique inchangé) porte la section
   d'appairage (saisie du code à 6 chiffres) tant que non appairé, puis
   la section de synchro (date de dernière synchro, résumé du rapport,

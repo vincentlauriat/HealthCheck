@@ -20,14 +20,14 @@ final class CompanionAdvisorViewModelTests: XCTestCase {
         try store.insertRecords(records)
     }
 
-    func test_refresh_computesReadinessAndDailyAdviceFromLocalStore() throws {
+    func test_refresh_computesReadinessAndDailyAdviceFromLocalStore() async throws {
         let store = try HealthStore(path: ":memory:")
         let now = Calendar.current.startOfDay(for: Date()).addingTimeInterval(23 * 3600)
         let calendar = Calendar.current
         try insertDegradedRestingHRHistory(store, now: now, calendar: calendar)
 
         let viewModel = CompanionAdvisorViewModel(store: store, resolver: SourcePriorityResolver(priority: ["Watch", "iPhone"]), now: { now })
-        viewModel.refresh()
+        await viewModel.refresh()
 
         XCTAssertTrue(viewModel.hasLoaded)
         XCTAssertFalse(viewModel.storeUnavailable)
@@ -37,7 +37,7 @@ final class CompanionAdvisorViewModelTests: XCTestCase {
                       "Repos ou séance très légère aujourd'hui — laissez la récupération primer sur la performance.")
     }
 
-    func test_refresh_vo2MaxTrendComputedFromLocalStore() throws {
+    func test_refresh_vo2MaxTrendComputedFromLocalStore() async throws {
         let store = try HealthStore(path: ":memory:")
         let now = Calendar.current.startOfDay(for: Date()).addingTimeInterval(23 * 3600)
         let calendar = Calendar.current
@@ -55,15 +55,15 @@ final class CompanionAdvisorViewModelTests: XCTestCase {
         try store.insertRecords(records)
 
         let viewModel = CompanionAdvisorViewModel(store: store, resolver: SourcePriorityResolver(priority: ["Watch", "iPhone"]), now: { now })
-        viewModel.refresh()
+        await viewModel.refresh()
 
         XCTAssertEqual(viewModel.vo2Trend?.verdict, .rising)
     }
 
-    func test_refresh_emptyStore_readinessAndAdviceAreNilWithoutError() throws {
+    func test_refresh_emptyStore_readinessAndAdviceAreNilWithoutError() async throws {
         let store = try HealthStore(path: ":memory:")
         let viewModel = CompanionAdvisorViewModel(store: store, resolver: SourcePriorityResolver(priority: ["Watch", "iPhone"]))
-        viewModel.refresh()
+        await viewModel.refresh()
 
         XCTAssertTrue(viewModel.hasLoaded)
         XCTAssertFalse(viewModel.storeUnavailable)
@@ -79,7 +79,7 @@ final class CompanionAdvisorViewModelTests: XCTestCase {
     // remonter par substitution dans DailyAdviceEngine. Fixture de charge
     // identique (chronic = 10 km/semaine >= meaningfulChronicKm 8.0) à celle
     // déjà vérifiée dans DashboardViewModelTests.
-    func test_refresh_exposesVO2MaxStagnationAlertEvenWhenInfoSeverity() throws {
+    func test_refresh_exposesVO2MaxStagnationAlertEvenWhenInfoSeverity() async throws {
         let store = try HealthStore(path: ":memory:")
         let now = Calendar.current.startOfDay(for: Date()).addingTimeInterval(23 * 3600)
         let calendar = Calendar.current
@@ -114,7 +114,7 @@ final class CompanionAdvisorViewModelTests: XCTestCase {
         ])
 
         let viewModel = CompanionAdvisorViewModel(store: store, resolver: SourcePriorityResolver(priority: ["Watch", "iPhone"]), now: { now })
-        viewModel.refresh()
+        await viewModel.refresh()
 
         XCTAssertEqual(viewModel.vo2Trend?.verdict, .stable)
         XCTAssertEqual(viewModel.vo2MaxAlert?.severity, .info)
@@ -122,10 +122,10 @@ final class CompanionAdvisorViewModelTests: XCTestCase {
                       "VO2max stable malgré une charge d'entraînement soutenue — un palier normal, ou un signal pour varier l'intensité.")
     }
 
-    func test_refresh_storeUnavailable_setsFlagWithoutThrowing() {
+    func test_refresh_storeUnavailable_setsFlagWithoutThrowing() async {
         let store = HealthStore(unavailable: ())
         let viewModel = CompanionAdvisorViewModel(store: store, resolver: SourcePriorityResolver(priority: ["Watch", "iPhone"]))
-        viewModel.refresh()
+        await viewModel.refresh()
 
         XCTAssertTrue(viewModel.hasLoaded)
         XCTAssertTrue(viewModel.storeUnavailable)
@@ -139,7 +139,7 @@ final class CompanionAdvisorViewModelTests: XCTestCase {
     // même qui déclenche WeightEngine.safetyAlert(.warning) côté sous-projet
     // 3 (weight-advisor) — falsifiable : ce test échouerait si un futur
     // lecteur câblait WeightEngine par erreur sur cet écran.
-    func test_refresh_neverSurfacesAWeightAlertEvenIfWeightDataExistsLocally() throws {
+    func test_refresh_neverSurfacesAWeightAlertEvenIfWeightDataExistsLocally() async throws {
         let store = try HealthStore(path: ":memory:")
         let now = Calendar.current.startOfDay(for: Date()).addingTimeInterval(23 * 3600)
         let calendar = Calendar.current
@@ -152,7 +152,7 @@ final class CompanionAdvisorViewModelTests: XCTestCase {
         ])
 
         let viewModel = CompanionAdvisorViewModel(store: store, resolver: SourcePriorityResolver(priority: ["Watch", "iPhone"]), now: { now })
-        viewModel.refresh()
+        await viewModel.refresh()
 
         XCTAssertEqual(viewModel.dailyAdvice?.message,
                       "Repos ou séance très légère aujourd'hui — laissez la récupération primer sur la performance.",

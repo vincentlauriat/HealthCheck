@@ -19,6 +19,11 @@ final class CompanionAdvisorViewModel: ObservableObject {
     private let resolver: SourcePriorityResolver
     private let calendar: Calendar
     private let now: () -> Date
+    /// Discrimine deux `refresh()` concurrents : seul le plus récent a le
+    /// droit d'écrire dans les `@Published`. Sans ceci, un retour au premier
+    /// plan pendant un pull-to-refresh pourrait appliquer le résultat le plus
+    /// ancien, simplement parce qu'il a fini en dernier.
+    private var generation = 0
 
     init(store: HealthStore, resolver: SourcePriorityResolver,
          calendar: Calendar = .current, now: @escaping () -> Date = Date.init) {
@@ -31,12 +36,37 @@ final class CompanionAdvisorViewModel: ObservableObject {
     /// Ne lève jamais — contrairement à `DashboardViewModel.load()`, un
     /// store indisponible est un état normal de cet écran (§`storeUnavailable`),
     /// pas une raison d'empêcher toute la scène de démarrer comme sur le Mac.
-    func refresh() {
+    ///
+    /// Les lectures GRDB (30 j de FC/HRV/énergie/sommeil + 120 j de séances)
+    /// se font hors du `MainActor` : sur l'iPhone elles partagent la base avec
+    /// l'import HealthKit et peuvent attendre son verrou d'écriture plusieurs
+    /// secondes. Seul le calcul est déporté ; l'application du résultat
+    /// revient sur le `MainActor`.
+    func refresh() async {
         hasLoaded = true
-        do {
-            try compute()
+        generation &+= 1
+        let token = generation
+        let store = self.store
+        let resolver = self.resolver
+        let calendar = self.calendar
+        let today = now()
+
+        let outcome = await Task.detached(priority: .userInitiated) {
+            Result<WellnessOrchestrator.Result, Error>(catching: {
+                try WellnessOrchestrator.compute(store: store, resolver: resolver,
+                                                 calendar: calendar, today: today)
+            })
+        }.value
+
+        // Un `refresh()` plus récent a été lancé pendant le calcul : son
+        // résultat fait foi, celui-ci est périmé.
+        guard token == generation else { return }
+
+        switch outcome {
+        case .success(let wellness):
+            apply(wellness)
             storeUnavailable = false
-        } catch {
+        case .failure:
             storeUnavailable = true
             readiness = nil
             dailyAdvice = nil
@@ -45,8 +75,7 @@ final class CompanionAdvisorViewModel: ObservableObject {
         }
     }
 
-    private func compute() throws {
-        let wellness = try WellnessOrchestrator.compute(store: store, resolver: resolver, calendar: calendar, today: now())
+    private func apply(_ wellness: WellnessOrchestrator.Result) {
         readiness = wellness.readiness
         vo2Trend = wellness.vo2Trend
         vo2MaxAlert = wellness.vo2MaxAlert
