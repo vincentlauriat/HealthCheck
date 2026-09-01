@@ -370,21 +370,26 @@ to the Mac receiver above — HealthKit on the phone, no manual export.
   one source per overlapping time window based on `sourceName` and the
   configured priority order. `creationDate` is not part of the dedup
   key.
-- **Sim-vs-device test split**: the 41 companion XCTest cases (mapper,
+- **Sim-vs-device test split**: the 64 companion XCTest cases (mapper,
   persistence, sync engine, Mac client stub, Bonjour endpoint
-  formatting, concurrent-wake coalescing, shared protocol, view model)
-  run fully on the iPhone 17 simulator. Real Bonjour
+  formatting, concurrent-wake coalescing, shared protocol, view model,
+  advisor view model) run fully on the iPhone 17 simulator. Real Bonjour
   discovery over the local network and background-delivery wake
   timing cannot be exercised there (no local-network peers, no true
   background wake) and are validated manually on a physical iPhone —
   see [docs/companion-setup.md](docs/companion-setup.md) and the
   device-validation checklist it documents.
-- **UI**: a single screen, `CompanionRootView` (SwiftUI `Form`) —
-  a pairing section (6-digit code entry) while unpaired, a sync
-  section (last-sync date, report summary, manual button) once
-  paired. `CompanionViewModel` is the sole state holder, fully
-  protocol-injected (`Syncing`/`Pairing`) so it tests without HealthKit
-  or the network.
+- **UI**: `CompanionRootView` is a two-tab `TabView`. "Conseils"
+  (`CompanionAdvisorView`) shows readiness, daily advice, and VO2max
+  trend computed locally by `CompanionAdvisorViewModel`, independent of
+  Mac pairing; it refreshes on first appearance, on any manual sync,
+  and when returning to the foreground (`scenePhase`). "Synchro"
+  (`CompanionSyncView`, unchanged historical content) carries the
+  pairing section (6-digit code entry) while unpaired, then the sync
+  section (last-sync date, report summary, manual button) once paired.
+  `CompanionViewModel` remains the sole state holder for that second
+  tab, fully protocol-injected (`Syncing`/`Pairing`) so it tests
+  without HealthKit or the network.
 
 ## UI structure
 
@@ -431,15 +436,19 @@ history-window coverage). UI is verified visually (Swift Charts is
 invisible to accessibility tooling); training screen views stay thin
 and untested like every other screen, only the view model is covered.
 
-iOS (`HealthCheckCompanion`): 41 XCTest cases — HealthKit mapping
+iOS (`HealthCheckCompanion`): 64 XCTest cases — HealthKit mapping
 against pinned units, anchor/keychain persistence, sync engine
 batching and ack-gated anchor advance, Mac client HTTP stub (endpoint
 caching/invalidation/retry, authenticated request without a token),
 `BonjourEndpointProvider` IPv4/IPv6/`.name` URL-host formatting,
 concurrent-wake coalescing (`SyncCoalescer`), shared protocol
-round-trip, and the companion view model (pairing, full/partial/failed
-sync, error states). See the sim-vs-device split above — Bonjour
-discovery and background delivery are device-only.
+round-trip, the companion view model (pairing, full/partial/failed
+sync, error states), and the advisor view model
+(`CompanionAdvisorViewModel` — readiness/daily advice/VO2max trend
+computed from the local store, unavailable store, no data yet, and
+strict weight isolation even when local weight data exists). See the
+sim-vs-device split above — Bonjour discovery and background delivery
+are device-only.
 
 `xcodegen generate` is mandatory after adding/removing files — a stale
 pbxproj produces confusing "cannot find in scope" errors or empty test

@@ -118,9 +118,9 @@ corrélations, mapping Withings, parsing GPX, dédoublonnage, plan
 d'entraînement/rapprochement des séances/moniteur de charge), le store
 et la synchro compagnon (appairage, routeur HTTP, ingestion
 idempotente). Les moteurs d'analyse sont volontairement découplés de
-SwiftUI pour rester testables au centième près. Côté iOS, 41 tests
+SwiftUI pour rester testables au centième près. Côté iOS, 64 tests
 (mapping HealthKit, ancres, moteur de synchro, client Mac, view
-model) ; la découverte Bonjour et la livraison en arrière-plan ne
+model, conseils/forme locaux) ; la découverte Bonjour et la livraison en arrière-plan ne
 sont validables que sur appareil (voir
 [docs/companion-setup.md](docs/companion-setup.md)).
 
@@ -156,7 +156,7 @@ HealthCheck/
 ├── HealthCheckShared/    # DTO d'échange + protocole compagnon, partagés Mac/iOS
 ├── HealthCheckTests/    # 197 tests (moteurs + store + mapping + synchro compagnon + entraînement)
 ├── Companion/            # App iOS (HealthKit, synchro, appairage, UI)
-├── CompanionTests/       # 41 tests (mapping HealthKit, ancres, synchro, view model)
+├── CompanionTests/       # 64 tests (mapping HealthKit, ancres, synchro, view model, conseils/forme locaux)
 ├── Scripts/release.sh   # Release signée + notarisée
 ├── docs/                # Guides + specs de conception
 └── project.yml          # Source de vérité XcodeGen (le .xcodeproj est généré)
@@ -207,3 +207,4 @@ Ce projet est distribué sous licence MIT — voir [LICENSE](LICENSE).
 - [x] Release v1.1.0 signée et notarisée (compagnon iOS + plans d'entraînement)
 - [x] (Optionnel) App compagnon iOS pour supprimer l'export manuel — récepteur Mac + app iOS livrés (serveur, appairage, ingestion, lecture HealthKit, synchro manuelle/arrière-plan) ; validation sur iPhone physique restante
 - [x] Écran Entraînement — objectif de course, plan hebdomadaire (`TrainingPlanner`), rapprochement des séances (`SessionMatcher`), moniteur de charge relatif au plan (`TrainingLoadMonitor`)
+- [x] Onglet Conseils côté Companion iOS — forme, conseil du jour, tendance VO2max calculés localement, indépendants de l'appairage Mac

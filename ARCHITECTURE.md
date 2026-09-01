@@ -402,22 +402,29 @@ manuel.
   qu'une source par fenêtre temporelle qui se chevauche selon
   `sourceName` et l'ordre de priorité configuré. `creationDate` n'entre
   pas dans la clé de dédoublonnage.
-- **Répartition simulateur/appareil des tests** : les 41 cas XCTest du
+- **Répartition simulateur/appareil des tests** : les 64 cas XCTest du
   compagnon (mapper, persistance, moteur de synchro, stub client Mac,
   formatage d'endpoint Bonjour, fusion des réveils concurrents,
-  protocole partagé, view model) tournent entièrement sur le
+  protocole partagé, view model, view model de conseils/forme) tournent entièrement sur le
   simulateur iPhone 17. La vraie découverte Bonjour sur le réseau
   local et le timing de réveil en arrière-plan ne peuvent pas s'y
   exercer (pas de pairs sur le réseau local, pas de vrai réveil
   arrière-plan) et sont validés manuellement sur un iPhone physique —
   voir [docs/companion-setup.md](docs/companion-setup.md) et la liste
   de validation sur appareil qu'il documente.
-- **Interface** : un seul écran, `CompanionRootView` (`Form` SwiftUI)
-  — une section d'appairage (saisie du code à 6 chiffres) tant que non
-  appairé, une section de synchro (date de dernière synchro, résumé du
-  rapport, bouton manuel) une fois appairé. `CompanionViewModel` est
-  l'unique porteur d'état, entièrement injecté par protocole
-  (`Syncing`/`Pairing`) pour se tester sans HealthKit ni réseau.
+- **Interface** : `CompanionRootView` est un `TabView` à deux onglets.
+  « Conseils » (`CompanionAdvisorView`) affiche forme, conseil du jour
+  et tendance VO2max calculés localement par
+  `CompanionAdvisorViewModel`, indépendamment de l'appairage avec le
+  Mac ; il se rafraîchit sur la première apparition, sur toute synchro
+  manuelle et au retour au premier plan (`scenePhase`). « Synchro »
+  (`CompanionSyncView`, contenu historique inchangé) porte la section
+  d'appairage (saisie du code à 6 chiffres) tant que non appairé, puis
+  la section de synchro (date de dernière synchro, résumé du rapport,
+  bouton manuel) une fois appairé. `CompanionViewModel` reste l'unique
+  porteur d'état pour ce second onglet, entièrement injecté par
+  protocole (`Syncing`/`Pairing`) pour se tester sans HealthKit ni
+  réseau.
 
 ## Structure de l'interface
 
@@ -468,17 +475,20 @@ l'outillage d'accessibilité) ; les vues de l'écran Entraînement restent
 minces et non testées comme tous les autres écrans, seul le view model
 est couvert.
 
-iOS (`HealthCheckCompanion`) : 41 cas XCTest — mapping HealthKit avec
+iOS (`HealthCheckCompanion`) : 64 cas XCTest — mapping HealthKit avec
 unités épinglées, persistance des ancres/du trousseau, découpage en
 batchs et avancement des ancres conditionné à l'ack du moteur de
 synchro, stub HTTP du client Mac (mémorisation/invalidation/rattrapage
 de l'endpoint, requête authentifiée sans jeton), formatage d'hôte URL
 IPv4/IPv6/`.name` de `BonjourEndpointProvider`, fusion des réveils
-concurrents (`SyncCoalescer`), aller-retour du protocole partagé, et le
+concurrents (`SyncCoalescer`), aller-retour du protocole partagé, le
 view model compagnon (appairage, synchro complète/partielle/en échec,
-états d'erreur). Voir la répartition simulateur/appareil ci-dessus — la
-découverte Bonjour et la livraison en arrière-plan sont réservées à
-l'appareil.
+états d'erreur), et le view model de conseils (`CompanionAdvisorViewModel`
+— forme/conseil du jour/tendance VO2max calculés depuis le store local,
+magasin indisponible, absence de données, et isolation stricte du poids
+même quand des données de poids existent en local). Voir la répartition
+simulateur/appareil ci-dessus — la découverte Bonjour et la livraison en
+arrière-plan sont réservées à l'appareil.
 
 `xcodegen generate` est obligatoire après tout ajout/retrait de
 fichier — un pbxproj périmé produit des erreurs « cannot find in
