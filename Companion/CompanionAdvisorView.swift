@@ -28,7 +28,7 @@ struct CompanionAdvisorView: View {
                             dailyAdviceCard(advice)
                         }
                         if let trend = viewModel.vo2Trend {
-                            vo2Card(trend)
+                            vo2Card(trend, alert: viewModel.vo2MaxAlert)
                         }
                     }
                 }
@@ -100,7 +100,7 @@ struct CompanionAdvisorView: View {
         }
     }
 
-    private func vo2Card(_ trend: VO2MaxTrend) -> some View {
+    private func vo2Card(_ trend: VO2MaxTrend, alert: LoadAlert?) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             Label("VO2max", systemImage: "lungs.fill")
                 .font(.headline)
@@ -109,6 +109,14 @@ struct CompanionAdvisorView: View {
             Text("\(trend.recentAverage.formatted(.number.precision(.fractionLength(1)))) mL/min·kg (\(trend.delta >= 0 ? "+" : "")\(trend.delta.formatted(.number.precision(.fractionLength(1)))) vs. les 90 jours précédents)")
                 .font(.caption)
                 .foregroundStyle(.secondary)
+            if let alert {
+                Label(alert.message,
+                     systemImage: alert.severity == .warning ? "exclamationmark.triangle.fill" : "info.circle.fill")
+                    .font(.callout)
+                    .foregroundStyle(alert.severity == .warning ? Color.orange : Color.secondary)
+                    .multilineTextAlignment(.leading)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding()

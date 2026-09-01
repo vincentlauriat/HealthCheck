@@ -11,6 +11,7 @@ final class CompanionAdvisorViewModel: ObservableObject {
     @Published private(set) var readiness: ReadinessScore?
     @Published private(set) var dailyAdvice: DailyAdvice?
     @Published private(set) var vo2Trend: VO2MaxTrend?
+    @Published private(set) var vo2MaxAlert: LoadAlert?
     @Published private(set) var hasLoaded = false
     @Published private(set) var storeUnavailable = false
 
@@ -40,6 +41,7 @@ final class CompanionAdvisorViewModel: ObservableObject {
             readiness = nil
             dailyAdvice = nil
             vo2Trend = nil
+            vo2MaxAlert = nil
         }
     }
 
@@ -47,6 +49,7 @@ final class CompanionAdvisorViewModel: ObservableObject {
         let wellness = try WellnessOrchestrator.compute(store: store, resolver: resolver, calendar: calendar, today: now())
         readiness = wellness.readiness
         vo2Trend = wellness.vo2Trend
+        vo2MaxAlert = wellness.vo2MaxAlert
         dailyAdvice = DailyAdviceEngine.advise(readiness: wellness.readiness, loadAlerts: wellness.loadAssessment.alerts,
                                                vo2MaxAlert: wellness.vo2MaxAlert, weightAlert: nil)
     }
