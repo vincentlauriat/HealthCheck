@@ -13,6 +13,18 @@ d'un brainstorming complet mené avec Vincent dans cette conversation,
 section par section, chaque décision approuvée explicitement avant d'être
 actée.
 
+**Correction post-approbation (2026-09-01) :** la première version de ce
+document incluait le poids (`WeightEngine`, lecture HealthKit de
+`bodyMass`). En lisant `CompanionTests/HKMapperTests.swift` avant
+d'écrire le plan, un test existant du sous-projet 0 a été trouvé :
+`test_unknownQuantityType_isDropped` vérifie explicitement qu'un
+échantillon `bodyMass` est ignoré, avec le commentaire « balance =
+territoire Withings ». Vincent a confirmé que cette règle tient toujours
+— le poids reste exclusivement un flux Withings côté Mac, jamais lu via
+HealthKit sur iPhone. Le poids est donc retiré du périmètre de ce
+sous-projet ; ce document est corrigé en conséquence (§4/§7 de la version
+précédente supprimées, écran ramené à 3 cartes).
+
 ## 1. Context and motivation
 
 `HealthCheckCompanion` (cible iOS) est aujourd'hui un écran unique
@@ -26,25 +38,17 @@ Mais rien ne lit jamais ce store localement : les données ne servent qu'à
 être poussées vers le Mac (`SyncEngine.syncAll()` → `MacClient`).
 
 `HealthCheckShared/Analysis/` contient déjà `HealthScoreEngine`,
-`TrainingLoadMonitor`, `VO2MaxEngine`, `DailyAdviceEngine`, `WeightEngine`
-— tous purs, tous confirmés présents dans les sources de la cible
-`HealthCheckCompanion` (`project.pbxproj`, cible
-`3409D6FA38E72FFD49B6FE58`). Ce sous-projet leur donne un consommateur côté
-iPhone.
+`TrainingLoadMonitor`, `VO2MaxEngine`, `DailyAdviceEngine` — tous purs,
+tous confirmés présents dans les sources de la cible `HealthCheckCompanion`
+(`project.pbxproj`, cible `3409D6FA38E72FFD49B6FE58`). Ce sous-projet leur
+donne un consommateur côté iPhone. (`WeightEngine` compile aussi côté iOS,
+mais reste hors périmètre — §2.)
 
-Deux lacunes empêchent une réplique fidèle de l'écran Accueil du Mac :
-
-1. **Le poids n'est pas lu.** `HKMapper.quantityUnits`
-   (`Companion/Sync/HKMapper.swift:10-22`), `SyncEngine.defaultTypes`
-   (`Companion/Sync/SyncEngine.swift:44-54`) et
-   `BackgroundSync.immediateTypes`/`.hourlyTypes`
-   (`Companion/Sync/BackgroundSync.swift:12-17`) ne contiennent pas
-   `HKQuantityTypeIdentifier.bodyMass` — `WeightEngine` n'a donc aucune
-   entrée locale sur iPhone aujourd'hui.
-2. **Le `HealthStore` local est jeté après l'ouverture.**
-   `CompanionApp.init` (`Companion/CompanionApp.swift:18-22`) ne conserve
-   que `LocalStore().importer`, pas la struct `LocalStore` complète — rien
-   ne peut donc relire `healthStore` pour construire un écran.
+Une lacune empêche de construire cet écran aujourd'hui : **le
+`HealthStore` local est jeté après l'ouverture.** `CompanionApp.init`
+(`Companion/CompanionApp.swift:18-22`) ne conserve que
+`LocalStore().importer`, pas la struct `LocalStore` complète — rien ne
+peut donc relire `healthStore` pour construire un écran.
 
 ## 2. Goals / non-goals
 
@@ -53,21 +57,20 @@ Deux lacunes empêchent une réplique fidèle de l'écran Accueil du Mac :
   `DashboardViewModel.loadWellness()` (macOS) — mêmes moteurs, même
   enchaînement de calcul — mais lit le `HealthStore` local du téléphone,
   jamais le Mac.
-- Lecture HealthKit du poids ajoutée côté Companion (`bodyMass`), pour que
-  `WeightEngine.trend`/`.safetyAlert` fonctionnent aussi sur iPhone.
 - Un nouvel onglet « Conseils » dans l'app, indépendant de l'état
   d'appairage : score de forme, carte « Conseil du jour », tendance
-  VO2max, tendance de poids.
-- Correctif du `LocalStore` jeté (§1, point 2) — prérequis pour tout le
-  reste.
+  VO2max.
+- Correctif du `LocalStore` jeté (§1) — prérequis pour tout le reste.
 
 **Non-goals :**
-- **Pas d'objectif de poids (`WeightGoal`) côté Companion.** Seuls
-  `WeightEngine.trend`/`.safetyAlert` sont appelés (comme
-  `DashboardViewModel`, jamais comme `BodyViewModel`) — pas de
-  `trajectory`, pas de création/suppression d'objectif, pas de
-  `store.weightGoals()`. Un objectif créé sur le Mac n'apparaît nulle part
-  sur cet écran.
+- **Pas de poids.** `WeightEngine` n'est pas câblé dans ce sous-projet —
+  ni tendance, ni alerte de sécurité, ni lecture HealthKit de `bodyMass`.
+  Règle confirmée par Vincent (2026-09-01) : le poids reste un flux
+  Withings exclusivement côté Mac (`CompanionTests/HKMapperTests.swift`,
+  `test_unknownQuantityType_isDropped`, « balance = territoire Withings »)
+  — pas seulement une omission du sous-projet 0 à corriger, une règle
+  toujours voulue. `DailyAdviceEngine.advise(...)` est donc appelé avec
+  `weightAlert: nil` en permanence sur cet écran.
 - **Pas de composition corporelle détaillée.** Muscle, hydratation, os,
   graisse viscérale (`WithingsMapper.*Type`) sont des données de l'API
   Withings, jamais présentes dans HealthKit — structurellement
@@ -104,77 +107,51 @@ la fraîcheur (ou couvrir les cas où le Mac dispose de plus d'historique).
 Ajoute une question de fraîcheur/conflit (quelle source gagne, staleness)
 sans bénéfice net pour cette première itération — reporté (YAGNI).
 
-## 4. Lecture HealthKit du poids
-
-Trois ajouts mécaniques, même gabarit que les 8 types déjà lus :
-
-```swift
-// Companion/Sync/HKMapper.swift — dans quantityUnits
-HKQuantityTypeIdentifier.bodyMass.rawValue: (HKUnit.gramUnit(with: .kilo), "kg"),
-```
-
-Unité vérifiée contre la convention réelle du Mac
-(`HealthCheck/Import/WithingsModels.swift:101` :
-`("HKQuantityTypeIdentifierBodyMass", "kg")`) — pas une supposition.
-
-```swift
-// Companion/Sync/SyncEngine.swift — dans defaultTypes, avant "sleep"
-HKQuantityTypeIdentifier.bodyMass.rawValue,
-```
-
-```swift
-// Companion/Sync/BackgroundSync.swift — dans immediateTypes
-// (cadence quotidienne, comme restingHeartRate/heartRateVariabilitySDNN/vo2Max —
-// pas hourlyTypes, une pesée n'a pas de sens à cette fréquence)
-private static let immediateTypes: [HKQuantityTypeIdentifier] = [
-    .restingHeartRate, .heartRateVariabilitySDNN, .vo2Max, .bodyMass
-]
-```
-
-`HealthKitReaderLive.requestAuthorization()` dérive déjà son `readTypes`
-de `HKMapper.quantityUnits.keys` — l'ajout ci-dessus suffit à ce que l'app
-redemande automatiquement la permission au prochain lancement. Aucun code
-de migration à écrire. Ce qui arrive réellement dans `HealthStore` dépend
-ensuite de si l'iPhone de Vincent contient des pesées dans Apple Santé
-(pont Withings→Santé, un réglage d'appareil hors du contrôle du code) —
-`WeightEngine.trend` retourne `nil` proprement si aucune donnée n'existe,
-comme documenté au §7 (états vides).
-
-## 5. Correctif préalable — LocalStore retenu
+## 4. Correctif préalable — LocalStore retenu
 
 `CompanionApp.init` (`Companion/CompanionApp.swift:18-22`) doit conserver
-la struct `LocalStore` complète, pas seulement `.importer` :
+la struct `LocalStore` complète, pas seulement `.importer`. Suit le motif
+déjà établi côté Mac pour ce type précis de panne
+(`HealthCheckApp.swift:41-56`, `store = HealthStore(unavailable: ())` +
+`failure: Error?` gardés séparément) plutôt qu'un optionnel :
 
 ```swift
 // Avant :
 let localImporter: LocalIngesting
 do {
     localImporter = try LocalStore().importer
-} catch { ... localImporter = NoOpImporter() }
+} catch {
+    os_log(.error, "LocalStore indisponible, mode relais seul: %{public}@", String(describing: error))
+    localImporter = NoOpImporter()
+}
 
 // Après :
-let localStore: LocalStore?
+let advisorStore: HealthStore
 let localImporter: LocalIngesting
 do {
     let store = try LocalStore()
-    localStore = store
+    advisorStore = store.healthStore
     localImporter = store.importer
 } catch {
-    os_log(...)
-    localStore = nil
+    os_log(.error, "LocalStore indisponible, mode relais seul: %{public}@", String(describing: error))
+    advisorStore = HealthStore(unavailable: ())
     localImporter = NoOpImporter()
 }
 ```
 
-`localStore` (optionnel — `nil` si l'ouverture a échoué, cf. §7) est
-propagé à `CompanionAdvisorViewModel` au même endroit que `viewModel` est
-construit aujourd'hui.
+`advisorStore` (jamais optionnel — `HealthStore(unavailable: ())` en
+repli, comme le Mac) est propagé à `CompanionAdvisorViewModel` au même
+endroit que `viewModel` est construit aujourd'hui. Toute lecture sur ce
+store de repli lève `HealthStoreError.unavailable` — `refresh()` (§5) doit
+la traiter comme l'état « base indisponible » (§6), jamais la laisser
+remonter.
 
-## 6. CompanionAdvisorViewModel
+## 5. CompanionAdvisorViewModel
 
 Réplique `DashboardViewModel.loadWellness()`
 (`HealthCheck/ViewModels/DashboardViewModel.swift:65-137`), sans les
-métriques d'activité/pas propres à l'écran Accueil (hors périmètre ici) :
+métriques d'activité/pas propres à l'écran Accueil (hors périmètre ici)
+et sans le poids (§2) :
 
 ```swift
 @MainActor
@@ -182,57 +159,63 @@ final class CompanionAdvisorViewModel: ObservableObject {
     @Published private(set) var readiness: ReadinessScore?
     @Published private(set) var dailyAdvice: DailyAdvice?
     @Published private(set) var vo2Trend: VO2MaxTrend?
-    @Published private(set) var weightTrend: WeightTrend?
     @Published private(set) var hasLoaded = false
-    @Published private(set) var storeUnavailable: Bool
+    @Published private(set) var storeUnavailable = false
 
-    private let store: HealthStore?
+    private let store: HealthStore
     private let resolver: SourcePriorityResolver
     private let calendar: Calendar
     private let now: () -> Date
 
-    init(store: HealthStore?, resolver: SourcePriorityResolver,
+    init(store: HealthStore, resolver: SourcePriorityResolver,
          calendar: Calendar = .current, now: @escaping () -> Date = Date.init) {
         self.store = store
         self.resolver = resolver
         self.calendar = calendar
         self.now = now
-        self.storeUnavailable = (store == nil)
     }
 
-    func refresh() throws {
+    func refresh() {
         hasLoaded = true
-        guard let store else { return } // storeUnavailable déjà vrai
-        // ... même enchaînement que loadWellness() : d30/d120/d7,
-        // hrDaily/hrvDaily/energyDaily/sleepNights, split(latest/baseline),
-        // HealthScoreEngine.readiness, VO2MaxEngine.trend, WeightEngine.trend,
-        // TrainingLoadMonitor.assess(plan: nil), VO2MaxEngine.stagnationAlert,
-        // WeightEngine.safetyAlert, DailyAdviceEngine.advise(...)
+        do {
+            // ... même enchaînement que loadWellness() sans le bloc poids :
+            // d30/d120/d7, hrDaily/hrvDaily/energyDaily/sleepNights,
+            // split(latest/baseline), HealthScoreEngine.readiness,
+            // VO2MaxEngine.trend, TrainingLoadMonitor.assess(plan: nil),
+            // VO2MaxEngine.stagnationAlert,
+            // DailyAdviceEngine.advise(readiness:loadAlerts:vo2MaxAlert:weightAlert: nil)
+            storeUnavailable = false
+        } catch is HealthStoreError {
+            storeUnavailable = true
+        } catch { /* autre erreur inattendue : traiter comme storeUnavailable aussi */ storeUnavailable = true }
     }
 }
 ```
 
+`refresh()` n'est plus `throws` : contrairement à `DashboardViewModel.load()`
+(macOS, où un store indisponible empêche l'app entière de démarrer —
+`HealthCheckApp` gère ce cas avant même de construire les view models,
+§4), ici le store de repli est une possibilité normale de fonctionnement
+que l'écran doit absorber lui-même sans propager l'erreur à l'appelant.
+
 Signatures des moteurs déjà fixées par les sous-projets 1 à 3 — aucune
 extension nécessaire. `TrainingLoadMonitor.assess(history:plan: nil,
-readiness:today:calendar:)` fournit `.alerts` (pour `loadAlerts` et pour
-`trainingLoadElevated` de `WeightEngine.safetyAlert`, exactement comme
-`DashboardViewModel:130-136`).
+readiness:today:calendar:)` fournit `.alerts` pour `loadAlerts`. Pas de
+`WeightEngine.safetyAlert` à appeler (§2) — `trainingLoadElevated` n'a
+donc pas lieu d'être calculé ici.
 
-## 7. UI — onglet « Conseils »
+## 6. UI — onglet « Conseils »
 
-Nouveau fichier `Companion/CompanionAdvisorView.swift`. Quatre cartes,
+Nouveau fichier `Companion/CompanionAdvisorView.swift`. Trois cartes,
 mêmes moteurs et mêmes textes que le Mac (pas de nouvelle rédaction) :
 
 1. **Forme** — `ReadinessScore.value`/`.label`.
 2. **Conseil du jour** — `DailyAdvice.message`, style selon le palier
    (repos/prudence/opportunité), même carte que `DashboardView`.
 3. **VO2max** — verdict de tendance + alerte de stagnation le cas échéant.
-4. **Poids** — direction + rythme hebdomadaire (`WeightTrend`), alerte de
-   sécurité le cas échéant (`WeightEngine.safetyAlert`). Pas de section
-   objectif/trajectoire (§2).
 
-Une carte individuellement absente (ex. pas encore de VO2max mesuré, pas
-de pesée dans Santé) se masque simplement — pas d'état vide par carte.
+Une carte individuellement absente (ex. pas encore de VO2max mesuré) se
+masque simplement — pas d'état vide par carte.
 
 **États d'écran entier :**
 - **Base locale indisponible** (`storeUnavailable == true`, `LocalStore`
@@ -240,11 +223,11 @@ de pesée dans Santé) se masque simplement — pas d'état vide par carte.
   Mac pour la même classe de panne (corrigé le 2026-08-23) : message
   clair, pas d'écran muet.
 - **Aucune donnée locale pour l'instant** (`hasLoaded == true`,
-  `readiness == nil`, store disponible) — couvre à la fois « jamais
-  synchronisé » et « historique encore trop court » (les deux ont la même
-  apparence pour l'utilisateur, pas besoin de les distinguer). Message :
-  « Pas encore assez de données — synchronisez, ou revenez dans quelques
-  jours. »
+  `readiness == nil`, `storeUnavailable == false`) — couvre à la fois
+  « jamais synchronisé » et « historique encore trop court » (les deux
+  ont la même apparence pour l'utilisateur, pas besoin de les
+  distinguer). Message : « Pas encore assez de données — synchronisez, ou
+  revenez dans quelques jours. »
 
 **Déclenchement du calcul**, même leçon que le pitfall corrigé côté Mac le
 2026-08-28 (ne jamais recharger à chaque changement d'onglet) :
@@ -259,7 +242,7 @@ de pesée dans Santé) se masque simplement — pas d'état vide par carte.
   que `pairedContent` en a déjà un pour le plan d'entraînement,
   `CompanionRootView.swift:71-73`).
 
-## 8. Navigation
+## 7. Navigation
 
 `CompanionRootView` restructuré : aujourd'hui `NavigationStack` unique
 alternant `pairingContent`/`pairedContent` selon `isPaired`
@@ -280,28 +263,28 @@ TabView {
 Refactor associé : `CompanionRootView.swift` (349 lignes aujourd'hui,
 mélange déjà appairage + synchro + plan d'entraînement) devient un shell
 de `TabView` fin ; tout le contenu actuel (`pairingContent`, `pairedContent`,
-`syncCard`, `trainingPlanContent`, etc.) est déplacé tel quel — aucune
-logique changée — dans un nouveau `Companion/CompanionSyncView.swift`.
-Justifié par la même règle que le reste du dépôt (fichiers focalisés une
-seule responsabilité) plutôt qu'ajouté par confort : ce fichier faisait
-déjà plusieurs choses avant ce sous-projet, ce n'est pas ce sous-projet
-qui crée le problème mais il en aggraverait la taille sans ce découpage.
+`syncCard`, `trainingPlanContent`, etc., y compris les `@State` et le
+`.confirmationDialog` de dépairage) est déplacé tel quel — aucune logique
+changée — dans un nouveau `Companion/CompanionSyncView.swift`. Justifié
+par la même règle que le reste du dépôt (fichiers focalisés une seule
+responsabilité) plutôt qu'ajouté par confort : ce fichier faisait déjà
+plusieurs choses avant ce sous-projet, ce n'est pas ce sous-projet qui
+crée le problème mais il en aggraverait la taille sans ce découpage.
 
-## 9. Code structure
+## 8. Code structure
 
 - Create: `Companion/CompanionAdvisorViewModel.swift`
 - Create: `Companion/CompanionAdvisorView.swift`
 - Create: `Companion/CompanionSyncView.swift` (contenu déplacé de
   `CompanionRootView.swift`, aucun changement de logique)
 - Modify: `Companion/CompanionRootView.swift` (devient le shell `TabView`)
-- Modify: `Companion/CompanionApp.swift` (`LocalStore` retenu, §5)
-- Modify: `Companion/Sync/HKMapper.swift`, `SyncEngine.swift`,
-  `BackgroundSync.swift` (ajout `bodyMass`, §4)
+- Modify: `Companion/CompanionApp.swift` (`LocalStore` retenu, §4)
 - Test: `CompanionTests/CompanionAdvisorViewModelTests.swift` (nouveau)
-- Test: `CompanionTests/HKMapperTests.swift` (nouveau cas, gabarit
-  existant — voir `test_heartRate_and_hrv_and_vo2_units`)
 
-## 10. Testing strategy
+Aucun fichier `Companion/Sync/` modifié — le poids reste hors périmètre
+(§2), donc aucun ajout de type HealthKit.
+
+## 9. Testing strategy
 
 `CompanionAdvisorViewModelTests.swift` suit le même gabarit que
 `DashboardViewModelTests`/`BodyViewModelTests` (sous-projet 3) :
@@ -309,13 +292,12 @@ qui crée le problème mais il en aggraverait la taille sans ce découpage.
 `Date()`. Pas de protocole/mock nécessaire — contrairement à
 `CompanionViewModel` (réseau), ce view model ne lit que le store local, il
 n'y a pas de seam réseau à simuler. Cas à couvrir explicitement : calcul
-normal (readiness + conseil + VO2 + poids tous présents), `readiness nil`
-→ état vide explicite (pas seulement implicite), `store == nil` → état
-« base indisponible » distinct, poids absent (pas de `bodyMass` en base)
-→ carte poids masquée sans casser le reste.
-
-Ajout à `HKMapperTests.swift` : un test pour `bodyMass` suivant le motif
-déjà en place pour `heartRate`/`heartRateVariabilitySDNN`/`vo2Max`.
+normal (readiness + conseil + VO2 présents), `readiness nil` → état vide
+explicite (pas seulement implicite), `HealthStore(unavailable: ())` →
+état « base indisponible » distinct sans lever d'erreur non gérée,
+`weightAlert` toujours `nil` passé à `DailyAdviceEngine.advise(...)` (test
+de non-régression sur le non-goal §2, pas juste une omission qu'un futur
+lecteur pourrait « corriger » par erreur).
 
 Convention du dépôt inchangée : tout test écrit pour attraper un bug
 précis doit avoir été vu échouer contre ce bug ; pour de la logique
@@ -327,16 +309,17 @@ Commande : `xcodebuild test -scheme HealthCheckCompanion -destination
 prive l'app hôte du trousseau, et d'autres tests de cette cible en
 dépendent).
 
-## 11. Known limitations (accepted)
+## 10. Known limitations (accepted)
 
 - **Fraîcheur dépendante du sync en arrière-plan.** iOS ne garantit aucun
   horaire pour `BackgroundSync` (`BackgroundSync.swift:9`, déjà documenté)
   — l'écran Conseils peut afficher des données de plusieurs heures si
-  aucune synchro manuelle n'a eu lieu. Le tirer-pour-rafraîchir (§7) est le
+  aucune synchro manuelle n'a eu lieu. Le tirer-pour-rafraîchir (§6) est le
   recours, comme pour le plan d'entraînement.
-- **Le poids dépend d'un pont externe.** `WeightEngine` ne fonctionne que
-  si l'iPhone de Vincent contient des pesées dans Apple Santé — dépend du
-  réglage Withings→Santé, hors du contrôle de ce sous-projet.
+- **Pas de poids sur cet écran.** Décision confirmée (§2), pas une
+  omission — un utilisateur qui consulte l'onglet Conseils sur iPhone
+  n'y verra jamais de signal de poids, contrairement à l'écran Accueil du
+  Mac. Le poids reste consultable sur l'écran Corps du Mac uniquement.
 - **Pas de parité `BodyViewModel`.** Composition corporelle détaillée
   restera Mac-only tant que l'API Withings n'est pas relayée d'une façon
   ou d'une autre — non traité ici (§2).
