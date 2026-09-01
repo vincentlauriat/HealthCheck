@@ -16,7 +16,14 @@ struct CompanionAdvisorView: View {
             Group {
                 if viewModel.storeUnavailable {
                     storeUnavailableCard
-                } else if viewModel.hasLoaded && viewModel.readiness == nil
+                } else if !viewModel.hasLoaded {
+                    // Premier calcul en cours : les lectures GRDB tournent hors
+                    // du `MainActor` et peuvent durer si l'import HealthKit
+                    // tient le verrou. Les rafraîchissements suivants gardent
+                    // les cartes déjà affichées, il n'y a que ce premier écran
+                    // à remplir.
+                    loadingCard
+                } else if viewModel.readiness == nil
                     && viewModel.dailyAdvice == nil && viewModel.vo2Trend == nil {
                     notEnoughDataCard
                 } else {
@@ -153,6 +160,17 @@ struct CompanionAdvisorView: View {
                 .font(.callout)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
+        }
+        .padding()
+        .frame(maxWidth: .infinity)
+    }
+
+    private var loadingCard: some View {
+        VStack(spacing: 8) {
+            ProgressView()
+            Text("Calcul en cours…")
+                .font(.callout)
+                .foregroundStyle(.secondary)
         }
         .padding()
         .frame(maxWidth: .infinity)

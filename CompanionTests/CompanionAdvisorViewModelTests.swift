@@ -158,4 +158,81 @@ final class CompanionAdvisorViewModelTests: XCTestCase {
                       "Repos ou séance très légère aujourd'hui — laissez la récupération primer sur la performance.",
                       "aucune alerte de poids ne doit jamais apparaître sur cet écran (non-goal spec §2), même si des données de poids existent en base")
     }
+
+    // MARK: - Déport hors du MainActor
+
+    /// Fabrique un résultat d'orchestration minimal, identifiable par le score
+    /// de forme — les deux gardes ci-dessous ne s'intéressent qu'à « quel
+    /// résultat a été appliqué, et quand ».
+    private func wellness(readiness value: Double) -> WellnessOrchestrator.Result {
+        WellnessOrchestrator.Result(
+            readiness: ReadinessScore(value: value, label: "Forme correcte", components: []),
+            vo2Trend: nil,
+            loadAssessment: LoadAssessment(acuteKm: 0, chronicWeeklyKm: 0, acwr: nil, alerts: []),
+            vo2MaxAlert: nil, hrDaily: [], sleepNights: [])
+    }
+
+    /// `hasLoaded` ne doit pas passer à `true` avant la fin du calcul : la vue
+    /// en déduirait « Pas encore assez de données » (état chargé + trois
+    /// valeurs encore nulles) pendant toute la lecture — soit précisément les
+    /// quelques secondes que le déport hors du `MainActor` sert à couvrir.
+    func test_refresh_doesNotClaimToBeLoadedWhileTheComputationIsStillRunning() async throws {
+        let store = try HealthStore(path: ":memory:")
+        let started = expectation(description: "calcul démarré")
+        let release = DispatchSemaphore(value: 0)
+        let result = wellness(readiness: 70)
+        let viewModel = CompanionAdvisorViewModel(
+            store: store, resolver: SourcePriorityResolver(priority: ["Watch"]),
+            compute: { _, _, _, _ in
+                started.fulfill()
+                release.wait()
+                return result
+            })
+
+        let refresh = Task { await viewModel.refresh() }
+        await fulfillment(of: [started], timeout: 2)
+
+        XCTAssertFalse(viewModel.hasLoaded, "l'écran ne doit pas se déclarer chargé tant que le calcul court")
+
+        release.signal()
+        await refresh.value
+        XCTAssertTrue(viewModel.hasLoaded)
+        XCTAssertEqual(viewModel.readiness?.value, 70)
+    }
+
+    /// Deux `refresh()` concurrents (retour au premier plan pendant un
+    /// pull-to-refresh) : le résultat du plus ancien arrive en dernier et ne
+    /// doit pas écraser celui du plus récent.
+    func test_refresh_staleResultDoesNotOverwriteANewerOne() async throws {
+        let store = try HealthStore(path: ":memory:")
+        let firstStarted = expectation(description: "premier calcul démarré")
+        let releaseFirst = DispatchSemaphore(value: 0)
+        let stale = wellness(readiness: 10)
+        let fresh = wellness(readiness: 90)
+        let callCount = NSLock()
+        nonisolated(unsafe) var calls = 0
+        let viewModel = CompanionAdvisorViewModel(
+            store: store, resolver: SourcePriorityResolver(priority: ["Watch"]),
+            compute: { _, _, _, _ in
+                callCount.lock()
+                calls += 1
+                let isFirst = calls == 1
+                callCount.unlock()
+                guard isFirst else { return fresh }
+                firstStarted.fulfill()
+                releaseFirst.wait()
+                return stale
+            })
+
+        let first = Task { await viewModel.refresh() }
+        await fulfillment(of: [firstStarted], timeout: 2)
+        await viewModel.refresh()          // le second calcul finit en premier
+        XCTAssertEqual(viewModel.readiness?.value, 90)
+
+        releaseFirst.signal()
+        await first.value
+
+        XCTAssertEqual(viewModel.readiness?.value, 90,
+                      "le résultat périmé du premier refresh ne doit pas écraser celui du second")
+    }
 }

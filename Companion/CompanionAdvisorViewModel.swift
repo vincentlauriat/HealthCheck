@@ -19,6 +19,10 @@ final class CompanionAdvisorViewModel: ObservableObject {
     private let resolver: SourcePriorityResolver
     private let calendar: Calendar
     private let now: () -> Date
+    /// Injectable pour les seules gardes qui exigent de suspendre le calcul en
+    /// plein vol (état de chargement, résultat périmé) ; en production c'est
+    /// toujours `WellnessOrchestrator.compute`.
+    private let compute: @Sendable (HealthStore, SourcePriorityResolver, Calendar, Date) throws -> WellnessOrchestrator.Result
     /// Discrimine deux `refresh()` concurrents : seul le plus récent a le
     /// droit d'écrire dans les `@Published`. Sans ceci, un retour au premier
     /// plan pendant un pull-to-refresh pourrait appliquer le résultat le plus
@@ -26,11 +30,14 @@ final class CompanionAdvisorViewModel: ObservableObject {
     private var generation = 0
 
     init(store: HealthStore, resolver: SourcePriorityResolver,
-         calendar: Calendar = .current, now: @escaping () -> Date = Date.init) {
+         calendar: Calendar = .current, now: @escaping () -> Date = Date.init,
+         compute: @escaping @Sendable (HealthStore, SourcePriorityResolver, Calendar, Date) throws -> WellnessOrchestrator.Result
+            = { try WellnessOrchestrator.compute(store: $0, resolver: $1, calendar: $2, today: $3) }) {
         self.store = store
         self.resolver = resolver
         self.calendar = calendar
         self.now = now
+        self.compute = compute
     }
 
     /// Ne lève jamais — contrairement à `DashboardViewModel.load()`, un
@@ -43,24 +50,30 @@ final class CompanionAdvisorViewModel: ObservableObject {
     /// secondes. Seul le calcul est déporté ; l'application du résultat
     /// revient sur le `MainActor`.
     func refresh() async {
-        hasLoaded = true
         generation &+= 1
         let token = generation
         let store = self.store
         let resolver = self.resolver
         let calendar = self.calendar
         let today = now()
+        let compute = self.compute
 
         let outcome = await Task.detached(priority: .userInitiated) {
             Result<WellnessOrchestrator.Result, Error>(catching: {
-                try WellnessOrchestrator.compute(store: store, resolver: resolver,
-                                                 calendar: calendar, today: today)
+                try compute(store, resolver, calendar, today)
             })
         }.value
 
         // Un `refresh()` plus récent a été lancé pendant le calcul : son
         // résultat fait foi, celui-ci est périmé.
         guard token == generation else { return }
+
+        // Posé seulement ici : le laisser à `true` pendant le calcul
+        // afficherait « Pas encore assez de données » (état `hasLoaded` +
+        // trois valeurs encore nulles) le temps de la lecture — soit
+        // précisément plusieurs secondes dans le cas que ce déport hors du
+        // `MainActor` sert à couvrir.
+        hasLoaded = true
 
         switch outcome {
         case .success(let wellness):
