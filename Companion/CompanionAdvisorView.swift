@@ -9,6 +9,7 @@ import SwiftUI
 struct CompanionAdvisorView: View {
     @ObservedObject var viewModel: CompanionAdvisorViewModel
     let lastSyncDate: Date?
+    @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
         ScrollView {
@@ -38,6 +39,9 @@ struct CompanionAdvisorView: View {
         .background(Color(.systemGroupedBackground))
         .task { if !viewModel.hasLoaded { viewModel.refresh() } }
         .onChange(of: lastSyncDate) { _, _ in viewModel.refresh() }
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .active { viewModel.refresh() }
+        }
         .refreshable { viewModel.refresh() }
     }
 
