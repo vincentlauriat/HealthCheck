@@ -42,7 +42,7 @@ struct CompanionApp: App {
 
     var body: some Scene {
         WindowGroup {
-            CompanionRootView(viewModel: viewModel)
+            CompanionRootView(viewModel: viewModel, advisorViewModel: advisorViewModel)
                 .environment(\.locale, Locale(identifier: "fr_FR"))
                 .task {
                     guard reader.isAvailable else { return }
