@@ -15,7 +15,8 @@ struct CompanionAdvisorView: View {
             Group {
                 if viewModel.storeUnavailable {
                     storeUnavailableCard
-                } else if viewModel.hasLoaded && viewModel.readiness == nil {
+                } else if viewModel.hasLoaded && viewModel.readiness == nil
+                    && viewModel.dailyAdvice == nil && viewModel.vo2Trend == nil {
                     notEnoughDataCard
                 } else {
                     LazyVStack(alignment: .leading, spacing: 18) {
