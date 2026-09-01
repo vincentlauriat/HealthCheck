@@ -57,14 +57,17 @@ final class SyncEngine {
     private let reader: DeltaReading
     private let pusher: BatchPushing
     private let anchors: AnchorStore
+    private let localAnchors: AnchorStore
     private let localImporter: LocalIngesting
     private let typeIdentifiers: [String]
 
     init(reader: DeltaReading, pusher: BatchPushing, anchors: AnchorStore,
-         localImporter: LocalIngesting, typeIdentifiers: [String] = SyncEngine.defaultTypes) {
+         localAnchors: AnchorStore, localImporter: LocalIngesting,
+         typeIdentifiers: [String] = SyncEngine.defaultTypes) {
         self.reader = reader
         self.pusher = pusher
         self.anchors = anchors
+        self.localAnchors = localAnchors
         self.localImporter = localImporter
         self.typeIdentifiers = typeIdentifiers
     }
@@ -91,24 +94,18 @@ final class SyncEngine {
         var report = SyncReport()
         var pushDisabled = false
         for type in typeIdentifiers {
+            await ingestLocally(type)
+
+            guard !pushDisabled else {
+                report.failedTypes.append(type) // ancre Mac intacte, relivraison au prochain passage
+                continue
+            }
             do {
                 let delta = try await reader.delta(for: type, since: anchors.anchor(for: type))
                 let sampleCount = delta.records.count + delta.sleep.count + delta.workouts.count
                 guard sampleCount > 0 else { continue }
 
                 let fullBatch = ExchangeBatch(records: delta.records, sleep: delta.sleep, workouts: delta.workouts)
-                do {
-                    _ = try localImporter.ingest(fullBatch)
-                } catch {
-                    os_log(.error, "Insertion locale échouée pour %{public}@: %{public}@",
-                           type, String(describing: error))
-                }
-
-                guard !pushDisabled else {
-                    report.failedTypes.append(type) // ancre intacte, relivraison au prochain passage
-                    continue
-                }
-
                 let batches = Self.chunk(fullBatch, limit: CompanionProtocol.batchLimit)
                 for batch in batches {
                     report.insertedRows += try await pusher.push(batch: batch)
@@ -124,12 +121,30 @@ final class SyncEngine {
                 // valide, insister échouerait pareil pour tous les types restants.
                 pushDisabled = true
             } catch {
-                report.failedTypes.append(type) // ancre intacte, relivraison au prochain passage
+                report.failedTypes.append(type) // ancre Mac intacte, relivraison au prochain passage
                 if let macClientError = error as? MacClientError, case .serverError = macClientError {
                     report.hadServerError = true
                 }
             }
         }
         return report
+    }
+
+    /// Alimente la base de l'iPhone, sur son propre jeu d'ancres : ni le
+    /// résultat du push, ni même l'appairage n'entrent ici. L'ancre locale
+    /// n'avance qu'après une insertion réussie — un store indisponible ou un
+    /// disque plein fait relire la même fenêtre à la passe suivante.
+    private func ingestLocally(_ type: String) async {
+        do {
+            let delta = try await reader.delta(for: type, since: localAnchors.anchor(for: type))
+            let sampleCount = delta.records.count + delta.sleep.count + delta.workouts.count
+            guard sampleCount > 0 else { return }
+            _ = try localImporter.ingest(ExchangeBatch(records: delta.records, sleep: delta.sleep,
+                                                       workouts: delta.workouts))
+            try localAnchors.save(delta.newAnchor, for: type)
+        } catch {
+            os_log(.error, "Insertion locale échouée pour %{public}@: %{public}@",
+                   type, String(describing: error))
+        }
     }
 }

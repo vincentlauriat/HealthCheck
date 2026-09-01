@@ -7,6 +7,11 @@ struct LocalStore {
     let healthStore: HealthStore
     let routeStore: RouteStore
     let importer: CompanionImporter
+    /// Ancres propres à l'ingestion locale (`anchors-local`), jamais celles du
+    /// push vers le Mac : vierges au premier passage, elles font relire la
+    /// fenêtre initiale de 180 jours et rattrapent l'historique que les
+    /// synchros antérieures à ce store avaient déjà consommé.
+    let anchors: AnchorStore
 
     init(applicationSupportDirectory: URL? = nil) throws {
         let base = applicationSupportDirectory
@@ -15,6 +20,7 @@ struct LocalStore {
         healthStore = try HealthStore(path: base.appendingPathComponent("health.sqlite").path)
         routeStore = RouteStore(directory: base.appendingPathComponent("routes", isDirectory: true))
         importer = CompanionImporter(store: healthStore, routeStore: routeStore)
+        anchors = AnchorStore(directory: base.appendingPathComponent(AnchorStore.localSubdirectory, isDirectory: true))
     }
 }
 
@@ -22,5 +28,9 @@ struct LocalStore {
 /// vers le Mac continue, seule l'autonomie locale est perdue pour cette
 /// session — spec §8, "ne doit pas régresser la synchro Mac existante".
 struct NoOpImporter: LocalIngesting {
-    func ingest(_ batch: ExchangeBatch) throws -> Int { 0 }
+    /// Lève plutôt que de rendre 0 : c'est ce qui empêche `SyncEngine`
+    /// d'avancer l'ancre locale sur des données qui n'ont été écrites nulle
+    /// part. Elles seront relues à la prochaine passe, quand le store sera
+    /// peut-être de nouveau ouvrable.
+    func ingest(_ batch: ExchangeBatch) throws -> Int { throw HealthStoreError.unavailable }
 }

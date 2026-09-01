@@ -4,7 +4,15 @@ import HealthKit
 
 private final class FakeReader: DeltaReading {
     var deltas: [String: TypeDelta] = [:]
+    /// Sert un delta différent selon l'ancre reçue — sans ça, un fake qui
+    /// ignore `since:` fait passer les tests de séparation des ancres même
+    /// quand les deux consommateurs partagent la même.
+    var provider: ((String, HKQueryAnchor?) -> TypeDelta)?
+    private(set) var requestedAnchors: [String: [HKQueryAnchor?]] = [:]
+
     func delta(for typeIdentifier: String, since anchor: HKQueryAnchor?) async throws -> TypeDelta {
+        requestedAnchors[typeIdentifier, default: []].append(anchor)
+        if let provider { return provider(typeIdentifier, anchor) }
         guard let delta = deltas[typeIdentifier] else {
             return TypeDelta(typeIdentifier: typeIdentifier, records: [], sleep: [], workouts: [],
                              newAnchor: anchor ?? HKQueryAnchor(fromValue: 0))
@@ -39,6 +47,7 @@ private final class FakeImporter: LocalIngesting {
 final class SyncEngineTests: XCTestCase {
     private var tempDir: URL!
     private var anchors: AnchorStore!
+    private var localAnchors: AnchorStore!
     private var reader: FakeReader!
     private var pusher: FakePusher!
     private var importer: FakeImporter!
@@ -47,7 +56,8 @@ final class SyncEngineTests: XCTestCase {
         tempDir = URL(fileURLWithPath: NSTemporaryDirectory())
             .appendingPathComponent("engine-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
-        anchors = AnchorStore(directory: tempDir)
+        anchors = AnchorStore(directory: tempDir.appendingPathComponent("mac", isDirectory: true))
+        localAnchors = AnchorStore(directory: tempDir.appendingPathComponent("local", isDirectory: true))
         reader = FakeReader()
         pusher = FakePusher()
         importer = FakeImporter()
@@ -63,7 +73,8 @@ final class SyncEngineTests: XCTestCase {
     }
 
     private func engine(types: [String]) -> SyncEngine {
-        SyncEngine(reader: reader, pusher: pusher, anchors: anchors, localImporter: importer, typeIdentifiers: types)
+        SyncEngine(reader: reader, pusher: pusher, anchors: anchors, localAnchors: localAnchors,
+                   localImporter: importer, typeIdentifiers: types)
     }
 
     func test_chunk_splitsAtLimit_preservingOrder() {
@@ -199,5 +210,60 @@ final class SyncEngineTests: XCTestCase {
         // Limite acceptée, spec §8 : l'ancre avance sur l'ack Mac seul, indépendamment
         // du succès de l'insertion locale.
         XCTAssertEqual(anchors.anchor(for: type), HKQueryAnchor(fromValue: 3))
+    }
+
+    // MARK: - Ancres locales séparées
+
+    private func delta(_ type: String, records count: Int, newAnchor: Int) -> TypeDelta {
+        TypeDelta(typeIdentifier: type, records: (0..<count).map(record), sleep: [], workouts: [],
+                  newAnchor: HKQueryAnchor(fromValue: newAnchor))
+    }
+
+    /// Le cas de Vincent, 2026-09-01 : des mois de synchro vers le Mac avaient
+    /// déjà consommé les ancres avant que la base locale n'existe, si bien que
+    /// l'iPhone ne pouvait plus jamais recevoir son propre historique. Avec un
+    /// jeu d'ancres distinct, la première ingestion locale repart d'une ancre
+    /// nulle — donc de la fenêtre initiale de 180 jours.
+    func test_syncAll_localIngestionReadsFromItsOwnAnchor_notTheMacOne() async throws {
+        let type = "HKQuantityTypeIdentifierStepCount"
+        try anchors.save(HKQueryAnchor(fromValue: 42), for: type)
+        reader.provider = { [weak self] type, anchor in
+            guard let self else { fatalError() }
+            return anchor == nil ? self.delta(type, records: 3, newAnchor: 99)
+                                 : self.delta(type, records: 1, newAnchor: 100)
+        }
+
+        _ = await engine(types: [type]).syncAll()
+
+        XCTAssertEqual(reader.requestedAnchors[type]?.count, 2, "une lecture pour le local, une pour le push")
+        XCTAssertNil(reader.requestedAnchors[type]?.first ?? HKQueryAnchor(fromValue: 0),
+                     "l'ingestion locale part de SON ancre, vierge — pas de celle du Mac")
+        XCTAssertEqual(importer.ingestedBatches.first?.records.count, 3,
+                       "le local reçoit le rattrapage complet, pas le delta déjà borné par l'ancre du Mac")
+        XCTAssertEqual(pusher.pushedBatches.first?.records.count, 1,
+                       "le Mac, lui, ne reçoit que ce qu'il n'a pas encore")
+    }
+
+    /// L'autonomie de l'iPhone ne doit rien devoir au Mac : un push en échec
+    /// laisse l'ancre du Mac en place (relivraison) mais ne doit pas faire
+    /// ré-ingérer localement la même fenêtre à chaque passe.
+    func test_syncAll_localAnchorAdvancesEvenWhenTheMacPushFails() async throws {
+        let type = "HKQuantityTypeIdentifierStepCount"
+        reader.provider = { [weak self] type, anchor in
+            guard let self else { fatalError() }
+            return anchor == nil ? self.delta(type, records: 2, newAnchor: 7)
+                                 : self.delta(type, records: 0, newAnchor: 7)
+        }
+        pusher.results = [.failure(MacClientError.unreachable)]
+
+        _ = await engine(types: [type]).syncAll()
+        XCTAssertNil(anchors.anchor(for: type), "push en échec : l'ancre du Mac ne bouge pas")
+        XCTAssertNotNil(localAnchors.anchor(for: type), "l'insertion locale a réussi : son ancre avance")
+
+        _ = await engine(types: [type]).syncAll()
+
+        XCTAssertEqual(importer.ingestedBatches.count, 1,
+                       "la seconde passe n'a rien de neuf à insérer localement")
+        XCTAssertEqual(pusher.pushedBatches.count, 2, "le push, lui, est bien retenté")
     }
 }

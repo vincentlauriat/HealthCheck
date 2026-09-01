@@ -325,6 +325,17 @@ to the Mac receiver above — HealthKit on the phone, no manual export.
   absorbs any re-delivery after a mid-delta failure. A 401 sets
   `needsPairing` and stops the loop — no point retrying without a
   valid token.
+- **Two anchor sets, one per consumer** (2026-09-01): `anchors`
+  (directory `anchors`) governs the Mac push and advances only on ack;
+  `anchors-local` governs ingestion into the iPhone's own database and
+  advances as soon as the insert succeeds, waiting on nothing from the
+  Mac. Each pass therefore reads every type twice. Sharing them had two
+  effects: the iPhone's autonomy depended on pairing, and — worse — the
+  local database, added on 2026-08-28, long after the first syncs,
+  could never receive the history those syncs had already consumed. A
+  blank local anchor restarts from the 180-day initial window
+  (`HealthKitReaderLive.initialWindowDays`), which backfills that
+  history once and for all.
 - **Bonjour discovery**: `BonjourEndpointProvider` browses
   `_healthcheck._tcp`, then resolves the endpoint by opening an
   ephemeral TCP connection and reading `host`/`port` off its ready

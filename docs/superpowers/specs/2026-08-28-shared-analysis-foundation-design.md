@@ -197,6 +197,12 @@ Mac push both see the same 180-day initial delta) — more historical data
 reaching the Mac on first pairing too, which is harmless given the Mac's
 ingestion is already idempotent.
 
+**Superseded on 2026-09-01:** the 180-day first sync only ever applied to a
+*blank* anchor, so an install that had already been syncing to the Mac before
+this store existed never received its own history — the local database started
+at the day the feature shipped. Fixed by giving local ingestion its own anchor
+set; see ARCHITECTURE §Companion.
+
 **Accepted limitation:** a user with less than ~4-6 months of Apple Watch
 history will still see engines that need longer baselines (e.g. VO2max's
 120-day window, once sub-project 1 lands) report insufficient data on the
@@ -207,7 +213,14 @@ iPhone, exactly as they would on a freshly-onboarded Mac. Not addressed here.
 - **Local insertion failure** (e.g. disk write error): logged via `os_log`,
   does not block the Mac push attempt for that type, does not fail
   `syncAll()`. Not retried independently of the next natural sync pass.
-- **Accepted gap:** if local insertion fails on a sync where the Mac push
+- **Reversed on 2026-09-01 — see ARCHITECTURE §Companion, "two anchor sets".**
+  Local ingestion now has its own anchor set (`anchors-local`), advanced on a
+  successful local insert rather than on the Mac's ack. A local insertion
+  failure therefore *does* leave that window to be re-read on the next pass,
+  and `NoOpImporter` throws instead of returning 0 so that a store it could
+  not open never advances an anchor. The paragraph below records the original
+  decision and no longer describes the code.
+- **~~Accepted gap:~~** if local insertion fails on a sync where the Mac push
   *succeeds*, the anchor still advances (Mac-push-gated, unchanged), so that
   specific window is not retried into the local store. This mirrors the
   existing app-wide convention of not building bespoke retry machinery for

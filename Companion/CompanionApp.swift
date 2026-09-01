@@ -21,16 +21,22 @@ struct CompanionApp: App {
         let anchors = AnchorStore()
         let advisorStore: HealthStore
         let localImporter: LocalIngesting
+        let localAnchors: AnchorStore
         do {
             let localStore = try LocalStore()
             advisorStore = localStore.healthStore
             localImporter = localStore.importer
+            localAnchors = localStore.anchors
         } catch {
             os_log(.error, "LocalStore indisponible, mode relais seul: %{public}@", String(describing: error))
             advisorStore = HealthStore(unavailable: ())
             localImporter = NoOpImporter()
+            // Jamais le répertoire par défaut : ce serait celui du push vers le
+            // Mac. `NoOpImporter` lève, donc rien n'y sera jamais écrit.
+            localAnchors = AnchorStore(subdirectory: AnchorStore.localSubdirectory)
         }
-        let engine = SyncEngine(reader: reader, pusher: client, anchors: anchors, localImporter: localImporter)
+        let engine = SyncEngine(reader: reader, pusher: client, anchors: anchors,
+                                localAnchors: localAnchors, localImporter: localImporter)
         self.reader = reader
         self.client = client
         self.engine = engine

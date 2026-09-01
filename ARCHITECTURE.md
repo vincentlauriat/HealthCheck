@@ -356,6 +356,18 @@ manuel.
   idempotente du Mac absorbe toute relivraison après un échec en cours
   de delta. Un 401 positionne `needsPairing` et arrête la boucle :
   inutile d'insister sans jeton valide.
+- **Deux jeux d'ancres, un par consommateur** (2026-09-01) :
+  `anchors` (répertoire `anchors`) gouverne le push vers le Mac et
+  n'avance qu'à l'ack ; `anchors-local` gouverne l'ingestion dans la
+  base de l'iPhone et avance dès l'insertion réussie, sans rien
+  attendre du Mac. Chaque passe lit donc le type deux fois. Les
+  partager avait deux effets : l'autonomie de l'iPhone dépendait de
+  l'appairage, et surtout la base locale — introduite le 2026-08-28,
+  bien après les premières synchros — ne pouvait plus jamais recevoir
+  l'historique que ces synchros avaient déjà consommé. Une ancre locale
+  vierge repart de la fenêtre initiale de 180 jours
+  (`HealthKitReaderLive.initialWindowDays`), ce qui rattrape cet
+  historique une fois pour toutes.
 - **Découverte Bonjour** : `BonjourEndpointProvider` parcourt
   `_healthcheck._tcp`, puis résout l'endpoint en ouvrant une connexion
   TCP éphémère et en lisant `host`/`port` sur son chemin « prêt » —

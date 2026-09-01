@@ -5,12 +5,26 @@ import HealthKit
 /// volontairement bête : c'est `SyncEngine` qui décide QUAND sauver (jamais
 /// avant l'ack complet du delta — livraison at-least-once, spec §5/§7).
 struct AnchorStore {
+    /// Ancres du push vers le Mac.
+    static let macSubdirectory = "anchors"
+    /// Ancres de l'ingestion locale, strictement distinctes : elles avancent
+    /// dès l'insertion réussie sur l'iPhone, sans rien attendre du Mac. Les
+    /// partager reviendrait à conditionner l'autonomie de l'iPhone à
+    /// l'appairage, et priverait à jamais la base locale de l'historique déjà
+    /// consommé par les synchros antérieures à son existence.
+    static let localSubdirectory = "anchors-local"
+
     let directory: URL
 
     init(directory: URL? = nil) {
         self.directory = directory
             ?? FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-                .appendingPathComponent("anchors", isDirectory: true)
+                .appendingPathComponent(Self.macSubdirectory, isDirectory: true)
+    }
+
+    init(subdirectory: String) {
+        self.directory = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent(subdirectory, isDirectory: true)
     }
 
     private func fileURL(for typeIdentifier: String) -> URL {
