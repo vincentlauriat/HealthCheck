@@ -10,6 +10,7 @@ struct CompanionApp: App {
     private let client: MacClient
     private let backgroundSyncCoalescer = SyncCoalescer()
     @StateObject private var viewModel: CompanionViewModel
+    @StateObject private var advisorViewModel: CompanionAdvisorViewModel
 
     init() {
         let store = HKHealthStore() // UNE seule instance pour le reader et le background delivery
@@ -18,11 +19,15 @@ struct CompanionApp: App {
         let tokenStore = KeychainTokenStore()
         let client = MacClient(endpointProvider: BonjourEndpointProvider(), tokenStore: tokenStore)
         let anchors = AnchorStore()
+        let advisorStore: HealthStore
         let localImporter: LocalIngesting
         do {
-            localImporter = try LocalStore().importer
+            let localStore = try LocalStore()
+            advisorStore = localStore.healthStore
+            localImporter = localStore.importer
         } catch {
             os_log(.error, "LocalStore indisponible, mode relais seul: %{public}@", String(describing: error))
+            advisorStore = HealthStore(unavailable: ())
             localImporter = NoOpImporter()
         }
         let engine = SyncEngine(reader: reader, pusher: client, anchors: anchors, localImporter: localImporter)
@@ -31,6 +36,8 @@ struct CompanionApp: App {
         self.engine = engine
         _viewModel = StateObject(wrappedValue: CompanionViewModel(
             engine: engine, pairer: client, tokenStore: tokenStore, anchors: anchors, planFetcher: client))
+        _advisorViewModel = StateObject(wrappedValue: CompanionAdvisorViewModel(
+            store: advisorStore, resolver: SourcePriorityResolver(priority: ["Watch", "iPhone"])))
     }
 
     var body: some Scene {
