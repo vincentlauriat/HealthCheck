@@ -383,7 +383,14 @@ to the Mac receiver above — HealthKit on the phone, no manual export.
   (`CompanionAdvisorView`) shows readiness, daily advice, and VO2max
   trend computed locally by `CompanionAdvisorViewModel`, independent of
   Mac pairing; it refreshes on first appearance, on any manual sync,
-  and when returning to the foreground (`scenePhase`). "Synchro"
+  and when returning to the foreground (`scenePhase`). The computation
+  itself (windows, readiness score, VO2max trend, training load) is a
+  pure function shared with the macOS Home screen —
+  `HealthCheckShared/Analysis/WellnessOrchestrator.swift`, called by
+  both `CompanionAdvisorViewModel.compute()` and
+  `DashboardViewModel.loadWellness()` — so the two targets never
+  silently diverge; only weight and activity insights stay Mac-only.
+  "Synchro"
   (`CompanionSyncView`, unchanged historical content) carries the
   pairing section (6-digit code entry) while unpaired, then the sync
   section (last-sync date, report summary, manual button) once paired.

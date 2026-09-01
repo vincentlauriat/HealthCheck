@@ -381,11 +381,11 @@ sont décidées par `DashboardViewModel.loadWellness()` :
 
 | Entrée | Fenêtre / définition réelle | Source |
 |---|---|---|
-| `restingHRMean7` / `restingHRMean30` | moyenne des moyennes journalières sur 7 j / 30 j | `DashboardViewModel.swift:100-101` |
-| `sleepHoursMean7` | moyenne sur 7 j, seulement si ≥ 3 nuits trackées | `DashboardViewModel.swift:104-105` |
-| `stepsThisWeek` / `stepsLastWeek` | semaine glissante en cours vs même **portion écoulée** de la semaine précédente (mercredi 15 h se compare au mercredi 15 h passé, pas à la semaine complète) | `DashboardViewModel.swift:37-47` |
-| `vo2Latest` / `vo2ThreeMonthsAgo` | dernier point vs premier point d'une fenêtre de 90 jours | `DashboardViewModel.swift:108-110` |
-| `weightDelta30d` | dernière moyenne journalière − première moyenne journalière sur 30 j | `DashboardViewModel.swift:111-114` |
+| `restingHRMean7` / `restingHRMean30` | moyenne des moyennes journalières sur 7 j / 30 j | `DashboardViewModel.swift:75-76` |
+| `sleepHoursMean7` | moyenne sur 7 j, seulement si ≥ 3 nuits trackées | `DashboardViewModel.swift:80` |
+| `stepsThisWeek` / `stepsLastWeek` | semaine glissante en cours vs même **portion écoulée** de la semaine précédente (mercredi 15 h se compare au mercredi 15 h passé, pas à la semaine complète) | `DashboardViewModel.swift:49-60` |
+| `vo2Latest` / `vo2ThreeMonthsAgo` | dernier point vs premier point d'une fenêtre de 90 jours | `HealthCheckShared/Analysis/WellnessOrchestrator.swift:73-74` (partagé macOS/Companion, cf. `DashboardViewModel.swift:83`) |
+| `weightDelta30d` | dernière moyenne journalière − première moyenne journalière sur 30 j | `DashboardViewModel.swift:85-88` |
 
 **Calcul.** Six règles indépendantes, chacune produisant zéro ou une
 observation :

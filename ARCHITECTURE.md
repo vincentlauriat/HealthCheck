@@ -417,7 +417,14 @@ manuel.
   et tendance VO2max calculés localement par
   `CompanionAdvisorViewModel`, indépendamment de l'appairage avec le
   Mac ; il se rafraîchit sur la première apparition, sur toute synchro
-  manuelle et au retour au premier plan (`scenePhase`). « Synchro »
+  manuelle et au retour au premier plan (`scenePhase`). Le calcul
+  lui-même (fenêtres, score de forme, tendance VO2max, charge
+  d'entraînement) est une fonction pure partagée avec l'Accueil macOS —
+  `HealthCheckShared/Analysis/WellnessOrchestrator.swift`, appelée par
+  `CompanionAdvisorViewModel.compute()` et par
+  `DashboardViewModel.loadWellness()` — pour que les deux cibles ne
+  divergent jamais silencieusement ; seuls le poids et les insights
+  d'activité restent propres au Mac. « Synchro »
   (`CompanionSyncView`, contenu historique inchangé) porte la section
   d'appairage (saisie du code à 6 chiffres) tant que non appairé, puis
   la section de synchro (date de dernière synchro, résumé du rapport,
