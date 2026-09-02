@@ -8,6 +8,7 @@ import SwiftUI
 struct CompanionRootView: View {
     @ObservedObject var viewModel: CompanionViewModel
     @ObservedObject var advisorViewModel: CompanionAdvisorViewModel
+    @ObservedObject var activityViewModel: ActivityViewModel
     @State private var showingSettings = false
 
     var body: some View {
@@ -26,7 +27,7 @@ struct CompanionRootView: View {
             .tabItem { Label("Accueil", systemImage: "heart.text.square") }
 
             NavigationStack {
-                CompanionActivityView().navigationTitle("Activité")
+                CompanionActivityView(viewModel: activityViewModel).navigationTitle("Activité")
             }
             .tabItem { Label("Activité", systemImage: "figure.walk") }
 
