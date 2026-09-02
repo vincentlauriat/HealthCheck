@@ -169,14 +169,14 @@ final class CompanionViewModel: ObservableObject {
             // deux messages distincts.
             errorMessage = report.hadServerError
                 ? "Le Mac a refusé l'envoi (erreur serveur). Nouvel essai à la prochaine synchronisation."
-                : "Mac injoignable — vos données attendent, rien n'est perdu."
+                : "Mac injoignable — vos données attendent, rien n'est perdu. Vos conseils, eux, sont calculés sur l'iPhone et restent à jour."
             return
         }
         // Échec partiel : certains types ont réussi, d'autres non. Pas de
         // tampon « synchro propre » tant que tout n'est pas passé — l'ancre
         // des types en échec n'a pas avancé, ils seront relivrés.
         lastReportSummary = "\(report.pushedSamples) échantillons envoyés, \(report.insertedRows) nouveaux — \(report.failedTypes.count) type(s) en échec, nouvel essai à la prochaine synchronisation"
-        errorMessage = "Synchronisation partielle : certaines données n'ont pas pu être envoyées. Nouvel essai à la prochaine synchronisation."
+        errorMessage = "Envoi partiel : certaines données n'ont pas pu être transmises au Mac. Nouvel essai au prochain envoi."
     }
 
     private static func decodeTrainingPlan(from data: Data) -> TrainingPlanResponse? {

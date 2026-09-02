@@ -53,6 +53,12 @@ struct CompanionApp: App {
                 .task {
                     guard reader.isAvailable else { return }
                     try? await reader.requestAuthorization()
+                    // Avant toute chose : remplir la base de l'iPhone. Sans
+                    // ceci, rien n'alimentait l'écran Conseils à l'ouverture —
+                    // ni le Mac ni l'appairage n'entrent en jeu, donc pas de
+                    // découverte Bonjour ni de timeout réseau à subir ici.
+                    await engine.ingestLocalData()
+                    await advisorViewModel.refresh()
                     BackgroundSync.register(store: healthStore) { [engine, backgroundSyncCoalescer] in
                         await backgroundSyncCoalescer.run {
                             _ = await engine.syncAll()

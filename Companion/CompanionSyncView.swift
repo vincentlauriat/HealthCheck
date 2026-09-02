@@ -127,7 +127,7 @@ struct CompanionSyncView: View {
             }
 
             if let last = viewModel.lastSyncDate {
-                LabeledContent("Dernière synchro", value: last.formatted(.relative(presentation: .named)))
+                LabeledContent("Dernier envoi", value: last.formatted(.relative(presentation: .named)))
                     .font(.callout)
             }
 
@@ -141,7 +141,7 @@ struct CompanionSyncView: View {
                 Button {
                     Task { await viewModel.syncNow() }
                 } label: {
-                    Label(viewModel.isSyncing ? "Synchronisation" : "Synchroniser", systemImage: "arrow.triangle.2.circlepath")
+                    Label(viewModel.isSyncing ? "Envoi en cours" : "Envoyer au Mac", systemImage: "arrow.triangle.2.circlepath")
                 }
                 .disabled(viewModel.isSyncing)
                 .buttonStyle(.borderedProminent)

@@ -180,7 +180,7 @@ struct CompanionAdvisorView: View {
         VStack(spacing: 8) {
             Label("Pas encore assez de données", systemImage: "clock.arrow.circlepath")
                 .font(.headline)
-            Text("Synchronisez, ou revenez dans quelques jours.")
+            Text("Vos données Santé s'accumulent sur l'iPhone au fil des jours. Revenez bientôt — cet écran n'attend rien du Mac.")
                 .font(.callout)
                 .foregroundStyle(.secondary)
         }

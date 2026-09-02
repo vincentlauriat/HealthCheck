@@ -130,21 +130,38 @@ final class SyncEngine {
         return report
     }
 
+    /// Actualise la base de l'iPhone sans jamais parler au Mac : c'est ce que
+    /// l'app fait à l'ouverture, pour que l'écran Conseils travaille sur des
+    /// données fraîches sans attendre une découverte Bonjour ni un timeout
+    /// réseau. Le push reste au bouton « Envoyer au Mac » et au réveil
+    /// d'arrière-plan.
+    @discardableResult
+    func ingestLocalData() async -> Int {
+        var ingested = 0
+        for type in typeIdentifiers {
+            ingested += await ingestLocally(type)
+        }
+        return ingested
+    }
+
     /// Alimente la base de l'iPhone, sur son propre jeu d'ancres : ni le
     /// résultat du push, ni même l'appairage n'entrent ici. L'ancre locale
     /// n'avance qu'après une insertion réussie — un store indisponible ou un
     /// disque plein fait relire la même fenêtre à la passe suivante.
-    private func ingestLocally(_ type: String) async {
+    @discardableResult
+    private func ingestLocally(_ type: String) async -> Int {
         do {
             let delta = try await reader.delta(for: type, since: localAnchors.anchor(for: type))
             let sampleCount = delta.records.count + delta.sleep.count + delta.workouts.count
-            guard sampleCount > 0 else { return }
+            guard sampleCount > 0 else { return 0 }
             _ = try localImporter.ingest(ExchangeBatch(records: delta.records, sleep: delta.sleep,
                                                        workouts: delta.workouts))
             try localAnchors.save(delta.newAnchor, for: type)
+            return sampleCount
         } catch {
             os_log(.error, "Insertion locale échouée pour %{public}@: %{public}@",
                    type, String(describing: error))
+            return 0
         }
     }
 }

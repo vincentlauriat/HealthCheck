@@ -266,4 +266,20 @@ final class SyncEngineTests: XCTestCase {
                        "la seconde passe n'a rien de neuf à insérer localement")
         XCTAssertEqual(pusher.pushedBatches.count, 2, "le push, lui, est bien retenté")
     }
+
+    /// (a) La passe d'ouverture : l'écran Conseils doit pouvoir travailler sur
+    /// des données fraîches sans que le Mac soit joignable, ni même appairé —
+    /// donc sans qu'aucune requête ne parte.
+    func test_ingestLocalData_fillsTheLocalStoreWithoutTouchingTheMac() async throws {
+        let type = "HKQuantityTypeIdentifierStepCount"
+        reader.deltas[type] = delta(type, records: 4, newAnchor: 11)
+
+        let ingested = await engine(types: [type]).ingestLocalData()
+
+        XCTAssertEqual(ingested, 4)
+        XCTAssertEqual(importer.ingestedBatches.first?.records.count, 4)
+        XCTAssertTrue(pusher.pushedBatches.isEmpty, "aucune requête ne doit partir vers le Mac")
+        XCTAssertNotNil(localAnchors.anchor(for: type))
+        XCTAssertNil(anchors.anchor(for: type), "l'ancre du Mac n'a rien à voir avec cette passe")
+    }
 }
