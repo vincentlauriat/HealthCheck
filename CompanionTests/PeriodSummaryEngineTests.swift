@@ -64,4 +64,42 @@ final class PeriodSummaryEngineTests: XCTestCase {
         XCTAssertEqual(try XCTUnwrap(week.lastWeek).steps, 3000,
                        "la comparaison s'arrête à la portion de semaine déjà écoulée")
     }
+
+    // MARK: - InsightInputsBuilder
+
+    private func wellness(sleepNights: [TrendPoint]) -> WellnessOrchestrator.Result {
+        WellnessOrchestrator.Result(
+            readiness: nil, vo2Trend: nil,
+            loadAssessment: LoadAssessment(acuteKm: 0, chronicWeeklyKm: 0, acwr: nil, alerts: []),
+            vo2MaxAlert: nil, hrDaily: [], sleepNights: sleepNights)
+    }
+
+    func test_insightInputs_underThreeTrackedNights_leavesTheSleepMeanNil() throws {
+        let calendar = Calendar.current
+        let now = fixedNow
+        let nights = (1...2).map {
+            TrendPoint(date: calendar.date(byAdding: .day, value: -$0, to: now)!, value: 8.0)
+        }
+
+        let inputs = InsightInputsBuilder.build(wellness: wellness(sleepNights: nights), thisWeek: nil,
+                                                lastWeek: nil, weightDelta30d: nil,
+                                                calendar: calendar, today: now)
+
+        XCTAssertNil(inputs.sleepHoursMean7,
+                     "deux nuits ne suffisent pas : une sieste isolée déclencherait une dette de sommeil")
+    }
+
+    func test_insightInputs_withThreeTrackedNights_computesTheSleepMean() throws {
+        let calendar = Calendar.current
+        let now = fixedNow
+        let nights = (1...3).map {
+            TrendPoint(date: calendar.date(byAdding: .day, value: -$0, to: now)!, value: 8.0)
+        }
+
+        let inputs = InsightInputsBuilder.build(wellness: wellness(sleepNights: nights), thisWeek: nil,
+                                                lastWeek: nil, weightDelta30d: nil,
+                                                calendar: calendar, today: now)
+
+        XCTAssertEqual(try XCTUnwrap(inputs.sleepHoursMean7), 8.0, accuracy: 0.001)
+    }
 }

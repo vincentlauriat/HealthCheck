@@ -51,25 +51,15 @@ final class DashboardViewModel: ObservableObject {
         let wellness = try WellnessOrchestrator.compute(store: store, resolver: resolver, calendar: calendar, today: end)
         readiness = wellness.readiness
 
-        guard let d30 = calendar.date(byAdding: .day, value: -30, to: end),
-              let d7 = calendar.date(byAdding: .day, value: -7, to: end)
-        else { return }
-
-        var inputs = InsightInputs()
-        inputs.restingHRMean7 = mean(wellness.hrDaily.filter { $0.date >= d7 }.map(\.value))
-        inputs.restingHRMean30 = mean(wellness.hrDaily.map(\.value))
-        // Au moins 3 nuits trackées, sinon la moyenne ne veut rien dire
-        // (une seule sieste enregistrée déclencherait « dette de sommeil »).
-        let recentNights = wellness.sleepNights.filter { $0.date >= d7 }
-        inputs.sleepHoursMean7 = recentNights.count >= 3 ? mean(recentNights.map(\.value)) : nil
-        inputs.stepsThisWeek = thisWeek?.steps
-        inputs.stepsLastWeek = lastWeek?.steps
-        inputs.vo2Trend = wellness.vo2Trend
+        guard let d30 = calendar.date(byAdding: .day, value: -30, to: end) else { return }
 
         let weightDaily = try dailyAverages(type: "HKQuantityTypeIdentifierBodyMass", from: d30, to: end)
+        var weightDelta30d: Double?
         if let first = weightDaily.first?.value, let last = weightDaily.last?.value {
-            inputs.weightDelta30d = last - first
+            weightDelta30d = last - first
         }
+        let inputs = InsightInputsBuilder.build(wellness: wellness, thisWeek: thisWeek, lastWeek: lastWeek,
+                                                weightDelta30d: weightDelta30d, calendar: calendar, today: end)
         let weightTrend = WeightEngine.trend(weights: weightDaily, today: end, calendar: calendar)
         let weightSafetyAlert = WeightEngine.safetyAlert(
             trend: weightTrend,
@@ -86,11 +76,6 @@ final class DashboardViewModel: ObservableObject {
             resolver.resolve(try store.records(type: type, from: from, to: to)),
             calendar: calendar
         )
-    }
-
-    private func mean(_ values: [Double]) -> Double? {
-        guard !values.isEmpty else { return nil }
-        return values.reduce(0, +) / Double(values.count)
     }
 
 }
