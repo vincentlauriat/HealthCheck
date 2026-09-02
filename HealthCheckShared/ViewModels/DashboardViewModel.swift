@@ -1,13 +1,5 @@
 import Foundation
 
-struct PeriodSummary {
-    let steps: Double
-    let distanceKm: Double
-    let activeEnergyKcal: Double
-    let exerciseMinutes: Double
-    let restingHeartRate: Double?
-}
-
 @MainActor
 final class DashboardViewModel: ObservableObject {
     @Published private(set) var today: PeriodSummary?
@@ -41,22 +33,14 @@ final class DashboardViewModel: ObservableObject {
     }
 
     func loadToday() throws {
-        let startOfDay = calendar.startOfDay(for: now())
-        let endOfDay = calendar.date(byAdding: .day, value: 1, to: startOfDay)!
-        today = try summary(from: startOfDay, to: endOfDay)
+        today = try PeriodSummaryEngine.today(store: store, resolver: resolver, calendar: calendar, now: now())
     }
 
     func loadThisWeek() throws {
-        let currentDate = now()
-        let interval = calendar.dateInterval(of: .weekOfYear, for: currentDate)!
-        thisWeek = try summary(from: interval.start, to: interval.end)
-
-        // Comparaison à période écoulée égale : mercredi 15h se compare au
-        // mercredi 15h de la semaine passée, pas à sa semaine complète.
-        if let lastWeekStart = calendar.date(byAdding: .weekOfYear, value: -1, to: interval.start) {
-            let elapsed = currentDate.timeIntervalSince(interval.start)
-            lastWeek = try summary(from: lastWeekStart, to: lastWeekStart.addingTimeInterval(elapsed))
-        }
+        let week = try PeriodSummaryEngine.weekToDate(store: store, resolver: resolver,
+                                                      calendar: calendar, now: now())
+        thisWeek = week.thisWeek
+        lastWeek = week.lastWeek
     }
 
     /// Calcule le score de forme (baselines 30 j) et les insights.
@@ -109,20 +93,4 @@ final class DashboardViewModel: ObservableObject {
         return values.reduce(0, +) / Double(values.count)
     }
 
-    private func summary(from: Date, to: Date) throws -> PeriodSummary {
-        let steps = try sum(type: "HKQuantityTypeIdentifierStepCount", from: from, to: to)
-        let distance = try sum(type: "HKQuantityTypeIdentifierDistanceWalkingRunning", from: from, to: to)
-        let energy = try sum(type: "HKQuantityTypeIdentifierActiveEnergyBurned", from: from, to: to)
-        let exercise = try sum(type: "HKQuantityTypeIdentifierAppleExerciseTime", from: from, to: to)
-        let restingHR = try resolver
-            .resolve(store.records(type: "HKQuantityTypeIdentifierRestingHeartRate", from: from, to: to))
-            .sorted(by: { $0.startDate > $1.startDate })
-            .first?.value
-
-        return PeriodSummary(steps: steps, distanceKm: distance, activeEnergyKcal: energy, exerciseMinutes: exercise, restingHeartRate: restingHR)
-    }
-
-    private func sum(type: String, from: Date, to: Date) throws -> Double {
-        resolver.resolve(try store.records(type: type, from: from, to: to)).reduce(0) { $0 + $1.value }
-    }
 }
