@@ -613,8 +613,25 @@ tard si l'écran se verrouille entre les deux.
 
 À l'écran : la charge et le VO2max s'affichent, le plan est passé dans cet
 onglet avec ses cases à cocher fonctionnelles, « Voir mes séances » ouvre la
-liste, et une séance avec trace déplie une carte. Vincent a cinq fichiers GPX
-en local (sorties des 29-31 août) : au moins une carte doit s'afficher.
+liste, et une séance avec trace déplie une carte.
+
+**Vérifier le stock de traces avant de conclure quoi que ce soit sur les
+cartes.** `CompanionImporter` enregistre `routeFileName` même quand
+l'écriture du GPX a échoué (self-healing assumé), et `RouteStore.url` rend
+alors `nil` : la séance n'affiche aucun bouton — indiscernable à l'œil d'une
+séance qui n'a jamais eu de trace. L'absence de carte ne prouve donc rien.
+Compter les fichiers d'abord :
+
+```bash
+xcrun devicectl device info files --device <UDID> \
+    --domain-type appDataContainer \
+    --domain-identifier fr.vincentlauriat.healthcheck.companion \
+    --username mobile --subdirectory "Library/Application Support/routes"
+```
+
+Constaté le 2026-09-02 : **25 traces**, de 62 Ko à 368 Ko, la plus récente du
+matin même. Deux fichiers font 296 octets (24 et 25/08) — des traces vides,
+qui doivent afficher « Trace illisible » et non une carte blanche.
 
 - [ ] **Step 7: Lancer la suite macOS**
 
