@@ -13,6 +13,7 @@ struct CompanionApp: App {
     @StateObject private var advisorViewModel: CompanionAdvisorViewModel
     @StateObject private var activityViewModel: ActivityViewModel
     @StateObject private var sleepViewModel: SleepViewModel
+    @StateObject private var trainingViewModel: TrainingViewModel
 
     init() {
         let store = HKHealthStore() // UNE seule instance pour le reader et le background delivery
@@ -50,13 +51,17 @@ struct CompanionApp: App {
             store: advisorStore, resolver: SourcePriorityResolver(priority: ["Watch", "iPhone"])))
         _sleepViewModel = StateObject(wrappedValue: SleepViewModel(
             store: advisorStore, resolver: SourcePriorityResolver(priority: ["Watch", "iPhone"])))
+        // Pas de résolveur de source ici : la charge se calcule sur la table
+        // `workout`, où la déduplication a déjà eu lieu à l'insertion.
+        _trainingViewModel = StateObject(wrappedValue: TrainingViewModel(store: advisorStore))
     }
 
     var body: some Scene {
         WindowGroup {
             CompanionRootView(viewModel: viewModel, advisorViewModel: advisorViewModel,
                               activityViewModel: activityViewModel,
-                              sleepViewModel: sleepViewModel)
+                              sleepViewModel: sleepViewModel,
+                              trainingViewModel: trainingViewModel)
                 .environment(\.locale, Locale(identifier: "fr_FR"))
                 .task {
                     guard reader.isAvailable else { return }
