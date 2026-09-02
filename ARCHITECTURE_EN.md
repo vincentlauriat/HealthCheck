@@ -400,7 +400,10 @@ to the Mac receiver above — HealthKit on the phone, no manual export.
   device-validation checklist it documents.
 - **UI**: `CompanionRootView` is a five-tab `TabView` (2026-09-02, SP1 of
   the analysis-screen port) — Accueil, Activité, Sommeil, Entraînement,
-  Corps. The last four currently show a waiting screen
+  Corps. Activité and Sommeil now show the same indicators as the Mac
+  (today's strain by heart-rate zone plus a 14-day histogram; last night by
+  phase, 14 nights and averages), computed by the shared `ActivityViewModel`
+  and `SleepViewModel`. Entraînement and Corps still show a waiting screen
   (`CompanionPlaceholderView`) and are filled in by the following
   sub-projects. Pairing and pushing to the Mac, once a tab of their own, now
   sit behind a Réglages button presented as a sheet: they are configuration,

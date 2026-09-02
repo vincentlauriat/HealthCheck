@@ -434,9 +434,12 @@ manuel.
   de validation sur appareil qu'il documente.
 - **Interface** : `CompanionRootView` est un `TabView` à cinq onglets
   (2026-09-02, SP1 du portage des écrans d'analyse) — Accueil, Activité,
-  Sommeil, Entraînement, Corps. Les quatre derniers affichent pour l'instant
-  un écran d'attente (`CompanionPlaceholderView`) et sont remplis aux
-  sous-projets suivants. L'appairage et l'envoi au Mac, qui formaient un
+  Sommeil, Entraînement, Corps. Activité et Sommeil affichent les mêmes
+  indicateurs que le Mac (effort du jour par zone de FC et histogramme 14
+  jours ; dernière nuit par phases, 14 nuits et moyennes), calculés par
+  `ActivityViewModel` et `SleepViewModel` partagés. Entraînement et Corps
+  affichent encore un écran d'attente (`CompanionPlaceholderView`) et sont
+  remplis aux sous-projets suivants. L'appairage et l'envoi au Mac, qui formaient un
   onglet, sont passés derrière un bouton Réglages présenté en feuille :
   c'est une configuration, pas une destination quotidienne. Accueil
   (`CompanionAdvisorView`) affiche forme, conseil du jour

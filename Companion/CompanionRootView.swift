@@ -9,6 +9,7 @@ struct CompanionRootView: View {
     @ObservedObject var viewModel: CompanionViewModel
     @ObservedObject var advisorViewModel: CompanionAdvisorViewModel
     @ObservedObject var activityViewModel: ActivityViewModel
+    @ObservedObject var sleepViewModel: SleepViewModel
     @State private var showingSettings = false
 
     var body: some View {
@@ -32,7 +33,7 @@ struct CompanionRootView: View {
             .tabItem { Label("Activité", systemImage: "figure.walk") }
 
             NavigationStack {
-                CompanionSleepView().navigationTitle("Sommeil")
+                CompanionSleepView(viewModel: sleepViewModel).navigationTitle("Sommeil")
             }
             .tabItem { Label("Sommeil", systemImage: "moon.zzz.fill") }
 
