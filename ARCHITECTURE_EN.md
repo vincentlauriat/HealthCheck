@@ -393,8 +393,11 @@ to the Mac receiver above — HealthKit on the phone, no manual export.
 - **UI**: `CompanionRootView` is a two-tab `TabView`. "Conseils"
   (`CompanionAdvisorView`) shows readiness, daily advice, and VO2max
   trend computed locally by `CompanionAdvisorViewModel`, independent of
-  Mac pairing; it refreshes on first appearance, on any manual sync,
-  and when returning to the foreground (`scenePhase`). The computation
+  Mac pairing; it refreshes on first appearance, on any manual sync, when
+  returning to the foreground (`scenePhase`), and after the local
+  ingestion pass `CompanionApp` runs at launch
+  (`SyncEngine.ingestLocalData()` — no request to the Mac at all, so
+  neither Bonjour discovery nor a network timeout is on that path). The computation
   itself (windows, readiness score, VO2max trend, training load) is a
   pure function shared with the macOS Home screen —
   `HealthCheckShared/Analysis/WellnessOrchestrator.swift`, called by

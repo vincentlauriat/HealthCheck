@@ -429,7 +429,10 @@ manuel.
   et tendance VO2max calculés localement par
   `CompanionAdvisorViewModel`, indépendamment de l'appairage avec le
   Mac ; il se rafraîchit sur la première apparition, sur toute synchro
-  manuelle et au retour au premier plan (`scenePhase`). Le calcul
+  manuelle, au retour au premier plan (`scenePhase`), et après la passe
+  d'ingestion locale que `CompanionApp` déclenche à l'ouverture
+  (`SyncEngine.ingestLocalData()` — aucune requête vers le Mac, donc ni
+  découverte Bonjour ni timeout réseau à subir sur ce chemin). Le calcul
   lui-même (fenêtres, score de forme, tendance VO2max, charge
   d'entraînement) est une fonction pure partagée avec l'Accueil macOS —
   `HealthCheckShared/Analysis/WellnessOrchestrator.swift`, appelée par
