@@ -23,19 +23,25 @@ struct CompanionAdvisorView: View {
                     // les cartes déjà affichées, il n'y a que ce premier écran
                     // à remplir.
                     loadingCard
-                } else if viewModel.readiness == nil
-                    && viewModel.dailyAdvice == nil && viewModel.vo2Trend == nil {
+                } else if viewModel.readiness == nil && viewModel.dailyAdvice == nil
+                    && viewModel.vo2Trend == nil && viewModel.today == nil {
                     notEnoughDataCard
                 } else {
                     LazyVStack(alignment: .leading, spacing: 18) {
                         if let readiness = viewModel.readiness {
                             readinessCard(readiness)
                         }
+                        if let today = viewModel.today {
+                            todayCard(today)
+                        }
                         if let advice = viewModel.dailyAdvice {
                             dailyAdviceCard(advice)
                         }
                         if let trend = viewModel.vo2Trend {
                             vo2Card(trend, alert: viewModel.vo2MaxAlert)
+                        }
+                        if !viewModel.insights.isEmpty {
+                            insightsCard
                         }
                     }
                 }
@@ -69,6 +75,60 @@ struct CompanionAdvisorView: View {
         .padding()
         .background(.background, in: RoundedRectangle(cornerRadius: 8))
         .accessibilityElement(children: .combine)
+    }
+
+    private func todayCard(_ summary: PeriodSummary) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Label("Aujourd'hui", systemImage: "sun.max.fill")
+                .font(.headline)
+            Text("\(Int(summary.steps.rounded())) pas · \(summary.distanceKm.formatted(.number.precision(.fractionLength(1)))) km")
+                .font(.callout)
+            Text("\(Int(summary.activeEnergyKcal.rounded())) kcal actives · \(Int(summary.exerciseMinutes.rounded())) min d'exercice")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            if let week = viewModel.thisWeek {
+                Text("Cette semaine : \(Int(week.steps.rounded())) pas")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding()
+        .background(.background, in: RoundedRectangle(cornerRadius: 8))
+        .accessibilityElement(children: .combine)
+    }
+
+    private var insightsCard: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Label("Observations", systemImage: "lightbulb.fill")
+                .font(.headline)
+            ForEach(Array(viewModel.insights.enumerated()), id: \.offset) { _, insight in
+                HStack(alignment: .top, spacing: 8) {
+                    Image(systemName: insight.systemImage)
+                        .foregroundStyle(Self.tint(for: insight.sentiment))
+                        .frame(width: 20)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(insight.title).font(.callout.weight(.semibold))
+                        Text(insight.message)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+                .accessibilityElement(children: .combine)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding()
+        .background(.background, in: RoundedRectangle(cornerRadius: 8))
+    }
+
+    private static func tint(for sentiment: Insight.Sentiment) -> Color {
+        switch sentiment {
+        case .positive: return .green
+        case .neutral: return .secondary
+        case .warning: return .orange
+        }
     }
 
     private func dailyAdviceCard(_ advice: DailyAdvice) -> some View {

@@ -356,6 +356,15 @@ manuel.
   idempotente du Mac absorbe toute relivraison après un échec en cours
   de delta. Un 401 positionne `needsPairing` et arrête la boucle :
   inutile d'insister sans jeton valide.
+- **Accueil partagé jusqu'aux agrégats** (2026-09-02) : `PeriodSummaryEngine`
+  (totaux d'une fenêtre, journée, semaine à portion écoulée égale) et
+  `InsightInputsBuilder` (entrées d'`InsightsEngine`, avec son plancher de
+  trois nuits) sont extraits de `DashboardViewModel` dans
+  `HealthCheckShared/Analysis/`. Le Mac les appelle depuis
+  `loadToday`/`loadThisWeek`/`loadWellness`, l'iPhone depuis la passe
+  détachée de `CompanionAdvisorViewModel` — qui garde donc son calcul hors
+  `MainActor`, son compteur de génération et son état `storeUnavailable` tout
+  en affichant les mêmes chiffres.
 - **View models d'analyse partagés** (2026-09-02) : les sept view models
   d'analyse (`Dashboard`, `Activity`, `Sleep`, `Trends`, `Correlations`,
   `Training`, `Workouts`) vivent dans `HealthCheckShared/ViewModels/` et sont

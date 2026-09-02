@@ -325,6 +325,15 @@ to the Mac receiver above — HealthKit on the phone, no manual export.
   absorbs any re-delivery after a mid-delta failure. A 401 sets
   `needsPairing` and stops the loop — no point retrying without a
   valid token.
+- **Home screen shared down to the aggregates** (2026-09-02):
+  `PeriodSummaryEngine` (window totals, today, week-to-date against the same
+  elapsed portion of last week) and `InsightInputsBuilder` (the inputs to
+  `InsightsEngine`, three-night floor included) are extracted out of
+  `DashboardViewModel` into `HealthCheckShared/Analysis/`. The Mac calls them
+  from `loadToday`/`loadThisWeek`/`loadWellness`, the iPhone from
+  `CompanionAdvisorViewModel`'s detached pass — which therefore keeps its
+  off-`MainActor` computation, its generation counter and its
+  `storeUnavailable` state while showing the same numbers.
 - **Shared analysis view models** (2026-09-02): the seven analysis view
   models (`Dashboard`, `Activity`, `Sleep`, `Trends`, `Correlations`,
   `Training`, `Workouts`) live in `HealthCheckShared/ViewModels/` and are

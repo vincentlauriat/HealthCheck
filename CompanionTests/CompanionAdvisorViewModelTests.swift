@@ -161,15 +161,19 @@ final class CompanionAdvisorViewModelTests: XCTestCase {
 
     // MARK: - Déport hors du MainActor
 
-    /// Fabrique un résultat d'orchestration minimal, identifiable par le score
-    /// de forme — les deux gardes ci-dessous ne s'intéressent qu'à « quel
+    /// Fabrique un instantané d'accueil minimal, identifiable par le score de
+    /// forme — les deux gardes ci-dessous ne s'intéressent qu'à « quel
     /// résultat a été appliqué, et quand ».
-    private func wellness(readiness value: Double) -> WellnessOrchestrator.Result {
-        WellnessOrchestrator.Result(
-            readiness: ReadinessScore(value: value, label: "Forme correcte", components: []),
-            vo2Trend: nil,
-            loadAssessment: LoadAssessment(acuteKm: 0, chronicWeeklyKm: 0, acwr: nil, alerts: []),
-            vo2MaxAlert: nil, hrDaily: [], sleepNights: [])
+    private func wellness(readiness value: Double) -> CompanionHomeSnapshot {
+        let empty = PeriodSummary(steps: 0, distanceKm: 0, activeEnergyKcal: 0,
+                                  exerciseMinutes: 0, restingHeartRate: nil)
+        return CompanionHomeSnapshot(
+            wellness: WellnessOrchestrator.Result(
+                readiness: ReadinessScore(value: value, label: "Forme correcte", components: []),
+                vo2Trend: nil,
+                loadAssessment: LoadAssessment(acuteKm: 0, chronicWeeklyKm: 0, acwr: nil, alerts: []),
+                vo2MaxAlert: nil, hrDaily: [], sleepNights: []),
+            today: empty, thisWeek: empty, lastWeek: nil, insights: [])
     }
 
     /// `hasLoaded` ne doit pas passer à `true` avant la fin du calcul : la vue
@@ -234,5 +238,29 @@ final class CompanionAdvisorViewModelTests: XCTestCase {
 
         XCTAssertEqual(viewModel.readiness?.value, 90,
                       "le résultat périmé du premier refresh ne doit pas écraser celui du second")
+    }
+
+    /// L'Accueil de l'iPhone doit produire les mêmes agrégats que celui du
+    /// Mac, et les produire dans la passe détachée : `refresh()` reste
+    /// asynchrone, rien n'est recalculé sur le `MainActor`.
+    func test_refresh_alsoPublishesTodaysSummaryAndInsights() async throws {
+        let store = try HealthStore(path: ":memory:")
+        let calendar = Calendar.current
+        let now = Calendar.current
+            .startOfDay(for: Date(timeIntervalSince1970: 1_756_000_000))
+            .addingTimeInterval(20 * 3600)
+        let morning = calendar.startOfDay(for: now).addingTimeInterval(8 * 3600)
+        try store.insertRecords([
+            record(type: "HKQuantityTypeIdentifierStepCount", sourceName: "Watch", value: 7200, start: morning),
+            record(type: "HKQuantityTypeIdentifierActiveEnergyBurned", sourceName: "Watch", value: 350, start: morning)
+        ])
+
+        let viewModel = CompanionAdvisorViewModel(
+            store: store, resolver: SourcePriorityResolver(priority: ["Watch", "iPhone"]), now: { now })
+        await viewModel.refresh()
+
+        XCTAssertEqual(viewModel.today?.steps, 7200)
+        XCTAssertEqual(viewModel.today?.activeEnergyKcal, 350)
+        XCTAssertNotNil(viewModel.thisWeek)
     }
 }
