@@ -412,9 +412,26 @@ to the Mac receiver above — HealthKit on the phone, no manual export.
   Corps. Activité and Sommeil now show the same indicators as the Mac
   (today's strain by heart-rate zone plus a 14-day histogram; last night by
   phase, 14 nights and averages), computed by the shared `ActivityViewModel`
-  and `SleepViewModel`. Entraînement and Corps still show a waiting screen
-  (`CompanionPlaceholderView`) and are filled in by the following
-  sub-projects. Pairing and pushing to the Mac, once a tab of their own, now
+  and `SleepViewModel`. Entraînement (2026-09-02, SP3) shows training load,
+  the acute-to-chronic ratio, and VO2max computed locally by the shared
+  `TrainingViewModel`, followed by the training plan held in the cache the
+  Mac fills. Two sources in one screen, each in its place: the `race_goal`
+  table is empty on the iPhone — race goals are created on the Mac — and
+  `TrainingViewModel` handles that case explicitly, still producing the
+  load assessment; that is the "between races" mode, and an iOS guard
+  covers it (`TrainingViewModelIOSTests`). The cached plan lived in the
+  sync screen until SP3: it moved here, because pairing is configuration
+  and the plan is daily content. That tab leads to the Séances sub-screen
+  (`CompanionWorkoutsView`): weekly volume stacked by activity over twelve
+  weeks, then recent workouts with their figures — each shown only when it
+  exists, never a manufactured zero — and, when the workout carries one, its
+  GPS route (`CompanionRouteMapView`, the iOS counterpart of `RouteMapView`,
+  same shared `GPXParser`). The GPX files come from `LocalStore`'s
+  `RouteStore`, the one `CompanionImporter` fills while reading HealthKit —
+  never the default `RouteStore()`, which points elsewhere and would find no
+  file. Corps still shows a waiting screen
+  (`CompanionPlaceholderView`) and will be filled in by SP5.
+  Pairing and pushing to the Mac, once a tab of their own, now
   sit behind a Réglages button presented as a sheet: they are configuration,
   not a daily destination. Accueil
   (`CompanionAdvisorView`) shows readiness, daily advice, and VO2max
@@ -436,13 +453,15 @@ to the Mac receiver above — HealthKit on the phone, no manual export.
   its write lock. Only applying the result comes back on the
   `MainActor`, and a generation counter drops a result that a newer
   `refresh()` has superseded.
-  "Synchro"
-  (`CompanionSyncView`, unchanged historical content) carries the
+  Réglages (`CompanionSyncView`) carries the
   pairing section (6-digit code entry) while unpaired, then the sync
-  section (last-sync date, report summary, manual button) once paired.
-  `CompanionViewModel` remains the sole state holder for that second
-  tab, fully protocol-injected (`Syncing`/`Pairing`) so it tests
-  without HealthKit or the network.
+  section (last-sync date, report summary, "Envoyer au Mac" button) and
+  unpairing once paired — and nothing else since SP3.
+  `CompanionViewModel` remains the sole state holder for pairing and for
+  the cached plan alike, fully protocol-injected (`Syncing`/`Pairing`) so
+  it tests without HealthKit or the network; that is what made moving the
+  plan safe, its tests covering the view model rather than the screen that
+  renders it.
 
 ## UI structure
 
