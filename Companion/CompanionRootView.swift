@@ -11,6 +11,7 @@ struct CompanionRootView: View {
     @ObservedObject var activityViewModel: ActivityViewModel
     @ObservedObject var sleepViewModel: SleepViewModel
     @ObservedObject var trainingViewModel: TrainingViewModel
+    @ObservedObject var workoutsViewModel: WorkoutsViewModel
     @State private var showingSettings = false
 
     var body: some View {
@@ -39,7 +40,8 @@ struct CompanionRootView: View {
             .tabItem { Label("Sommeil", systemImage: "moon.zzz.fill") }
 
             NavigationStack {
-                CompanionTrainingView(viewModel: trainingViewModel, planViewModel: viewModel)
+                CompanionTrainingView(viewModel: trainingViewModel, planViewModel: viewModel,
+                                      workoutsViewModel: workoutsViewModel)
                     .navigationTitle("Entraînement")
             }
             .tabItem { Label("Entraînement", systemImage: "figure.run") }

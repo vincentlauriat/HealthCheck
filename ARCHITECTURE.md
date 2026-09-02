@@ -446,9 +446,27 @@ manuel.
   Sommeil, Entraînement, Corps. Activité et Sommeil affichent les mêmes
   indicateurs que le Mac (effort du jour par zone de FC et histogramme 14
   jours ; dernière nuit par phases, 14 nuits et moyennes), calculés par
-  `ActivityViewModel` et `SleepViewModel` partagés. Entraînement et Corps
-  affichent encore un écran d'attente (`CompanionPlaceholderView`) et sont
-  remplis aux sous-projets suivants. L'appairage et l'envoi au Mac, qui formaient un
+  `ActivityViewModel` et `SleepViewModel` partagés. Entraînement
+  (2026-09-02, SP3) montre la charge, le rapport aigu/chronique et le
+  VO2max calculés localement par le `TrainingViewModel` partagé, puis le
+  plan d'entraînement issu du cache alimenté par le Mac. Deux sources dans
+  un même écran, chacune à sa place : la table `race_goal` est vide sur
+  l'iPhone — les objectifs de course se créent sur le Mac — et
+  `TrainingViewModel` traite ce cas explicitement, en produisant quand même
+  l'évaluation de charge ; c'est le mode « entre deux courses », et une
+  garde iOS le vérifie (`TrainingViewModelIOSTests`). Le plan en cache
+  vivait dans l'écran de synchro jusqu'au SP3 : il a déménagé ici, parce
+  que l'appairage est une configuration et le plan un contenu quotidien. De
+  cet onglet part le sous-écran Séances (`CompanionWorkoutsView`) : volume
+  hebdomadaire empilé par activité sur douze semaines, puis les sorties
+  récentes avec leurs chiffres — chacun affiché seulement s'il existe, jamais
+  de zéro fabriqué — et, quand la séance en porte une, sa trace GPS
+  (`CompanionRouteMapView`, équivalent iOS de `RouteMapView`, même
+  `GPXParser` partagé). Les GPX viennent du `RouteStore` de `LocalStore`,
+  celui que `CompanionImporter` remplit en lisant HealthKit — jamais le
+  `RouteStore()` par défaut, qui pointe ailleurs et ne trouverait aucun
+  fichier. Corps affiche encore un écran d'attente
+  (`CompanionPlaceholderView`) et sera rempli au SP5. L'appairage et l'envoi au Mac, qui formaient un
   onglet, sont passés derrière un bouton Réglages présenté en feuille :
   c'est une configuration, pas une destination quotidienne. Accueil
   (`CompanionAdvisorView`) affiche forme, conseil du jour
@@ -471,14 +489,15 @@ manuel.
   avec l'import HealthKit et peuvent attendre son verrou d'écriture
   plusieurs secondes. Seule l'application du résultat revient sur le
   `MainActor`, et un compteur de génération jette le résultat qu'un
-  `refresh()` plus récent a rendu périmé. « Synchro »
-  (`CompanionSyncView`, contenu historique inchangé) porte la section
-  d'appairage (saisie du code à 6 chiffres) tant que non appairé, puis
-  la section de synchro (date de dernière synchro, résumé du rapport,
-  bouton manuel) une fois appairé. `CompanionViewModel` reste l'unique
-  porteur d'état pour ce second onglet, entièrement injecté par
-  protocole (`Syncing`/`Pairing`) pour se tester sans HealthKit ni
-  réseau.
+  `refresh()` plus récent a rendu périmé. Réglages (`CompanionSyncView`)
+  porte la section d'appairage (saisie du code à 6 chiffres) tant que non
+  appairé, puis la section de synchro (date de dernière synchro, résumé du
+  rapport, bouton « Envoyer au Mac ») et le dépairage une fois appairé —
+  et plus rien d'autre depuis le SP3. `CompanionViewModel` reste l'unique
+  porteur d'état pour l'appairage comme pour le plan en cache, entièrement
+  injecté par protocole (`Syncing`/`Pairing`) pour se tester sans HealthKit
+  ni réseau ; c'est ce qui a rendu le déplacement du plan sûr, ses tests
+  portant sur le view model et non sur l'écran qui l'affiche.
 
 ## Structure de l'interface
 

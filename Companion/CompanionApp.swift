@@ -14,6 +14,7 @@ struct CompanionApp: App {
     @StateObject private var activityViewModel: ActivityViewModel
     @StateObject private var sleepViewModel: SleepViewModel
     @StateObject private var trainingViewModel: TrainingViewModel
+    @StateObject private var workoutsViewModel: WorkoutsViewModel
 
     init() {
         let store = HKHealthStore() // UNE seule instance pour le reader et le background delivery
@@ -25,11 +26,15 @@ struct CompanionApp: App {
         let advisorStore: HealthStore
         let localImporter: LocalIngesting
         let localAnchors: AnchorStore
+        // Le `RouteStore` du conteneur, jamais celui par défaut : c'est là que
+        // `CompanionImporter` écrit les GPX des séances lues dans HealthKit.
+        let localRouteStore: RouteStore
         do {
             let localStore = try LocalStore()
             advisorStore = localStore.healthStore
             localImporter = localStore.importer
             localAnchors = localStore.anchors
+            localRouteStore = localStore.routeStore
         } catch {
             os_log(.error, "LocalStore indisponible, mode relais seul: %{public}@", String(describing: error))
             advisorStore = HealthStore(unavailable: ())
@@ -37,6 +42,8 @@ struct CompanionApp: App {
             // Jamais le répertoire par défaut : ce serait celui du push vers le
             // Mac. `NoOpImporter` lève, donc rien n'y sera jamais écrit.
             localAnchors = AnchorStore(subdirectory: AnchorStore.localSubdirectory)
+            // Sans `LocalStore`, il n'y a de toute façon aucune séance à lire.
+            localRouteStore = RouteStore()
         }
         let engine = SyncEngine(reader: reader, pusher: client, anchors: anchors,
                                 localAnchors: localAnchors, localImporter: localImporter)
@@ -54,6 +61,8 @@ struct CompanionApp: App {
         // Pas de résolveur de source ici : la charge se calcule sur la table
         // `workout`, où la déduplication a déjà eu lieu à l'insertion.
         _trainingViewModel = StateObject(wrappedValue: TrainingViewModel(store: advisorStore))
+        _workoutsViewModel = StateObject(wrappedValue: WorkoutsViewModel(
+            store: advisorStore, routeStore: localRouteStore))
     }
 
     var body: some Scene {
@@ -61,7 +70,8 @@ struct CompanionApp: App {
             CompanionRootView(viewModel: viewModel, advisorViewModel: advisorViewModel,
                               activityViewModel: activityViewModel,
                               sleepViewModel: sleepViewModel,
-                              trainingViewModel: trainingViewModel)
+                              trainingViewModel: trainingViewModel,
+                              workoutsViewModel: workoutsViewModel)
                 .environment(\.locale, Locale(identifier: "fr_FR"))
                 .task {
                     guard reader.isAvailable else { return }

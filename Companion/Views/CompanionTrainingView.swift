@@ -13,6 +13,7 @@ import SwiftUI
 struct CompanionTrainingView: View {
     @ObservedObject var viewModel: TrainingViewModel
     @ObservedObject var planViewModel: CompanionViewModel
+    @ObservedObject var workoutsViewModel: WorkoutsViewModel
 
     var body: some View {
         ScrollView {
@@ -31,6 +32,19 @@ struct CompanionTrainingView: View {
                     )
                     .padding(.top, 40)
                 }
+
+                NavigationLink {
+                    CompanionWorkoutsView(viewModel: workoutsViewModel)
+                        .navigationTitle("Séances")
+                        .navigationBarTitleDisplayMode(.inline)
+                } label: {
+                    Label("Voir mes séances", systemImage: "list.bullet")
+                        .font(.callout)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding()
+                        .background(.background, in: RoundedRectangle(cornerRadius: 8))
+                }
+                .buttonStyle(.plain)
 
                 planSection
             }
