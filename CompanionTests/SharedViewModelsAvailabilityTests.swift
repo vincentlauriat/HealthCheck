@@ -13,8 +13,13 @@ import XCTest
 @MainActor
 final class SharedViewModelsAvailabilityTests: XCTestCase {
     private let resolver = SourcePriorityResolver(priority: ["Watch", "iPhone"])
-    /// 2026-08-24 04:26 UTC. Fixe : ce dépôt a déjà connu des échecs à minuit.
-    private let fixedNow = Date(timeIntervalSince1970: 1_756_009_600)
+    /// Horloge fixe, calée à 20 h locale d'un jour arbitraire : ce dépôt a déjà
+    /// connu des échecs à minuit, et une heure tardive laisse de la place pour
+    /// poser un point « du jour » avant `now` — `HealthStore.records` borne à
+    /// `startDate < to`, un échantillon posé exactement à `now` serait exclu.
+    private let fixedNow = Calendar.current
+        .startOfDay(for: Date(timeIntervalSince1970: 1_756_000_000))
+        .addingTimeInterval(20 * 3600)
 
     func test_theSevenAnalysisViewModels_loadOnIOSAgainstAnEmptyStore() throws {
         let store = try HealthStore(path: ":memory:")
@@ -28,5 +33,45 @@ final class SharedViewModelsAvailabilityTests: XCTestCase {
         try CorrelationsViewModel(store: store, resolver: resolver, now: { now }).load()
         try TrainingViewModel(store: store, now: { now }).load()
         try WorkoutsViewModel(store: store, routeStore: routes, now: { now }).load()
+    }
+
+    /// Le tableau de bord partagé doit produire son score de forme sur une base
+    /// sans la moindre pesée — c'est l'état de l'iPhone jusqu'au SP5 — sans
+    /// fabriquer d'alerte de poids au passage. `DashboardViewModel` ne publie
+    /// pas cette alerte : il passe `WeightEngine.safetyAlert` à
+    /// `DailyAdviceEngine`, qui substitue le message de la première alerte
+    /// `.warning` au message générique du palier. C'est donc le conseil du jour
+    /// qu'il faut observer.
+    func test_dashboard_onAStoreWithoutAnyWeight_scoresReadinessAndRaisesNoWeightAlert() throws {
+        let store = try HealthStore(path: ":memory:")
+        let calendar = Calendar.current
+        let now = fixedNow
+        // Baseline de FC repos : 10 jours à 60 bpm, puis 66 aujourd'hui (+10 %).
+        var records: [HealthRecord] = []
+        for day in 1...10 {
+            let date = calendar.date(byAdding: .day, value: -day, to: now)!
+            records.append(HealthRecord(type: "HKQuantityTypeIdentifierRestingHeartRate",
+                                        sourceName: "Watch", device: nil, unit: "count/min",
+                                        value: 60, startDate: date,
+                                        endDate: date.addingTimeInterval(300), creationDate: date))
+        }
+        let todayMeasurement = now.addingTimeInterval(-3600)
+        records.append(HealthRecord(type: "HKQuantityTypeIdentifierRestingHeartRate",
+                                     sourceName: "Watch", device: nil, unit: "count/min",
+                                     value: 66, startDate: todayMeasurement,
+                                     endDate: todayMeasurement.addingTimeInterval(300),
+                                     creationDate: todayMeasurement))
+        try store.insertRecords(records)
+
+        let viewModel = DashboardViewModel(store: store, resolver: resolver, now: { now })
+        try viewModel.load()
+
+        XCTAssertNotNil(viewModel.readiness,
+                        "le score de forme ne dépend pas du poids et doit être calculé")
+        XCTAssertEqual(viewModel.dailyAdvice?.tier, .repos)
+        XCTAssertEqual(viewModel.dailyAdvice?.message,
+                       "Repos ou séance très légère aujourd'hui — laissez la récupération primer sur la performance.",
+                       "sans pesée en base, le conseil du jour doit rester le message générique du palier : "
+                       + "une alerte de poids le remplacerait")
     }
 }
