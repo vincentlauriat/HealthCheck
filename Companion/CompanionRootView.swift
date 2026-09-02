@@ -1,23 +1,58 @@
 import SwiftUI
 
-/// Shell de navigation à deux onglets : « Conseils » (autonome, calcule
-/// localement, indépendant de l'appairage) et « Synchro » (appairage,
-/// statut, plan d'entraînement — contenu historique de l'app, inchangé,
-/// déplacé dans CompanionSyncView).
+/// Shell de navigation à cinq onglets. « Accueil » est autonome (calcul
+/// local, indépendant de l'appairage) ; les quatre autres sont posés ici et
+/// remplis aux sous-projets suivants. L'appairage et l'envoi au Mac, qui
+/// étaient un onglet, deviennent un écran de réglages : c'est une
+/// configuration, pas une destination quotidienne.
 struct CompanionRootView: View {
     @ObservedObject var viewModel: CompanionViewModel
     @ObservedObject var advisorViewModel: CompanionAdvisorViewModel
+    @State private var showingSettings = false
 
     var body: some View {
         TabView {
             NavigationStack {
                 CompanionAdvisorView(viewModel: advisorViewModel, lastSyncDate: viewModel.lastSyncDate)
-                    .navigationTitle("Conseils")
+                    .navigationTitle("Accueil")
+                    .toolbar {
+                        Button {
+                            showingSettings = true
+                        } label: {
+                            Label("Réglages", systemImage: "gearshape")
+                        }
+                    }
             }
-            .tabItem { Label("Conseils", systemImage: "heart.text.square") }
+            .tabItem { Label("Accueil", systemImage: "heart.text.square") }
 
-            CompanionSyncView(viewModel: viewModel)
-                .tabItem { Label("Synchro", systemImage: "arrow.triangle.2.circlepath") }
+            NavigationStack {
+                CompanionActivityView().navigationTitle("Activité")
+            }
+            .tabItem { Label("Activité", systemImage: "figure.walk") }
+
+            NavigationStack {
+                CompanionSleepView().navigationTitle("Sommeil")
+            }
+            .tabItem { Label("Sommeil", systemImage: "moon.zzz.fill") }
+
+            NavigationStack {
+                CompanionTrainingView().navigationTitle("Entraînement")
+            }
+            .tabItem { Label("Entraînement", systemImage: "figure.run") }
+
+            NavigationStack {
+                CompanionBodyView().navigationTitle("Corps")
+            }
+            .tabItem { Label("Corps", systemImage: "figure") }
+        }
+        .sheet(isPresented: $showingSettings) {
+            NavigationStack {
+                CompanionSyncView(viewModel: viewModel)
+                    .navigationTitle("Réglages")
+                    .toolbar {
+                        Button("Fermer") { showingSettings = false }
+                    }
+            }
         }
     }
 }

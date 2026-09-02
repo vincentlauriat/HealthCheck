@@ -325,6 +325,14 @@ to the Mac receiver above — HealthKit on the phone, no manual export.
   absorbs any re-delivery after a mid-delta failure. A 401 sets
   `needsPairing` and stops the loop — no point retrying without a
   valid token.
+- **Shared analysis view models** (2026-09-02): the seven analysis view
+  models (`Dashboard`, `Activity`, `Sleep`, `Trends`, `Correlations`,
+  `Training`, `Workouts`) live in `HealthCheckShared/ViewModels/` and are
+  compiled by both targets. They only depend on `HealthStore`,
+  `SourcePriorityResolver` and `RouteStore`, all already shared. The ones
+  that cannot follow stay Mac-only: `BodyViewModel` (Withings API),
+  `ImportViewModel` (zip export), `WithingsViewModel`, `CompanionViewModel`
+  (pairing server).
 - **Two anchor sets, one per consumer** (2026-09-01): `anchors`
   (directory `anchors`) governs the Mac push and advances only on ack;
   `anchors-local` governs ingestion into the iPhone's own database and
@@ -390,7 +398,13 @@ to the Mac receiver above — HealthKit on the phone, no manual export.
   background wake) and are validated manually on a physical iPhone —
   see [docs/companion-setup.md](docs/companion-setup.md) and the
   device-validation checklist it documents.
-- **UI**: `CompanionRootView` is a two-tab `TabView`. "Conseils"
+- **UI**: `CompanionRootView` is a five-tab `TabView` (2026-09-02, SP1 of
+  the analysis-screen port) — Accueil, Activité, Sommeil, Entraînement,
+  Corps. The last four currently show a waiting screen
+  (`CompanionPlaceholderView`) and are filled in by the following
+  sub-projects. Pairing and pushing to the Mac, once a tab of their own, now
+  sit behind a Réglages button presented as a sheet: they are configuration,
+  not a daily destination. Accueil
   (`CompanionAdvisorView`) shows readiness, daily advice, and VO2max
   trend computed locally by `CompanionAdvisorViewModel`, independent of
   Mac pairing; it refreshes on first appearance, on any manual sync, when

@@ -356,6 +356,14 @@ manuel.
   idempotente du Mac absorbe toute relivraison après un échec en cours
   de delta. Un 401 positionne `needsPairing` et arrête la boucle :
   inutile d'insister sans jeton valide.
+- **View models d'analyse partagés** (2026-09-02) : les sept view models
+  d'analyse (`Dashboard`, `Activity`, `Sleep`, `Trends`, `Correlations`,
+  `Training`, `Workouts`) vivent dans `HealthCheckShared/ViewModels/` et sont
+  compilés par les deux cibles. Ils ne dépendent que de `HealthStore`,
+  `SourcePriorityResolver` et `RouteStore`, tous déjà partagés. Restent
+  propres au Mac ceux qui ne le peuvent pas : `BodyViewModel` (API Withings),
+  `ImportViewModel` (export zip), `WithingsViewModel`, `CompanionViewModel`
+  (serveur d'appairage).
 - **Deux jeux d'ancres, un par consommateur** (2026-09-01) :
   `anchors` (répertoire `anchors`) gouverne le push vers le Mac et
   n'avance qu'à l'ack ; `anchors-local` gouverne l'ingestion dans la
@@ -424,8 +432,14 @@ manuel.
   arrière-plan) et sont validés manuellement sur un iPhone physique —
   voir [docs/companion-setup.md](docs/companion-setup.md) et la liste
   de validation sur appareil qu'il documente.
-- **Interface** : `CompanionRootView` est un `TabView` à deux onglets.
-  « Conseils » (`CompanionAdvisorView`) affiche forme, conseil du jour
+- **Interface** : `CompanionRootView` est un `TabView` à cinq onglets
+  (2026-09-02, SP1 du portage des écrans d'analyse) — Accueil, Activité,
+  Sommeil, Entraînement, Corps. Les quatre derniers affichent pour l'instant
+  un écran d'attente (`CompanionPlaceholderView`) et sont remplis aux
+  sous-projets suivants. L'appairage et l'envoi au Mac, qui formaient un
+  onglet, sont passés derrière un bouton Réglages présenté en feuille :
+  c'est une configuration, pas une destination quotidienne. Accueil
+  (`CompanionAdvisorView`) affiche forme, conseil du jour
   et tendance VO2max calculés localement par
   `CompanionAdvisorViewModel`, indépendamment de l'appairage avec le
   Mac ; il se rafraîchit sur la première apparition, sur toute synchro
