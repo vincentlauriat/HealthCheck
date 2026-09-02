@@ -39,7 +39,7 @@ struct CompanionRootView: View {
             .tabItem { Label("Sommeil", systemImage: "moon.zzz.fill") }
 
             NavigationStack {
-                CompanionTrainingView(viewModel: trainingViewModel)
+                CompanionTrainingView(viewModel: trainingViewModel, planViewModel: viewModel)
                     .navigationTitle("Entraînement")
             }
             .tabItem { Label("Entraînement", systemImage: "figure.run") }
