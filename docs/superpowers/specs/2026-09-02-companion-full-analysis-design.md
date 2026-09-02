@@ -71,6 +71,12 @@ partagés :
 | `TrainingViewModel` | `(store:calendar:now:)` | `TrainingPlanner`, `TrainingLoadMonitor`, `VO2MaxEngine`, `SessionMatcher` |
 | `WorkoutsViewModel` | `(store:routeStore:calendar:now:)` | `WorkoutStatsEngine`, `RouteStore` (déjà partagé) |
 
+Aucun n'importe AppKit, ne lit l'environnement pour l'heure (`now` est
+toujours injecté, conformément au CLAUDE.md du dépôt), ni ne touche à
+Withings ou à l'import zip. La remontée est un déplacement de fichiers :
+`project.yml` déclare les sources par chemin, les deux cibles reprennent le
+nouveau répertoire sans autre modification.
+
 Un seul point d'attention dans ce tableau : `DashboardViewModel` appelle
 `WeightEngine`, que `CompanionAdvisorViewModel` contournait jusqu'ici en
 passant `weightAlert: nil`. Sur une base sans pesée, `WeightEngine` rend
@@ -79,12 +85,6 @@ correctement sur iPhone avant le SP5, et se met à produire l'alerte de
 lui-même une fois le poids ingéré. Aucun traitement particulier n'est
 nécessaire, mais c'est une garde à écrire au SP1 plutôt qu'une évidence à
 supposer.
-
-Aucun n'importe AppKit, ne lit l'environnement pour l'heure (`now` est
-toujours injecté, conformément au CLAUDE.md du dépôt), ni ne touche à
-Withings ou à l'import zip. La remontée est un déplacement de fichiers :
-`project.yml` déclare les sources par chemin, les deux cibles reprennent le
-nouveau répertoire sans autre modification.
 
 Les vues restent propres à chaque plateforme. C'est le précédent établi par
 l'onglet Conseils, dont l'en-tête documente déjà le choix : style visuel du
