@@ -74,10 +74,75 @@ struct CompanionAdvisorView: View {
             Text(readiness.label)
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
+
+            // Le détail des composantes existait déjà sur le Mac et pas ici :
+            // l'iPhone n'affichait qu'un nombre, impossible à expliquer quand
+            // il diffère de celui du Mac.
+            VStack(alignment: .leading, spacing: 10) {
+                ForEach(readiness.components, id: \.name) { component in
+                    componentRow(component)
+                }
+                ForEach(readiness.missing, id: \.name) { missing in
+                    missingRow(missing)
+                }
+            }
+            .padding(.top, 4)
+
+            Text(HealthScoreEngine.formulaExplanation)
+                .font(.caption2)
+                .foregroundStyle(.tertiary)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.top, 2)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding()
         .background(.background, in: RoundedRectangle(cornerRadius: 8))
+    }
+
+    private func componentRow(_ component: ScoreComponent) -> some View {
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: component.systemImage)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .frame(width: 18)
+            VStack(alignment: .leading, spacing: 3) {
+                HStack(alignment: .firstTextBaseline) {
+                    Text(component.name).font(.caption.weight(.medium))
+                    if let share = component.share {
+                        Text(share.formatted(.percent.precision(.fractionLength(0))))
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                    Text(component.detail)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
+                ProgressView(value: component.score, total: 100)
+                    .tint(component.score >= 70 ? .green : component.score >= 50 ? .orange : .red)
+            }
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(component.name), \(Int(component.score.rounded())) sur 100, \(component.detail)")
+    }
+
+    /// Une composante absente ne pénalise pas le score : son poids passe sur
+    /// les autres. C'est défendable et invisible — d'où cette ligne.
+    private func missingRow(_ missing: MissingComponent) -> some View {
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: missing.systemImage)
+                .font(.caption)
+                .foregroundStyle(.tertiary)
+                .frame(width: 18)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("\(missing.name) — non mesuré")
+                    .font(.caption.weight(.medium))
+                Text("\(missing.reason.prefix(1).capitalized)\(missing.reason.dropFirst()) · poids \(missing.nominalWeight.formatted(.percent.precision(.fractionLength(0)))) réparti sur les autres.")
+                    .font(.caption2)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .foregroundStyle(.secondary)
+        }
         .accessibilityElement(children: .combine)
     }
 

@@ -189,6 +189,26 @@ le panier de calcul, elle ne fait pas baisser la note :
 
 (`HealthScoreEngine.swift:88-107`)
 
+Cette redistribution est **défendable mais invisible**, et c'est ce qui la rend
+dangereuse : le 2026-09-03, faute de nuit enregistrée depuis le 25 août, le
+score affichait 97/100 « Excellente forme » alors que sa composante la plus
+lourde manquait et que son poids de 0,35 avait été réparti sur les trois
+autres. `ReadinessScore` porte donc `missing` — les composantes non mesurées,
+leur poids nominal et la raison de leur absence — et `ScoreComponent.share`,
+la part réelle après redistribution. Les deux applications les affichent.
+
+**Sensibilité à une journée incomplète.** « Aujourd'hui » est le dernier point
+quotidien, c'est-à-dire la moyenne des échantillons *connus à cet instant*
+(`WellnessOrchestrator.split`). Le score bouge donc au fil de la journée. Sur
+les données réelles du 2026-09-02, avec un seul échantillon de VFC connu le
+matin contre les neuf de la journée complète : **57,0 contre 95,4** — de
+« Récupération conseillée » à « Excellente forme », mêmes données, même jour.
+La cause est la saturation : la VFC matinale (17,4 ms) s'écarte tellement de la
+normale (32,9) que sa composante tombe à 0, et sur un panier amputé du sommeil
+elle pèse 38 %. C'est la raison pour laquelle le Mac et l'iPhone n'affichent
+pas le même score : le Mac ne voit que ce qui a été poussé, l'iPhone lit
+HealthKit en direct.
+
 **Seuils du libellé final** (`HealthScoreEngine.swift:109-116`) :
 
 | Score | Libellé |
