@@ -13,13 +13,15 @@ struct CompanionRootView: View {
     @ObservedObject var trainingViewModel: TrainingViewModel
     @ObservedObject var workoutsViewModel: WorkoutsViewModel
     @ObservedObject var trendsViewModel: TrendsViewModel
+    @ObservedObject var correlationsViewModel: CorrelationsViewModel
     @State private var showingSettings = false
 
     var body: some View {
         TabView {
             NavigationStack {
                 CompanionAdvisorView(viewModel: advisorViewModel, lastSyncDate: viewModel.lastSyncDate,
-                                     trendsViewModel: trendsViewModel)
+                                     trendsViewModel: trendsViewModel,
+                                     correlationsViewModel: correlationsViewModel)
                     .navigationTitle("Accueil")
                     .toolbar {
                         Button {

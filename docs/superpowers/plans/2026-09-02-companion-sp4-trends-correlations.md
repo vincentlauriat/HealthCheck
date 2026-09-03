@@ -77,7 +77,7 @@ que quelques semaines de recul.
 - Produces: `MetricStyle` visible des deux cibles ;
   `TrendPeriod.companionCases: [TrendPeriod]` et `TrendPeriod.label: String`.
 
-- [ ] **Step 1: Déplacer `MetricStyle`**
+- [x] **Step 1: Déplacer `MetricStyle`**
 
 Couper les lignes 1-21 de `HealthCheck/Views/Theme.swift` (le commentaire
 de doc et la `struct MetricStyle` avec ses neuf constantes statiques) vers
@@ -91,7 +91,7 @@ utilisent AppKit-adjacent et restent macOS.
 dans `project.yml` (lignes 50 et 109) : aucun changement de configuration,
 seulement `xcodegen generate`.
 
-- [ ] **Step 2: Ajouter `companionCases` et `label`**
+- [x] **Step 2: Ajouter `companionCases` et `label`**
 
 Dans `HealthCheckShared/ViewModels/TrendsViewModel.swift`, à la fin de
 l'`enum TrendPeriod` :
@@ -118,7 +118,7 @@ l'`enum TrendPeriod` :
     static let companionCases: [TrendPeriod] = [.oneWeek, .oneMonth, .threeMonths, .sixMonths]
 ```
 
-- [ ] **Step 3: Écrire la garde**
+- [x] **Step 3: Écrire la garde**
 
 `CompanionTests/TrendPeriodTests.swift` :
 
@@ -164,7 +164,7 @@ Si `HealthKitReaderLive.initialWindowDays` est `private`, le rendre
 s'il n'est pas accessible depuis les tests, écrire `180` avec un commentaire
 citant sa ligne source — jamais un nombre nu.
 
-- [ ] **Step 4: Lancer**
+- [x] **Step 4: Lancer**
 
 ```bash
 xcodegen generate
@@ -176,7 +176,7 @@ xcodebuild test -scheme HealthCheckCompanion \
 
 Attendu : `Executed 90 tests, with 0 failures`.
 
-- [ ] **Step 5: Falsifier**
+- [x] **Step 5: Falsifier**
 
 Ajouter `.oneYear` à `companionCases`. Attendu : le premier test échoue deux
 fois — sur le compte (5 au lieu de 4) et sur le plancher (« 1 an remonte plus
@@ -184,7 +184,7 @@ loin que les 180 jours lus dans HealthKit »). Restaurer, puis **relire le
 fichier** dans le même appel que le commit — lancer la restauration ne prouve
 pas qu'elle a eu lieu.
 
-- [ ] **Step 6: Vérifier que le Mac n'a pas bougé**
+- [x] **Step 6: Vérifier que le Mac n'a pas bougé**
 
 ```bash
 xcodebuild test -scheme HealthCheck -destination 'platform=macOS' \
@@ -196,7 +196,7 @@ Attendu : `Executed 279 tests, with 0 failures`. C'est la tâche qui déplace
 un type utilisé par les vues macOS : si `MetricStyle` n'est plus visible
 depuis `HealthCheck/`, la compilation tombe ici et nulle part ailleurs.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add HealthCheckShared HealthCheck/Views/Theme.swift CompanionTests
@@ -218,7 +218,7 @@ Un graphique qui commence en mars alors que la période demandée est 6 mois ne
 doit pas se lire comme un trou. La date de la plus ancienne mesure est la
 réponse, et elle se dérive des séries déjà chargées — aucune requête de plus.
 
-- [ ] **Step 1: Écrire la garde d'abord**
+- [x] **Step 1: Écrire la garde d'abord**
 
 `CompanionTests/TrendsViewModelIOSTests.swift` :
 
@@ -276,12 +276,12 @@ final class TrendsViewModelIOSTests: XCTestCase {
 }
 ```
 
-- [ ] **Step 2: Lancer et constater l'échec de compilation**
+- [x] **Step 2: Lancer et constater l'échec de compilation**
 
 `earliestMeasurement` n'existe pas encore : la suite ne compile pas. C'est
 l'échec attendu à cette étape.
 
-- [ ] **Step 3: Implémenter**
+- [x] **Step 3: Implémenter**
 
 Dans `TrendsViewModel`, après les quatre séries publiées :
 
@@ -303,11 +303,11 @@ Les séries sont déjà triées par date croissante — `dailyAverage` termine p
 série ordonnée. Vérifier ce second point avant de s'y fier ; sinon prendre
 `points.map(\.date).min()` par série.
 
-- [ ] **Step 4: Lancer**
+- [x] **Step 4: Lancer**
 
 Attendu : `Executed 92 tests, with 0 failures`.
 
-- [ ] **Step 5: Falsifier**
+- [x] **Step 5: Falsifier**
 
 Deux mutations, chacune sur une assertion :
 1. `.min()` → `.max()` : le premier test tombe (il annoncerait la série la
@@ -318,7 +318,7 @@ Deux mutations, chacune sur une assertion :
 Restaurer après chaque mutation, **relire le fichier**, et lancer la suite
 macOS avant de commiter — `TrendsViewModel` est partagé.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add HealthCheckShared CompanionTests
@@ -337,7 +337,7 @@ git commit -m "feat: expose the earliest loaded measurement on TrendsViewModel"
 **Interfaces:**
 - Produces: `CompanionTrendsView(viewModel:)`.
 
-- [ ] **Step 1: Écrire la vue**
+- [x] **Step 1: Écrire la vue**
 
 `Companion/Views/CompanionTrendsView.swift` — quatre cartes, une par série,
 sur le gabarit de `TrendChartCard` (macOS) sans le `.help()`, qui n'existe
@@ -455,7 +455,7 @@ L'aire dégradée du Mac est volontairement omise : sur 390 points de large,
 une courbe et sa moyenne mobile suffisent, et l'aire ajoutait surtout du
 bruit visuel à cette taille.
 
-- [ ] **Step 2: Câbler**
+- [x] **Step 2: Câbler**
 
 `CompanionApp` : `@StateObject private var trendsViewModel: TrendsViewModel`,
 construit `TrendsViewModel(store: advisorStore, resolver:
@@ -481,7 +481,7 @@ Dans `CompanionAdvisorView`, en bas du contenu, le même gabarit de lien que
                 .buttonStyle(.plain)
 ```
 
-- [ ] **Step 3: Lancer et commiter**
+- [x] **Step 3: Lancer et commiter**
 
 Suite iOS complète (92 attendus, inchangés — cette tâche n'ajoute pas de
 test : elle n'ajoute pas de logique, et le dépôt n'a pas de harnais de vue).
@@ -509,7 +509,7 @@ git commit -m "feat(companion): add the Tendances screen"
 coïncide exactement avec celle de HealthKit local. C'est le seul écran du
 chantier dans ce cas.
 
-- [ ] **Step 1: Écrire la vue**
+- [x] **Step 1: Écrire la vue**
 
 `Companion/Views/CompanionCorrelationsView.swift` : l'avertissement sur la
 causalité en tête (il compte autant que les cartes — un r fort invite à
@@ -596,19 +596,19 @@ struct CompanionCorrelationsView: View {
 }
 ```
 
-- [ ] **Step 2: Câbler**
+- [x] **Step 2: Câbler**
 
 Même chemin que la tâche 3 : `correlationsViewModel` dans `CompanionApp`,
 transmis jusqu'à `CompanionAdvisorView`, second `NavigationLink` sous le
 premier — « Voir mes corrélations », `chart.dots.scatter`.
 
-- [ ] **Step 3: Suites complètes**
+- [x] **Step 3: Suites complètes**
 
 iOS (92) et macOS (279). Les deux, parce que la tâche 1 a déplacé un type
 partagé et que la suite macOS est le seul endroit où ce déplacement peut
 casser.
 
-- [ ] **Step 4: Contrôle à l'écran**
+- [x] **Step 4: Contrôle à l'écran**
 
 Installer sur l'iPhone **déverrouillé**, et vérifier, dans l'ordre :
 l'Accueil porte les deux liens ; le sélecteur de Tendances propose quatre
@@ -622,7 +622,7 @@ Le poids sera vide tant que le SP5 n'a pas livré la lecture de `BodyMass`
 depuis HealthKit : c'est attendu, la carte doit dire « Aucune donnée sur
 cette période » et non afficher un graphique vide.
 
-- [ ] **Step 5: Documentation et commit**
+- [x] **Step 5: Documentation et commit**
 
 `ARCHITECTURE.md` + `ARCHITECTURE_EN.md` (miroirs, même tour), `CHANGES.md`,
 `TODOS.md`, `MEMORY.md`, `PLAN.md`, `COMMANDS.md`.

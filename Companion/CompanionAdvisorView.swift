@@ -10,6 +10,7 @@ struct CompanionAdvisorView: View {
     @ObservedObject var viewModel: CompanionAdvisorViewModel
     let lastSyncDate: Date?
     @ObservedObject var trendsViewModel: TrendsViewModel
+    @ObservedObject var correlationsViewModel: CorrelationsViewModel
     @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
@@ -45,6 +46,7 @@ struct CompanionAdvisorView: View {
                             insightsCard
                         }
                         trendsLink
+                        correlationsLink
                     }
                 }
             }
@@ -259,6 +261,21 @@ struct CompanionAdvisorView: View {
                 .navigationBarTitleDisplayMode(.inline)
         } label: {
             Label("Voir mes tendances", systemImage: "chart.xyaxis.line")
+                .font(.callout)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding()
+                .background(.background, in: RoundedRectangle(cornerRadius: 8))
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var correlationsLink: some View {
+        NavigationLink {
+            CompanionCorrelationsView(viewModel: correlationsViewModel)
+                .navigationTitle("Corrélations")
+                .navigationBarTitleDisplayMode(.inline)
+        } label: {
+            Label("Voir mes corrélations", systemImage: "chart.dots.scatter")
                 .font(.callout)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding()
