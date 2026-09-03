@@ -422,24 +422,33 @@ manuel.
   énergie active, minutes d'exercice, FC). La livraison est
   opportuniste — iOS ne garantit aucun horaire — donc le bouton manuel
   « Synchroniser » de `CompanionRootView` reste le recours fiable.
-- **Règle de dédoublonnage `device: nil`** : `HKMapper` émet toujours
-  `device: nil` sur les records/sommeil d'échange — les métadonnées
-  HealthKit par appareil ne se mappent pas de façon fiable sur les
-  clés de dédoublonnage de l'export zip. Conséquence : la clé
-  synthétique du chemin compagnon (qui inclut `device`, voir
-  `HealthRecord.dedupKey`) DIVERGE de celle du même échantillon importé
-  via zip (qui porte le `device` réel) — `INSERT OR IGNORE` ne les
-  fusionne donc jamais au niveau clé. La conversion directe des
-  `HKQuantity` compagnon (`Double`) peut en plus différer, au dernier
-  chiffre près, de la valeur parsée depuis le XML du zip, ce qui
-  divergerait aussi la clé même à `device` égal (`dedupKey` inclut
-  `String(value)`). Le chevauchement de 30 jours entre les deux sources
-  n'est pas absorbé à l'insertion mais à la LECTURE, par
-  `SourcePriorityResolver`
-  (`HealthCheck/Store/SourcePriorityResolver.swift`), qui ne garde
-  qu'une source par fenêtre temporelle qui se chevauche selon
-  `sourceName` et l'ordre de priorité configuré. `creationDate` n'entre
-  pas dans la clé de dédoublonnage.
+- **Clé de dédoublonnage normalisée** : les deux chemins d'ingestion
+  décrivent la même mesure autrement — l'export zip n'horodate qu'à la
+  seconde, arrondit la valeur et porte le `device` réel, là où
+  `HKMapper` émet `device: nil` avec la pleine précision de
+  `HKQuantity`. `DedupKey`
+  (`HealthCheckShared/Models/DedupKey.swift`) neutralise ces trois
+  écarts pour les trois modèles stockés : dates tronquées à la
+  seconde, valeurs à quatre décimales (la précision de l'export),
+  `device` exclu de la clé — c'est une métadonnée sur l'appareil, pas
+  l'identité de la mesure. `creationDate` n'y entre pas non plus.
+  Auparavant la clé divergeait sur ces trois champs et `INSERT OR
+  IGNORE` ne fusionnait jamais les deux lignes. Cette architecture
+  affirmait que `SourcePriorityResolver` absorbait le chevauchement à
+  la LECTURE : ce n'est vrai que des échantillons à intervalle qui se
+  chevauchent (pas, énergie, temps d'exercice), tous lus via
+  `resolver.resolve`. Les échantillons ponctuels — FC, FC de repos,
+  HRV, VO2max — ont `startDate == endDate`, ne se chevauchent donc
+  jamais, et rien ne les fusionnait : 31 409 lignes en double relevées
+  sur la base réelle, qui biaisaient toutes les moyennes de ces types
+  et faisaient diverger le Mac de l'iPhone sur Accueil et
+  Entraînement. `HealthStore.migrateDedupKeys` porte la migration
+  unique (`PRAGMA user_version = 1`) qui recalcule les `id` et fusionne
+  l'existant, en gardant la ligne la plus informative (trace GPX
+  d'abord pour une séance, puis horodatage à la milliseconde). Elle
+  n'est pas un nettoyage optionnel : sans elle, le premier import
+  d'export zip après le changement de clé ne reconnaîtrait plus aucune
+  ligne existante et redoublerait la base entière.
 - **Répartition simulateur/appareil des tests** : les 64 cas XCTest du
   compagnon (mapper, persistance, moteur de synchro, stub client Mac,
   formatage d'endpoint Bonjour, fusion des réveils concurrents,
