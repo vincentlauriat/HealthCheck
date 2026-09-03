@@ -17,6 +17,7 @@ struct CompanionApp: App {
     @StateObject private var workoutsViewModel: WorkoutsViewModel
     @StateObject private var trendsViewModel: TrendsViewModel
     @StateObject private var correlationsViewModel: CorrelationsViewModel
+    @StateObject private var bodyViewModel: BodyViewModel
 
     init() {
         let store = HKHealthStore() // UNE seule instance pour le reader et le background delivery
@@ -69,6 +70,8 @@ struct CompanionApp: App {
             store: advisorStore, resolver: SourcePriorityResolver(priority: ["Watch", "iPhone"])))
         _correlationsViewModel = StateObject(wrappedValue: CorrelationsViewModel(
             store: advisorStore, resolver: SourcePriorityResolver(priority: ["Watch", "iPhone"])))
+        _bodyViewModel = StateObject(wrappedValue: BodyViewModel(
+            store: advisorStore, resolver: SourcePriorityResolver(priority: ["Watch", "iPhone"])))
     }
 
     var body: some Scene {
@@ -79,7 +82,8 @@ struct CompanionApp: App {
                               trainingViewModel: trainingViewModel,
                               workoutsViewModel: workoutsViewModel,
                               trendsViewModel: trendsViewModel,
-                              correlationsViewModel: correlationsViewModel)
+                              correlationsViewModel: correlationsViewModel,
+                              bodyViewModel: bodyViewModel)
                 .environment(\.locale, Locale(identifier: "fr_FR"))
                 .task {
                     guard reader.isAvailable else { return }
