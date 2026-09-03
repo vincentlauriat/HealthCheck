@@ -133,6 +133,57 @@ final class CompanionAdvisorViewModelTests: XCTestCase {
         XCTAssertNil(viewModel.dailyAdvice)
     }
 
+    // MARK: - Cohérence entre écrans
+
+    /// Accueil et Entraînement affichent tous deux `VO2MaxTrend.recentAverage`
+    /// sous le même libellé « VO2max ». Ils doivent donc afficher le même
+    /// nombre. Rien ne le garantit structurellement : chacun lit le store de
+    /// son côté, l'un sur les 120 jours en dur de `WellnessOrchestrator`,
+    /// l'autre sur `TrainingViewModel.vo2LookbackDays`. Faire diverger ces
+    /// deux fenêtres donnerait deux VO2max différentes dans la même
+    /// application, exactement le symptôme rapporté le 2026-09-03.
+    func test_homeAndTraining_showTheSameVO2Max() async throws {
+        let store = try HealthStore(path: ":memory:")
+        let calendar = Calendar.current
+        let now = calendar.startOfDay(for: Date(timeIntervalSince1970: 1_786_859_360))
+            .addingTimeInterval(23 * 3600)
+
+        // La fenêtre antérieure est en pente : plus l'échantillon est vieux,
+        // plus il est bas. C'est ce qui rend la garde falsifiable — avec sept
+        // valeurs identiques, tronquer la fenêtre de lecture ne déplacerait
+        // aucune moyenne et le test passerait contre le bug qu'il prétend
+        // attraper.
+        let recent = [0, 7, 14, 21, 28].map { (daysAgo: $0, value: 52.0) }
+        let prior = [(35, 54.0), (49, 52.0), (63, 50.0), (77, 48.0),
+                     (91, 44.0), (105, 42.0), (119, 40.0)]
+            .map { (daysAgo: $0.0, value: $0.1) }
+        try store.insertRecords((recent + prior).map { sample in
+            let start = calendar.date(byAdding: .day, value: -sample.daysAgo,
+                                      to: calendar.startOfDay(for: now))!.addingTimeInterval(7 * 3600)
+            return HealthRecord(type: VO2MaxEngine.vo2MaxType, sourceName: "Apple\u{00a0}Watch de Vincent",
+                                device: nil, unit: "mL/min·kg", value: sample.value,
+                                startDate: start, endDate: start, creationDate: start)
+        })
+
+        let home = CompanionAdvisorViewModel(store: store,
+                                             resolver: SourcePriorityResolver(priority: ["Watch", "iPhone"]),
+                                             now: { now })
+        await home.refresh()
+        let training = TrainingViewModel(store: store, now: { now })
+        try training.load()
+
+        let homeTrend = try XCTUnwrap(home.vo2Trend, "l'Accueil doit produire une tendance VO2max")
+        let trainingTrend = try XCTUnwrap(training.vo2MaxStatus?.trend,
+                                          "l'Entraînement doit produire une tendance VO2max")
+        XCTAssertEqual(homeTrend, trainingTrend,
+                       "les deux écrans affichent recentAverage sous le même libellé")
+        // Vérifie la fixture elle-même : la moyenne antérieure ne vaut celle
+        // des sept échantillons que si la fenêtre de lecture les couvre tous.
+        // Sans cette assertion, une fenêtre tronquée resterait invisible.
+        XCTAssertEqual(homeTrend.priorAverage, (54.0 + 52 + 50 + 48 + 44 + 42 + 40) / 7,
+                       accuracy: 0.001, "les 90 jours antérieurs doivent être lus en entier")
+    }
+
     // MARK: - Poids
 
     /// Une pesée est un échantillon instantané : `startDate == endDate`, comme

@@ -70,6 +70,12 @@ struct ReadinessCard: View {
                         VStack(alignment: .leading, spacing: 3) {
                             HStack {
                                 Text(component.name).font(.callout.weight(.medium))
+                                if let share = component.share {
+                                    Text(share.formatted(.percent.precision(.fractionLength(0))))
+                                        .font(.caption2)
+                                        .foregroundStyle(.secondary)
+                                        .help("Part de cette composante dans le score, après redistribution du poids des composantes non mesurées.")
+                                }
                                 Spacer()
                                 Text(component.detail)
                                     .font(.caption)
@@ -81,6 +87,34 @@ struct ReadinessCard: View {
                         }
                     }
                 }
+
+                // Le score ne pénalise pas une composante absente, il
+                // redistribue son poids. Sans cette liste, un score amputé du
+                // sommeil affiche « Excellente forme » sans rien laisser voir.
+                ForEach(readiness.missing, id: \.name) { missing in
+                    HStack(spacing: 10) {
+                        Image(systemName: missing.systemImage)
+                            .font(.callout)
+                            .foregroundStyle(.tertiary)
+                            .frame(width: 20)
+                        VStack(alignment: .leading, spacing: 2) {
+                            HStack {
+                                Text(missing.name).font(.callout.weight(.medium))
+                                Spacer()
+                                Text("non mesuré")
+                                    .font(.caption)
+                            }
+                            Text("\(missing.reason) · poids \(missing.nominalWeight.formatted(.percent.precision(.fractionLength(0)))) réparti sur les autres composantes.")
+                                .font(.caption2)
+                        }
+                        .foregroundStyle(.secondary)
+                    }
+                }
+
+                Text(HealthScoreEngine.formulaExplanation)
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
             .frame(maxWidth: .infinity)
         }

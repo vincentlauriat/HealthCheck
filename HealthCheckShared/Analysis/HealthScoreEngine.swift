@@ -5,12 +5,48 @@ struct ScoreComponent: Equatable {
     let systemImage: String
     let score: Double // 0...100
     let detail: String
+    /// Part réelle de cette composante dans le score, après redistribution du
+    /// poids des composantes absentes. `nil` quand la part n'est pas connue —
+    /// une composante construite hors de `readiness(...)`, dans un test.
+    let share: Double?
+
+    init(name: String, systemImage: String, score: Double, detail: String, share: Double? = nil) {
+        self.name = name
+        self.systemImage = systemImage
+        self.score = score
+        self.detail = detail
+        self.share = share
+    }
+}
+
+/// Une composante que le score n'a pas pu évaluer aujourd'hui, faute de mesure
+/// du jour ou d'une baseline d'au moins `minimumBaselineCount` jours.
+struct MissingComponent: Equatable {
+    let name: String
+    let systemImage: String
+    /// Poids nominal, celui qu'elle aurait pesé si elle avait été mesurée.
+    let nominalWeight: Double
+    /// Pourquoi elle manque, en clair. Rédigée capitalisée : c'est une
+    /// phrase, pas un fragment à recoller à l'affichage.
+    let reason: String
 }
 
 struct ReadinessScore: Equatable {
     let value: Double // 0...100, moyenne pondérée des composantes disponibles
     let label: String
     let components: [ScoreComponent]
+    /// Ce que le score n'a **pas** pu mesurer. Sans cette liste, un score amputé
+    /// du sommeil affiche 97/100 sans que rien n'indique que sa composante la
+    /// plus lourde (0,35) manque et a été redistribuée sur les autres.
+    let missing: [MissingComponent]
+
+    init(value: Double, label: String, components: [ScoreComponent],
+         missing: [MissingComponent] = []) {
+        self.value = value
+        self.label = label
+        self.components = components
+        self.missing = missing
+    }
 }
 
 /// Score de forme quotidien façon « recovery » : chaque composante compare la
@@ -88,23 +124,55 @@ enum HealthScoreEngine {
     /// Agrège les composantes disponibles en score global pondéré.
     /// Poids : sommeil 0,35 · FC repos 0,30 · HRV 0,25 · activité 0,10
     /// (renormalisés sur les composantes réellement présentes).
+    /// Ce que pèse chaque composante quand elle est mesurée, et comment la
+    /// nommer quand elle ne l'est pas. Table unique : deux listes séparées
+    /// finiraient par diverger, et c'est le libellé de l'absence qui explique
+    /// à l'utilisateur pourquoi son score vaut ce qu'il vaut.
+    private static let catalogue: [(name: String, systemImage: String, weight: Double, reason: String)] = [
+        ("Sommeil", "moon.zzz.fill", 0.35, "Aucune nuit enregistrée depuis hier"),
+        ("FC repos", "heart.fill", 0.30, "Aucune fréquence au repos aujourd'hui"),
+        ("Variabilité cardiaque", "waveform.path.ecg", 0.25, "Aucune mesure de VFC aujourd'hui"),
+        ("Équilibre d'activité", "flame.fill", 0.10, "Aucune dépense enregistrée hier")
+    ]
+
     static func readiness(
         sleep: ScoreComponent?,
         restingHeartRate: ScoreComponent?,
         hrv: ScoreComponent?,
         activity: ScoreComponent?
     ) -> ReadinessScore? {
-        let weighted: [(ScoreComponent, Double)] = [
-            (sleep, 0.35), (restingHeartRate, 0.30), (hrv, 0.25), (activity, 0.10)
-        ].compactMap { component, weight in component.map { ($0, weight) } }
+        let entries = zip(catalogue, [sleep, restingHeartRate, hrv, activity])
+        let weighted = entries.compactMap { entry, component in component.map { ($0, entry.weight) } }
 
         guard !weighted.isEmpty else { return nil }
 
         let totalWeight = weighted.reduce(0) { $0 + $1.1 }
         let value = weighted.reduce(0) { $0 + $1.0.score * $1.1 } / totalWeight
 
-        return ReadinessScore(value: value, label: label(for: value), components: weighted.map(\.0))
+        let components = weighted.map { component, weight in
+            ScoreComponent(name: component.name, systemImage: component.systemImage,
+                           score: component.score, detail: component.detail,
+                           share: weight / totalWeight)
+        }
+        let missing = entries.compactMap { entry, component in
+            component == nil
+                ? MissingComponent(name: entry.name, systemImage: entry.systemImage,
+                                   nominalWeight: entry.weight, reason: entry.reason)
+                : nil
+        }
+        return ReadinessScore(value: value, label: label(for: value),
+                              components: components, missing: missing)
     }
+
+    /// Explication affichée par les deux applications. Elle vit ici, contre la
+    /// table des poids qu'elle cite, pour ne pas dériver d'elle — c'est le seul
+    /// endroit où la formule est écrite deux fois, en code et en français.
+    static let formulaExplanation = """
+        Moyenne pondérée de quatre composantes — sommeil 35 %, FC repos 30 %, \
+        variabilité cardiaque 25 %, équilibre d'activité 10 % — chacune comparée \
+        à votre normale des 30 derniers jours. Une composante non mesurée est \
+        retirée du calcul et son poids réparti sur les autres.
+        """
 
     static func label(for score: Double) -> String {
         switch score {

@@ -535,6 +535,19 @@ manuel.
   Santé et l'API Withings, et le libellé d'unité (`kg`, `%`) entre dans
   `DedupKey` — s'en écarter recréerait les doublons supprimés le 2026-09-03.
 
+  **Le score de forme dit maintenant ce qu'il n'a pas mesuré.** Une composante
+  absente ne pénalise pas le score : `HealthScoreEngine.readiness` retire son
+  poids du panier et renormalise. Sans rien afficher, un score amputé du
+  sommeil (0,35, le poids le plus lourd) montrait « Excellente forme » à 97/100
+  — constaté sur les données réelles le 2026-09-03. `ReadinessScore` porte donc
+  `missing` (composante, poids nominal, raison en clair) et `ScoreComponent`
+  porte `share`, la part réelle après redistribution ; les deux applications
+  les affichent, et `HealthScoreEngine.formulaExplanation` — écrite contre la
+  table des poids qu'elle cite, pour ne pas en dériver — donne la formule dans
+  les deux. Le Companion affichait jusqu'ici le seul nombre, là où le Mac
+  détaillait déjà les composantes : c'est ce qui rendait un écart entre les
+  deux applications impossible à expliquer depuis l'iPhone.
+
   Conséquence immédiate, et corrigée dans la foulée : l'Accueil du Companion
   lit désormais le poids lui aussi. `CompanionAdvisorViewModel.defaultCompute`
   reprend les 30 jours, l'agrégation quotidienne et les appels à `WeightEngine`

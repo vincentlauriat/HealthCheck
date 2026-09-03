@@ -73,6 +73,17 @@ struct TrendChartCard: View {
                 }
             }
 
+            // Le grand nombre est la dernière mesure, pas une moyenne : sans
+            // cette mention il se lit comme la VO2max « courante » et
+            // contredit la moyenne 30 jours affichée ailleurs sous le même
+            // libellé. La date compte autant que la valeur — 17 jours mesurés
+            // sur 30, le dernier point peut avoir plusieurs jours.
+            if let latest = points.last {
+                Text("Dernière mesure, le \(latest.date.formatted(.dateTime.day().month(.wide)))")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
             if points.isEmpty {
                 ContentUnavailableView {
                     Label("Aucune donnée sur cette période", systemImage: style.systemImage)

@@ -475,6 +475,19 @@ to the Mac receiver above — HealthKit on the phone, no manual export.
   the Withings API, and the unit label (`kg`, `%`) is part of `DedupKey` —
   diverging from it would recreate the duplicates removed on 2026-09-03.
 
+  **The readiness score now states what it could not measure.** A missing
+  component does not penalise the score: `HealthScoreEngine.readiness` drops its
+  weight from the basket and renormalises. With nothing shown, a score missing
+  sleep (0.35, the heaviest weight) read "Excellente forme" at 97/100 — observed
+  on real data on 2026-09-03. `ReadinessScore` therefore carries `missing`
+  (component, nominal weight, plain-language reason) and `ScoreComponent`
+  carries `share`, the real proportion after redistribution; both apps display
+  them, and `HealthScoreEngine.formulaExplanation` — written against the very
+  weight table it quotes, so it cannot drift from it — gives the formula in
+  both. The Companion previously showed the number alone where the Mac already
+  broke the components down, which is what made a gap between the two apps
+  impossible to explain from the iPhone.
+
   An immediate consequence, fixed straight away: the Companion's Home screen
   now reads weight too. `CompanionAdvisorViewModel.defaultCompute` repeats the
   30-day window, the daily aggregation and the `WeightEngine` calls of
