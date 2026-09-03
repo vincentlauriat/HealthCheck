@@ -16,7 +16,13 @@ struct CompanionBodyView: View {
     var body: some View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 18) {
-                if viewModel.hasLoaded && viewModel.latest == nil {
+                // Trois états distincts, et pas deux : avant la fin du premier
+                // chargement, `latest` est nul sans que ce soit une absence de
+                // données. Le confondre avec le cas « aucune pesée » afficherait
+                // une carte vide et un graphique vide le temps de la lecture.
+                if !viewModel.hasLoaded {
+                    ProgressView().frame(maxWidth: .infinity).padding(.vertical, 40)
+                } else if viewModel.latest == nil {
                     noDataCard
                 } else {
                     latestCard

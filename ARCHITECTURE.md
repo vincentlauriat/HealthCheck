@@ -533,7 +533,15 @@ manuel.
   serait vraie par construction. Deux détails valent d'être écrits : le taux
   de graisse est stocké en **fraction** (0,25 et non 25), comme l'export Apple
   Santé et l'API Withings, et le libellé d'unité (`kg`, `%`) entre dans
-  `DedupKey` — s'en écarter recréerait les doublons supprimés le 2026-09-03. L'appairage et l'envoi au Mac, qui formaient un
+  `DedupKey` — s'en écarter recréerait les doublons supprimés le 2026-09-03.
+
+  Conséquence immédiate, et corrigée dans la foulée : l'Accueil du Companion
+  lit désormais le poids lui aussi. `CompanionAdvisorViewModel.defaultCompute`
+  reprend les 30 jours, l'agrégation quotidienne et les appels à `WeightEngine`
+  de `DashboardViewModel.load()`, et transmet l'alerte de rythme à
+  `DailyAdviceEngine`. Sans cela les deux Accueils auraient donné des conseils
+  différents sur les mêmes données — la divergence même que ce sous-projet
+  devait supprimer, mais réintroduite par construction. L'appairage et l'envoi au Mac, qui formaient un
   onglet, sont passés derrière un bouton Réglages présenté en feuille :
   c'est une configuration, pas une destination quotidienne. Accueil
   (`CompanionAdvisorView`) affiche forme, conseil du jour

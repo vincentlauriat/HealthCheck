@@ -8,14 +8,18 @@ struct CompanionHomeSnapshot {
     let thisWeek: PeriodSummary
     let lastWeek: PeriodSummary?
     let insights: [Insight]
+    /// L'alerte de rythme de perte/prise de poids. Nulle tant qu'aucune pesée
+    /// n'est en base — ce qui reste le cas si l'autorisation HealthKit sur le
+    /// poids n'a pas été accordée.
+    let weightAlert: LoadAlert?
 }
 
 /// Accueil du Companion : forme, conseil du jour, tendance VO2max, résumés du
 /// jour et de la semaine, observations. Tout est calculé contre le
 /// `HealthStore` local de l'iPhone — jamais celui du Mac — par les mêmes
 /// fonctions partagées que l'Accueil macOS (`WellnessOrchestrator`,
-/// `PeriodSummaryEngine`, `InsightInputsBuilder`). Sans le poids : l'iPhone
-/// n'a pas de pesée en base avant le SP5.
+/// `PeriodSummaryEngine`, `InsightInputsBuilder`, `WeightEngine`) — poids
+/// compris depuis le SP5, qui l'ingère localement sur l'iPhone.
 @MainActor
 final class CompanionAdvisorViewModel: ObservableObject {
     @Published private(set) var readiness: ReadinessScore?
@@ -54,8 +58,11 @@ final class CompanionAdvisorViewModel: ObservableObject {
         self.compute = compute
     }
 
-    /// `weightDelta30d` reste `nil` : l'iPhone n'a aucune pesée en base avant
-    /// le SP5, et `InsightsEngine` traite l'absence comme une absence, jamais
+    /// Le poids est lu ici exactement comme dans `DashboardViewModel.load()` :
+    /// mêmes 30 jours, même agrégation quotidienne, même appel à
+    /// `WeightEngine`. C'est ce qui garantit que les deux Accueils disent la
+    /// même chose. En l'absence de pesée, `weightDelta30d` et l'alerte restent
+    /// `nil` — `InsightsEngine` traite l'absence comme une absence, jamais
     /// comme un zéro.
     static let defaultCompute: @Sendable (HealthStore, SourcePriorityResolver, Calendar, Date) throws -> CompanionHomeSnapshot = {
         store, resolver, calendar, today in
@@ -63,8 +70,23 @@ final class CompanionAdvisorViewModel: ObservableObject {
                                                         calendar: calendar, today: today)
         let week = try PeriodSummaryEngine.weekToDate(store: store, resolver: resolver,
                                                       calendar: calendar, now: today)
+        var weightDelta30d: Double?
+        var weightAlert: LoadAlert?
+        if let d30 = calendar.date(byAdding: .day, value: -30, to: today) {
+            let weightDaily = DailyAggregator.averages(
+                resolver.resolve(try store.records(type: "HKQuantityTypeIdentifierBodyMass",
+                                                   from: d30, to: today)),
+                calendar: calendar)
+            if let first = weightDaily.first?.value, let last = weightDaily.last?.value {
+                weightDelta30d = last - first
+            }
+            weightAlert = WeightEngine.safetyAlert(
+                trend: WeightEngine.trend(weights: weightDaily, today: today, calendar: calendar),
+                trainingLoadElevated: wellness.loadAssessment.alerts.contains { $0.severity == .warning })
+        }
+
         let inputs = InsightInputsBuilder.build(wellness: wellness, thisWeek: week.thisWeek,
-                                                lastWeek: week.lastWeek, weightDelta30d: nil,
+                                                lastWeek: week.lastWeek, weightDelta30d: weightDelta30d,
                                                 calendar: calendar, today: today)
         return CompanionHomeSnapshot(
             wellness: wellness,
@@ -72,7 +94,8 @@ final class CompanionAdvisorViewModel: ObservableObject {
                                                  calendar: calendar, now: today),
             thisWeek: week.thisWeek,
             lastWeek: week.lastWeek,
-            insights: InsightsEngine.generate(from: inputs))
+            insights: InsightsEngine.generate(from: inputs),
+            weightAlert: weightAlert)
     }
 
     /// Ne lève jamais — contrairement à `DashboardViewModel.load()`, un
@@ -135,7 +158,7 @@ final class CompanionAdvisorViewModel: ObservableObject {
         vo2Trend = wellness.vo2Trend
         vo2MaxAlert = wellness.vo2MaxAlert
         dailyAdvice = DailyAdviceEngine.advise(readiness: wellness.readiness, loadAlerts: wellness.loadAssessment.alerts,
-                                               vo2MaxAlert: wellness.vo2MaxAlert, weightAlert: nil)
+                                               vo2MaxAlert: wellness.vo2MaxAlert, weightAlert: snapshot.weightAlert)
         today = snapshot.today
         thisWeek = snapshot.thisWeek
         lastWeek = snapshot.lastWeek

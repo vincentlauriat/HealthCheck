@@ -133,30 +133,62 @@ final class CompanionAdvisorViewModelTests: XCTestCase {
         XCTAssertNil(viewModel.dailyAdvice)
     }
 
-    // Non-goal de la spec §2 : même si des données de poids existent en
-    // base (import antérieur, scénario futur), cet écran ne doit JAMAIS
-    // faire remonter d'alerte de poids. Rythme de -1.5 kg/semaine, celui-là
-    // même qui déclenche WeightEngine.safetyAlert(.warning) côté sous-projet
-    // 3 (weight-advisor) — falsifiable : ce test échouerait si un futur
-    // lecteur câblait WeightEngine par erreur sur cet écran.
-    func test_refresh_neverSurfacesAWeightAlertEvenIfWeightDataExistsLocally() async throws {
+    // MARK: - Poids
+
+    /// Une pesée est un échantillon instantané : `startDate == endDate`, comme
+    /// ce que `HKMapper` produit réellement depuis HealthKit.
+    private func weighIn(kg: Double, daysAgo: Int, now: Date, calendar: Calendar) -> HealthRecord {
+        let day = calendar.date(byAdding: .day, value: -daysAgo, to: calendar.startOfDay(for: now))!
+            .addingTimeInterval(7 * 3600)
+        return HealthRecord(type: "HKQuantityTypeIdentifierBodyMass", sourceName: "Withings",
+                            device: nil, unit: "kg", value: kg,
+                            startDate: day, endDate: day, creationDate: day)
+    }
+
+    /// 82 kg sur la fenêtre antérieure, 80 kg sur les 14 derniers jours :
+    /// -1 kg/semaine sur 80 kg, soit 1,25 % — au-dessus du repère de 1 %
+    /// de `WeightEngine.safeWarningRatePercent`.
+    private func insertFastWeightLoss(_ store: HealthStore, now: Date, calendar: Calendar) throws {
+        try store.insertRecords((0...27).map {
+            weighIn(kg: $0 < 14 ? 80 : 82, daysAgo: $0, now: now, calendar: calendar)
+        })
+    }
+
+    /// Remplace `test_refresh_neverSurfacesAWeightAlertEvenIfWeightDataExistsLocally`,
+    /// écrite au SP1, qui figeait `weightAlert: nil` en invoquant un non-goal
+    /// que la spec ne pose pas : son §2 exclut l'import zip, l'OAuth, la
+    /// synchro Withings et le Sankey, pas l'alerte de poids. Sur ce point la
+    /// spec dit l'inverse — le view model partagé « se met à produire l'alerte
+    /// de lui-même une fois le poids ingéré ». Sa moitié utile — pas d'alerte
+    /// sans pesée — est conservée ci-dessous en première moitié.
+    ///
+    /// Depuis le SP5 l'iPhone ingère le poids localement, donc son Accueil doit
+    /// en tenir compte comme celui du Mac. Sans cela les deux applications
+    /// donneraient des conseils différents sur les mêmes données — la
+    /// divergence exacte que ce sous-projet devait supprimer.
+    func test_refresh_letsAFastWeightLossRefineTheDailyAdvice() async throws {
         let store = try HealthStore(path: ":memory:")
-        let now = Calendar.current.startOfDay(for: Date()).addingTimeInterval(23 * 3600)
         let calendar = Calendar.current
+        let now = calendar.startOfDay(for: Date(timeIntervalSince1970: 1_786_859_360))
+            .addingTimeInterval(23 * 3600)
         try insertDegradedRestingHRHistory(store, now: now, calendar: calendar)
-        try store.insertRecords([
-            record(type: "HKQuantityTypeIdentifierBodyMass", sourceName: "Watch", value: 100,
-                  start: calendar.date(byAdding: .day, value: -20, to: now)!),
-            record(type: "HKQuantityTypeIdentifierBodyMass", sourceName: "Watch", value: 97,
-                  start: calendar.date(byAdding: .day, value: -5, to: now)!)
-        ])
 
-        let viewModel = CompanionAdvisorViewModel(store: store, resolver: SourcePriorityResolver(priority: ["Watch", "iPhone"]), now: { now })
-        await viewModel.refresh()
+        let resolver = SourcePriorityResolver(priority: ["Watch", "iPhone"])
+        let withoutWeight = CompanionAdvisorViewModel(store: store, resolver: resolver, now: { now })
+        await withoutWeight.refresh()
+        let genericMessage = try XCTUnwrap(withoutWeight.dailyAdvice?.message)
+        XCTAssertEqual(genericMessage,
+                       "Repos ou séance très légère aujourd'hui — laissez la récupération primer sur la performance.",
+                       "sans pesée en base, `WeightEngine` rend nil et le conseil reste générique")
 
-        XCTAssertEqual(viewModel.dailyAdvice?.message,
-                      "Repos ou séance très légère aujourd'hui — laissez la récupération primer sur la performance.",
-                      "aucune alerte de poids ne doit jamais apparaître sur cet écran (non-goal spec §2), même si des données de poids existent en base")
+        try insertFastWeightLoss(store, now: now, calendar: calendar)
+        let withWeight = CompanionAdvisorViewModel(store: store, resolver: resolver, now: { now })
+        await withWeight.refresh()
+
+        XCTAssertEqual(withWeight.dailyAdvice?.message,
+                       "Rythme de variation du poids au-dessus du repère usuel (≈1 %/semaine).",
+                       "le conseil du jour doit être affiné par l'alerte de poids")
+        XCTAssertNotEqual(withWeight.dailyAdvice?.message, genericMessage)
     }
 
     // MARK: - Déport hors du MainActor
@@ -173,7 +205,7 @@ final class CompanionAdvisorViewModelTests: XCTestCase {
                 vo2Trend: nil,
                 loadAssessment: LoadAssessment(acuteKm: 0, chronicWeeklyKm: 0, acwr: nil, alerts: []),
                 vo2MaxAlert: nil, hrDaily: [], sleepNights: []),
-            today: empty, thisWeek: empty, lastWeek: nil, insights: [])
+            today: empty, thisWeek: empty, lastWeek: nil, insights: [], weightAlert: nil)
     }
 
     /// `hasLoaded` ne doit pas passer à `true` avant la fin du calcul : la vue
