@@ -92,6 +92,15 @@ sont jamais chargées en mémoire.
 
 ## Résolution de priorité de source
 
+**La correspondance des noms se fait par sous-chaîne, insensible à la
+casse** (2026-09-03). Le `sourceName` d'un échantillon est le nom que
+l'utilisateur a donné à son appareil — « Apple Watch de Vincent », « iPhone
+☠️ » — jamais le mot nu « Watch ». L'égalité stricte d'origine ne
+reconnaissait donc aucune source réelle : la priorité n'était jamais
+appliquée et, sur un chevauchement, le premier échantillon rencontré
+l'emportait. Les quatre tests du résolveur passaient parce qu'ils
+construisaient leurs fixtures avec « Watch » et « iPhone » nus.
+
 `SourcePriorityResolver` dédoublonne les échantillons chevauchants de
 plusieurs sources (Watch > iPhone) **à la lecture** — la donnée brute
 reste intacte en base. Implémentation : balayage sur les
