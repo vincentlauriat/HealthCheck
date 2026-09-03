@@ -9,6 +9,7 @@ import SwiftUI
 struct CompanionAdvisorView: View {
     @ObservedObject var viewModel: CompanionAdvisorViewModel
     let lastSyncDate: Date?
+    @ObservedObject var trendsViewModel: TrendsViewModel
     @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
@@ -43,6 +44,7 @@ struct CompanionAdvisorView: View {
                         if !viewModel.insights.isEmpty {
                             insightsCard
                         }
+                        trendsLink
                     }
                 }
             }
@@ -247,4 +249,22 @@ struct CompanionAdvisorView: View {
         .padding()
         .frame(maxWidth: .infinity)
     }
+    /// Même gabarit que « Voir mes séances » sous Entraînement (SP3) :
+    /// Tendances est un sous-écran de l'Accueil, pas un sixième onglet — au
+    /// delà de cinq, iOS empile le reste derrière un menu « Plus ».
+    private var trendsLink: some View {
+        NavigationLink {
+            CompanionTrendsView(viewModel: trendsViewModel)
+                .navigationTitle("Tendances")
+                .navigationBarTitleDisplayMode(.inline)
+        } label: {
+            Label("Voir mes tendances", systemImage: "chart.xyaxis.line")
+                .font(.callout)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding()
+                .background(.background, in: RoundedRectangle(cornerRadius: 8))
+        }
+        .buttonStyle(.plain)
+    }
+
 }
