@@ -118,6 +118,14 @@ struct CompanionAdvisorView: View {
                         .font(.caption2)
                         .foregroundStyle(.secondary)
                 }
+                // Une composante assise sur une seule mesure pèse autant
+                // qu'une assise sur neuf. C'est la seule trace visible de
+                // l'écart entre un score du matin et un score du soir.
+                if let depth = component.depthLabel {
+                    Text(depth)
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                }
                 ProgressView(value: component.score, total: 100)
                     .tint(component.score >= 70 ? .green : component.score >= 50 ? .orange : .red)
             }

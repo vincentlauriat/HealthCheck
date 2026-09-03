@@ -9,13 +9,26 @@ struct ScoreComponent: Equatable {
     /// poids des composantes absentes. `nil` quand la part n'est pas connue —
     /// une composante construite hors de `readiness(...)`, dans un test.
     let share: Double?
+    /// Combien d'échantillons ont produit la valeur du jour. Une composante
+    /// assise sur une seule mesure vaut autant qu'une assise sur neuf dans le
+    /// calcul, alors qu'elle est bien plus volatile : c'est le seul endroit où
+    /// cette différence devient visible.
+    let sampleCount: Int?
 
-    init(name: String, systemImage: String, score: Double, detail: String, share: Double? = nil) {
+    init(name: String, systemImage: String, score: Double, detail: String,
+         share: Double? = nil, sampleCount: Int? = nil) {
         self.name = name
         self.systemImage = systemImage
         self.score = score
         self.detail = detail
         self.share = share
+        self.sampleCount = sampleCount
+    }
+
+    /// « 1 mesure » / « 3 mesures », ou `nil` quand la profondeur est inconnue.
+    /// Vit ici plutôt que dans chaque vue : les deux applications l'affichent.
+    var depthLabel: String? {
+        sampleCount.map { $0 <= 1 ? "\($0) mesure" : "\($0) mesures" }
     }
 }
 
@@ -59,7 +72,7 @@ enum HealthScoreEngine {
 
     /// FC repos : en dessous de sa normale = bon signe, au-dessus = fatigue.
     /// +5 % au-dessus de la baseline → 70 ; +10 % → 40.
-    static func restingHeartRateScore(today: Double, baseline: [Double]) -> ScoreComponent? {
+    static func restingHeartRateScore(today: Double, baseline: [Double], sampleCount: Int? = nil) -> ScoreComponent? {
         guard baseline.count >= minimumBaselineCount, today > 0 else { return nil }
         let mean = baseline.reduce(0, +) / Double(baseline.count)
         guard mean > 0 else { return nil }
@@ -69,13 +82,14 @@ enum HealthScoreEngine {
             name: "FC repos",
             systemImage: "heart.fill",
             score: score,
-            detail: "\(Int(today.rounded())) bpm · normale \(Int(mean.rounded()))"
+            detail: "\(Int(today.rounded())) bpm · normale \(Int(mean.rounded()))",
+            sampleCount: sampleCount
         )
     }
 
     /// HRV (SDNN) : au-dessus de sa normale = bonne récupération.
     /// −10 % sous la baseline → 70.
-    static func hrvScore(today: Double, baseline: [Double]) -> ScoreComponent? {
+    static func hrvScore(today: Double, baseline: [Double], sampleCount: Int? = nil) -> ScoreComponent? {
         guard baseline.count >= minimumBaselineCount, today > 0 else { return nil }
         let mean = baseline.reduce(0, +) / Double(baseline.count)
         guard mean > 0 else { return nil }
@@ -85,13 +99,14 @@ enum HealthScoreEngine {
             name: "Variabilité cardiaque",
             systemImage: "waveform.path.ecg",
             score: score,
-            detail: "\(Int(today.rounded())) ms · normale \(Int(mean.rounded()))"
+            detail: "\(Int(today.rounded())) ms · normale \(Int(mean.rounded()))",
+            sampleCount: sampleCount
         )
     }
 
     /// Sommeil : la nuit dernière rapportée à la durée habituelle.
     /// Nuit complète (≥ baseline) → 100 ; 80 % de la baseline → 80.
-    static func sleepScore(lastNightHours: Double, baseline: [Double]) -> ScoreComponent? {
+    static func sleepScore(lastNightHours: Double, baseline: [Double], sampleCount: Int? = nil) -> ScoreComponent? {
         guard baseline.count >= minimumBaselineCount, lastNightHours > 0 else { return nil }
         let mean = baseline.reduce(0, +) / Double(baseline.count)
         guard mean > 0 else { return nil }
@@ -101,13 +116,14 @@ enum HealthScoreEngine {
             name: "Sommeil",
             systemImage: "moon.zzz.fill",
             score: score,
-            detail: String(format: "%.1f h · habituel %.1f h", lastNightHours, mean)
+            detail: String(format: "%.1f h · habituel %.1f h", lastNightHours, mean),
+            sampleCount: sampleCount
         )
     }
 
     /// Équilibre d'activité : la veille comparée à l'habitude — l'inactivité
     /// comme l'excès s'écartent de l'équilibre. ±25 % → 70.
-    static func activityBalanceScore(yesterday: Double, baseline: [Double]) -> ScoreComponent? {
+    static func activityBalanceScore(yesterday: Double, baseline: [Double], sampleCount: Int? = nil) -> ScoreComponent? {
         guard baseline.count >= minimumBaselineCount, yesterday >= 0 else { return nil }
         let mean = baseline.reduce(0, +) / Double(baseline.count)
         guard mean > 0 else { return nil }
@@ -117,7 +133,8 @@ enum HealthScoreEngine {
             name: "Équilibre d'activité",
             systemImage: "flame.fill",
             score: score,
-            detail: "\(Int(yesterday.rounded())) kcal hier · habituel \(Int(mean.rounded()))"
+            detail: "\(Int(yesterday.rounded())) kcal hier · habituel \(Int(mean.rounded()))",
+            sampleCount: sampleCount
         )
     }
 
@@ -152,7 +169,7 @@ enum HealthScoreEngine {
         let components = weighted.map { component, weight in
             ScoreComponent(name: component.name, systemImage: component.systemImage,
                            score: component.score, detail: component.detail,
-                           share: weight / totalWeight)
+                           share: weight / totalWeight, sampleCount: component.sampleCount)
         }
         let missing = entries.compactMap { entry, component in
             component == nil
@@ -171,7 +188,9 @@ enum HealthScoreEngine {
         Moyenne pondérée de quatre composantes — sommeil 35 %, FC repos 30 %, \
         variabilité cardiaque 25 %, équilibre d'activité 10 % — chacune comparée \
         à votre normale des 30 derniers jours. Une composante non mesurée est \
-        retirée du calcul et son poids réparti sur les autres.
+        retirée du calcul et son poids réparti sur les autres. La valeur du jour \
+        est la moyenne des échantillons connus à cet instant : le score se \
+        précise à mesure que la journée avance.
         """
 
     static func label(for score: Double) -> String {
