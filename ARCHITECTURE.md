@@ -541,7 +541,10 @@ manuel.
   et 95,4 vue à neuf. `TrendPoint.sampleCount`, rempli par `DailyAggregator`,
   traverse `WellnessOrchestrator.split` — qui rend désormais le `TrendPoint` et
   non sa seule valeur — jusqu'à `ScoreComponent.sampleCount`, affiché par les
-  deux applications. Le calcul est inchangé : c'est un défaut d'information,
+  deux applications. Sur les **moyennes** seulement : `DailyAggregator.totals`
+  la laisse nulle, parce que sur un total (l'énergie) le nombre d'échantillons
+  ne dit rien de la fiabilité de la valeur — 506 un jour et 94 le lendemain
+  sont deux totaux également complets. Le calcul est inchangé : c'est un défaut d'information,
   pas de formule, et un seuil de refus serait arbitraire là où un compte
   affiché ne l'est pas.
 

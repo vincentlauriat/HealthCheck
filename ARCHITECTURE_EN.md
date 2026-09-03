@@ -481,6 +481,9 @@ to the Mac receiver above — HealthKit on the phone, no manual export.
   `TrendPoint.sampleCount`, filled by `DailyAggregator`, travels through
   `WellnessOrchestrator.split` — which now returns the `TrendPoint` rather than
   its value alone — into `ScoreComponent.sampleCount`, displayed by both apps.
+  On **averages** only: `DailyAggregator.totals` leaves it nil, because on a
+  total (energy) the sample count says nothing about the value's reliability —
+  506 one day and 94 the next are two equally complete totals.
   The computation is unchanged: this is an information defect, not a formula
   one, and a refuse-to-score threshold would be arbitrary where a displayed
   count is not.

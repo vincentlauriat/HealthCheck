@@ -211,7 +211,8 @@ HealthKit en direct.
 
 `TrendPoint.sampleCount` et `ScoreComponent.sampleCount` portent donc la
 profondeur de mesure jusqu'à l'écran (« 1 mesure », « 9 mesures »), dans les
-deux applications. Le score n'est **pas** modifié : une composante assise sur
+deux applications — sur les **moyennes** seulement : sur un total (énergie),
+le nombre d'échantillons ne dit rien de la fiabilité de la valeur. Le score n'est **pas** modifié : une composante assise sur
 un seul échantillon pèse toujours autant qu'une assise sur neuf. Refuser de
 noter en deçà d'un seuil reste une option ouverte, non tranchée — le seuil
 serait arbitraire là où le compte affiché ne l'est pas.
