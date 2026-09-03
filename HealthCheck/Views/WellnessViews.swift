@@ -80,6 +80,12 @@ struct ReadinessCard: View {
                                 Text(component.detail)
                                     .font(.caption)
                                     .foregroundStyle(.secondary)
+                                if let depth = component.depthLabel {
+                                    Text("· \(depth)")
+                                        .font(.caption2)
+                                        .foregroundStyle(.tertiary)
+                                        .help("Nombre d'échantillons derrière la valeur du jour. La moyenne se précise à mesure que la journée avance.")
+                                }
                             }
                             ProgressView(value: component.score, total: 100)
                                 .tint(component.score >= 70 ? .green : component.score >= 50 ? .orange : .red)

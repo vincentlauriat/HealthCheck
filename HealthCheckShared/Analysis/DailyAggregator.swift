@@ -7,7 +7,8 @@ enum DailyAggregator {
     static func averages(_ records: [HealthRecord], calendar: Calendar) -> [TrendPoint] {
         Dictionary(grouping: records) { calendar.startOfDay(for: $0.startDate) }
             .map { day, values in
-                TrendPoint(date: day, value: values.reduce(0) { $0 + $1.value } / Double(values.count))
+                TrendPoint(date: day, value: values.reduce(0) { $0 + $1.value } / Double(values.count),
+                           sampleCount: values.count)
             }
             .sorted { $0.date < $1.date }
     }
@@ -15,7 +16,8 @@ enum DailyAggregator {
     static func totals(_ records: [HealthRecord], calendar: Calendar) -> [TrendPoint] {
         Dictionary(grouping: records) { calendar.startOfDay(for: $0.startDate) }
             .map { day, values in
-                TrendPoint(date: day, value: values.reduce(0) { $0 + $1.value })
+                TrendPoint(date: day, value: values.reduce(0) { $0 + $1.value },
+                           sampleCount: values.count)
             }
             .sorted { $0.date < $1.date }
     }

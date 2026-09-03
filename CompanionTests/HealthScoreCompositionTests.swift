@@ -52,6 +52,43 @@ final class HealthScoreCompositionTests: XCTestCase {
         XCTAssertEqual(recomputed, score.value, accuracy: 0.0001)
     }
 
+    // MARK: - Profondeur de mesure
+
+    private func hrRecord(bpm: Double, daysAgo: Int, hour: Int, now: Date, calendar: Calendar) -> HealthRecord {
+        let start = calendar.date(byAdding: .day, value: -daysAgo, to: calendar.startOfDay(for: now))!
+            .addingTimeInterval(Double(hour) * 3600)
+        return HealthRecord(type: "HKQuantityTypeIdentifierRestingHeartRate",
+                            sourceName: "Apple\u{00a0}Watch de Vincent", device: nil, unit: "count/min",
+                            value: bpm, startDate: start, endDate: start.addingTimeInterval(300),
+                            creationDate: start)
+    }
+
+    /// La valeur « du jour » est la moyenne des échantillons **connus à cet
+    /// instant**. Le 2026-09-02, la même journée valait 57,0 vue à une mesure
+    /// de VFC et 95,4 vue à neuf — c'est la cause de l'écart de forme entre le
+    /// Mac (qui ne voit que ce qui a été poussé) et l'iPhone (qui lit
+    /// HealthKit en direct). Le score doit donc dire sur combien de mesures il
+    /// repose, sans quoi rien ne distingue les deux situations à l'écran.
+    func test_wellness_reportsHowManySamplesTodaysValueRestsOn() throws {
+        let store = try HealthStore(path: ":memory:")
+        let calendar = Calendar.current
+        let now = calendar.startOfDay(for: Date(timeIntervalSince1970: 1_786_859_360))
+            .addingTimeInterval(20 * 3600)
+
+        var records = (1...10).map { hrRecord(bpm: 60, daysAgo: $0, hour: 8, now: now, calendar: calendar) }
+        // Aujourd'hui : trois mesures, à trois heures distinctes.
+        records += [8, 12, 16].map { hrRecord(bpm: 62, daysAgo: 0, hour: $0, now: now, calendar: calendar) }
+        try store.insertRecords(records)
+
+        let result = try WellnessOrchestrator.compute(
+            store: store, resolver: SourcePriorityResolver(priority: ["Watch", "iPhone"]),
+            calendar: calendar, today: now)
+
+        let hr = try XCTUnwrap(result.readiness?.components.first { $0.name == "FC repos" })
+        XCTAssertEqual(hr.sampleCount, 3,
+                       "la composante doit porter le nombre de mesures du jour, pas une constante")
+    }
+
     /// Toutes les composantes présentes : rien ne manque, et les parts valent
     /// les poids nominaux. Garde le cas nominal honnête — sans lui, un moteur
     /// qui déclarerait toujours « Sommeil manquant » passerait la garde

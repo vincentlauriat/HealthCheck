@@ -475,6 +475,16 @@ to the Mac receiver above — HealthKit on the phone, no manual export.
   the Withings API, and the unit label (`kg`, `%`) is part of `DedupKey` —
   diverging from it would recreate the duplicates removed on 2026-09-03.
 
+  **Measurement depth now reaches the screen.** A readiness component's "today"
+  value is the mean of the samples known at that instant: on 2026-09-02 the
+  same day read 57.0 seen with one HRV sample and 95.4 seen with nine.
+  `TrendPoint.sampleCount`, filled by `DailyAggregator`, travels through
+  `WellnessOrchestrator.split` — which now returns the `TrendPoint` rather than
+  its value alone — into `ScoreComponent.sampleCount`, displayed by both apps.
+  The computation is unchanged: this is an information defect, not a formula
+  one, and a refuse-to-score threshold would be arbitrary where a displayed
+  count is not.
+
   **The readiness score now states what it could not measure.** A missing
   component does not penalise the score: `HealthScoreEngine.readiness` drops its
   weight from the basket and renormalises. With nothing shown, a score missing

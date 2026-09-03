@@ -209,6 +209,13 @@ elle pèse 38 %. C'est la raison pour laquelle le Mac et l'iPhone n'affichent
 pas le même score : le Mac ne voit que ce qui a été poussé, l'iPhone lit
 HealthKit en direct.
 
+`TrendPoint.sampleCount` et `ScoreComponent.sampleCount` portent donc la
+profondeur de mesure jusqu'à l'écran (« 1 mesure », « 9 mesures »), dans les
+deux applications. Le score n'est **pas** modifié : une composante assise sur
+un seul échantillon pèse toujours autant qu'une assise sur neuf. Refuser de
+noter en deçà d'un seuil reste une option ouverte, non tranchée — le seuil
+serait arbitraire là où le compte affiché ne l'est pas.
+
 **Seuils du libellé final** (`HealthScoreEngine.swift:109-116`) :
 
 | Score | Libellé |

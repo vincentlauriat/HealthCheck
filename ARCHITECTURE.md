@@ -535,6 +535,16 @@ manuel.
   Santé et l'API Withings, et le libellé d'unité (`kg`, `%`) entre dans
   `DedupKey` — s'en écarter recréerait les doublons supprimés le 2026-09-03.
 
+  **La profondeur de mesure remonte jusqu'à l'écran.** La valeur « du jour »
+  d'une composante de forme est la moyenne des échantillons connus à cet
+  instant : le 2026-09-02, la même journée valait 57,0 vue à une mesure de VFC
+  et 95,4 vue à neuf. `TrendPoint.sampleCount`, rempli par `DailyAggregator`,
+  traverse `WellnessOrchestrator.split` — qui rend désormais le `TrendPoint` et
+  non sa seule valeur — jusqu'à `ScoreComponent.sampleCount`, affiché par les
+  deux applications. Le calcul est inchangé : c'est un défaut d'information,
+  pas de formule, et un seuil de refus serait arbitraire là où un compte
+  affiché ne l'est pas.
+
   **Le score de forme dit maintenant ce qu'il n'a pas mesuré.** Une composante
   absente ne pénalise pas le score : `HealthScoreEngine.readiness` retire son
   poids du panier et renormalise. Sans rien afficher, un score amputé du

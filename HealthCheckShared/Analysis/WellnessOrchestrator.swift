@@ -48,10 +48,13 @@ enum WellnessOrchestrator {
         // « Aujourd'hui » = dernier point s'il date bien d'aujourd'hui
         // (d'hier pour le sommeil : la nuit dernière est rangée sous hier) ;
         // la baseline = tous les points précédents.
-        func split(_ points: [TrendPoint], latestNoOlderThan cutoff: Date) -> (latest: Double?, baseline: [Double]) {
+        // Rend le `TrendPoint` et non sa seule valeur : c'est lui qui porte le
+        // nombre d'échantillons derrière la moyenne du jour, et cette
+        // profondeur doit remonter jusqu'à l'affichage.
+        func split(_ points: [TrendPoint], latestNoOlderThan cutoff: Date) -> (latest: TrendPoint?, baseline: [Double]) {
             guard let last = points.last else { return (nil, []) }
             guard last.date >= cutoff else { return (nil, points.map(\.value)) }
-            return (last.value, points.dropLast().map(\.value))
+            return (last, points.dropLast().map(\.value))
         }
 
         let hr = split(hrDaily, latestNoOlderThan: startOfToday)
@@ -60,14 +63,18 @@ enum WellnessOrchestrator {
 
         // Activité : la veille, seul jour complet — aujourd'hui est partiel.
         let completeDays = energyDaily.filter { $0.date < startOfToday }
-        let yesterdayEnergy = completeDays.last(where: { $0.date == yesterday })?.value
+        let yesterdayEnergy = completeDays.last(where: { $0.date == yesterday })
         let energyBaseline = completeDays.filter { $0.date != yesterday }.map(\.value)
 
         let readiness = HealthScoreEngine.readiness(
-            sleep: sleep.latest.flatMap { HealthScoreEngine.sleepScore(lastNightHours: $0, baseline: sleep.baseline) },
-            restingHeartRate: hr.latest.flatMap { HealthScoreEngine.restingHeartRateScore(today: $0, baseline: hr.baseline) },
-            hrv: hrv.latest.flatMap { HealthScoreEngine.hrvScore(today: $0, baseline: hrv.baseline) },
-            activity: yesterdayEnergy.flatMap { HealthScoreEngine.activityBalanceScore(yesterday: $0, baseline: energyBaseline) }
+            sleep: sleep.latest.flatMap { HealthScoreEngine.sleepScore(lastNightHours: $0.value, baseline: sleep.baseline,
+                                                                      sampleCount: $0.sampleCount) },
+            restingHeartRate: hr.latest.flatMap { HealthScoreEngine.restingHeartRateScore(today: $0.value, baseline: hr.baseline,
+                                                                                         sampleCount: $0.sampleCount) },
+            hrv: hrv.latest.flatMap { HealthScoreEngine.hrvScore(today: $0.value, baseline: hrv.baseline,
+                                                                sampleCount: $0.sampleCount) },
+            activity: yesterdayEnergy.flatMap { HealthScoreEngine.activityBalanceScore(yesterday: $0.value, baseline: energyBaseline,
+                                                                                      sampleCount: $0.sampleCount) }
         )
 
         let vo2Records = try store.records(type: VO2MaxEngine.vo2MaxType, from: d120, to: end)
