@@ -87,6 +87,14 @@ are never loaded into memory.
 
 ## Source priority resolution
 
+**Source names are matched by case-insensitive substring** (2026-09-03).
+A sample's `sourceName` is whatever the user named their device — "Apple
+Watch de Vincent", "iPhone ☠️" — never the bare word "Watch". The original
+strict equality therefore matched no real source: priority was never
+applied and, on an overlap, the first sample seen won. The resolver's four
+tests passed because they built their fixtures with bare "Watch" and
+"iPhone".
+
 `SourcePriorityResolver` deduplicates overlapping samples from multiple
 sources (Watch > iPhone) **at read time** — raw data stays intact in
 the store. Implementation is a sweep line over start-sorted records
@@ -381,23 +389,32 @@ to the Mac receiver above — HealthKit on the phone, no manual export.
   exercise minutes, heart rate). Delivery is opportunistic — iOS
   guarantees no schedule — so the manual "Synchroniser" button in
   `CompanionRootView` stays the reliable fallback.
-- **`device: nil` dedup ruling**: `HKMapper` always emits `device: nil`
-  on exchange records/sleep — HealthKit's per-device metadata doesn't
-  map reliably onto the zip-export dedup keys. Consequence: the
-  companion path's synthetic key (which includes `device`, see
-  `HealthRecord.dedupKey`) DIVERGES from the same sample's key when
-  imported via zip (which carries the real `device`) — `INSERT OR
-  IGNORE` therefore never merges them at the key level. The direct
-  `HKQuantity` conversion on the companion side (`Double`) can also
-  differ, at the last digit, from the value parsed out of the zip's
-  XML, which would diverge the key even with a matching `device`
-  (`dedupKey` includes `String(value)`). The 30-day overlap between the
-  two sources is not absorbed at insert time but at READ time, by
-  `SourcePriorityResolver`
-  (`HealthCheck/Store/SourcePriorityResolver.swift`), which keeps only
-  one source per overlapping time window based on `sourceName` and the
-  configured priority order. `creationDate` is not part of the dedup
-  key.
+- **Normalised dedup key**: the two ingestion paths describe the same
+  measurement differently — the zip export timestamps to the second
+  only, rounds the value and carries the real `device`, whereas
+  `HKMapper` emits `device: nil` with `HKQuantity`'s full precision.
+  `DedupKey` (`HealthCheckShared/Models/DedupKey.swift`) neutralises
+  all three gaps across the three stored models: dates truncated to
+  the second, values at four decimals (the export's precision),
+  `device` excluded from the key — it is device metadata, not the
+  measurement's identity. `creationDate` is not part of it either.
+  Previously the key diverged on those three fields and `INSERT OR
+  IGNORE` never merged the two rows. This architecture claimed
+  `SourcePriorityResolver` absorbed the overlap at READ time: that
+  only holds for interval samples that actually overlap (steps,
+  energy, exercise time), all read through `resolver.resolve`.
+  Instantaneous samples — heart rate, resting heart rate, HRV, VO2max
+  — have `startDate == endDate`, therefore never overlap, and nothing
+  merged them: 31,409 duplicate rows measured on the real database,
+  biasing every average over those types and making the Mac diverge
+  from the iPhone on the Home and Training screens.
+  `HealthStore.migrateDedupKeys` carries the one-time migration
+  (`PRAGMA user_version = 1`) that recomputes the `id`s and merges
+  what is already stored, keeping the most informative row (GPX route
+  first for a workout, then the millisecond timestamp). It is not an
+  optional cleanup: without it, the first zip-export import after the
+  key change would recognise no existing row and duplicate the entire
+  database.
 - **Sim-vs-device test split**: the 64 companion XCTest cases (mapper,
   persistence, sync engine, Mac client stub, Bonjour endpoint
   formatting, concurrent-wake coalescing, shared protocol, view model,
