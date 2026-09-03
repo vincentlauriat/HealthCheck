@@ -92,10 +92,13 @@ enum WithingsMapper {
     /// HealthKit et reçoivent un identifiant custom.
     static let requestedTypes = "1,5,6,76,77,88,170"
 
-    static let muscleMassType = "WithingsMuscleMass"
-    static let hydrationType = "WithingsHydration"
-    static let boneMassType = "WithingsBoneMass"
-    static let visceralFatType = "WithingsVisceralFat"
+    // Les valeurs vivent dans `WithingsMeasureType` (partagé) : `BodyViewModel`
+    // les lit et tourne sur les deux cibles depuis le SP5. Ces alias gardent
+    // les appelants et les tests existants inchangés.
+    static let muscleMassType = WithingsMeasureType.muscleMass
+    static let hydrationType = WithingsMeasureType.hydration
+    static let boneMassType = WithingsMeasureType.boneMass
+    static let visceralFatType = WithingsMeasureType.visceralFat
 
     private static let mapping: [Int: (type: String, unit: String)] = [
         1: ("HKQuantityTypeIdentifierBodyMass", "kg"),

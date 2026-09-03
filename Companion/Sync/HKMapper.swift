@@ -18,7 +18,14 @@ enum HKMapper {
         HKQuantityTypeIdentifier.vo2Max.rawValue: (
             HKUnit.literUnit(with: .milli).unitDivided(by: HKUnit.gramUnit(with: .kilo).unitMultiplied(by: .minute())),
             "mL/min·kg"
-        )
+        ),
+        // SP5 — lus pour l'écran Corps de l'iPhone, jamais poussés vers le Mac
+        // (`SyncEngine.localOnlyTypes`). Libellés et échelles alignés sur ce
+        // que la base contient déjà : `unit` entre dans `DedupKey`, et le taux
+        // de graisse y est une fraction (0,25), pas un pourcentage (25).
+        HKQuantityTypeIdentifier.bodyMass.rawValue: (.gramUnit(with: .kilo), "kg"),
+        HKQuantityTypeIdentifier.bodyFatPercentage.rawValue: (.percent(), "%"),
+        HKQuantityTypeIdentifier.leanBodyMass.rawValue: (.gramUnit(with: .kilo), "kg")
     ]
 
     static func record(from sample: HKQuantitySample) -> ExchangeRecord? {

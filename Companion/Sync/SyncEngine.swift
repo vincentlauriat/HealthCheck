@@ -54,22 +54,36 @@ final class SyncEngine {
         "workouts"
     ]
 
+    /// Types lus pour l'iPhone seul et **jamais poussés**. Le Mac possède déjà
+    /// ces mesures via l'API Withings, sous d'autres identifiants de source ;
+    /// une pesée ayant une durée nulle, `SourcePriorityResolver` ne la
+    /// dédoublonne pas (suivi M2), et les pousser créerait de vrais doublons
+    /// dans la base du Mac.
+    static let localOnlyTypes: [String] = [
+        HKQuantityTypeIdentifier.bodyMass.rawValue,
+        HKQuantityTypeIdentifier.bodyFatPercentage.rawValue,
+        HKQuantityTypeIdentifier.leanBodyMass.rawValue
+    ]
+
     private let reader: DeltaReading
     private let pusher: BatchPushing
     private let anchors: AnchorStore
     private let localAnchors: AnchorStore
     private let localImporter: LocalIngesting
     private let typeIdentifiers: [String]
+    private let localOnlyTypeIdentifiers: [String]
 
     init(reader: DeltaReading, pusher: BatchPushing, anchors: AnchorStore,
          localAnchors: AnchorStore, localImporter: LocalIngesting,
-         typeIdentifiers: [String] = SyncEngine.defaultTypes) {
+         typeIdentifiers: [String] = SyncEngine.defaultTypes,
+         localOnlyTypeIdentifiers: [String] = SyncEngine.localOnlyTypes) {
         self.reader = reader
         self.pusher = pusher
         self.anchors = anchors
         self.localAnchors = localAnchors
         self.localImporter = localImporter
         self.typeIdentifiers = typeIdentifiers
+        self.localOnlyTypeIdentifiers = localOnlyTypeIdentifiers
     }
 
     static func chunk(_ batch: ExchangeBatch, limit: Int) -> [ExchangeBatch] {
@@ -93,6 +107,12 @@ final class SyncEngine {
     func syncAll() async -> SyncReport {
         var report = SyncReport()
         var pushDisabled = false
+        // Ingérés ici aussi : `syncAll()` est l'autre chemin qui alimente la
+        // base locale, et sans cette boucle « Envoyer au Mac » sauterait
+        // silencieusement le poids. Le push, lui, ne voit que `typeIdentifiers`.
+        for type in localOnlyTypeIdentifiers {
+            await ingestLocally(type)
+        }
         for type in typeIdentifiers {
             await ingestLocally(type)
 
@@ -138,7 +158,7 @@ final class SyncEngine {
     @discardableResult
     func ingestLocalData() async -> Int {
         var ingested = 0
-        for type in typeIdentifiers {
+        for type in typeIdentifiers + localOnlyTypeIdentifiers {
             ingested += await ingestLocally(type)
         }
         return ingested

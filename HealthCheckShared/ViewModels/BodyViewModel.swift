@@ -90,10 +90,10 @@ final class BodyViewModel: ObservableObject {
         leanMassDelta30d = sub(latest.leanMass, ref30?.leanMass)
         weightDelta1y = reference(in: all, daysBefore: 365, anchor: latest.day).map { latest.weight - $0.weight }
 
-        latestMuscleMass = try daily(WithingsMapper.muscleMassType, to: end).last?.value
-        latestHydration = try daily(WithingsMapper.hydrationType, to: end).last?.value
-        latestBoneMass = try daily(WithingsMapper.boneMassType, to: end).last?.value
-        latestVisceralFat = try daily(WithingsMapper.visceralFatType, to: end).last?.value
+        latestMuscleMass = try daily(WithingsMeasureType.muscleMass, to: end).last?.value
+        latestHydration = try daily(WithingsMeasureType.hydration, to: end).last?.value
+        latestBoneMass = try daily(WithingsMeasureType.boneMass, to: end).last?.value
+        latestVisceralFat = try daily(WithingsMeasureType.visceralFat, to: end).last?.value
     }
 
     private func daily(_ type: String, to end: Date) throws -> [TrendPoint] {

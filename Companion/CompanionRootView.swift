@@ -14,6 +14,7 @@ struct CompanionRootView: View {
     @ObservedObject var workoutsViewModel: WorkoutsViewModel
     @ObservedObject var trendsViewModel: TrendsViewModel
     @ObservedObject var correlationsViewModel: CorrelationsViewModel
+    @ObservedObject var bodyViewModel: BodyViewModel
     @State private var showingSettings = false
 
     var body: some View {
@@ -51,7 +52,7 @@ struct CompanionRootView: View {
             .tabItem { Label("Entraînement", systemImage: "figure.run") }
 
             NavigationStack {
-                CompanionBodyView().navigationTitle("Corps")
+                CompanionBodyView(viewModel: bodyViewModel).navigationTitle("Corps")
             }
             .tabItem { Label("Corps", systemImage: "figure") }
         }

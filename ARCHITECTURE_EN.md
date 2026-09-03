@@ -447,7 +447,33 @@ to the Mac receiver above — HealthKit on the phone, no manual export.
   `RouteStore`, the one `CompanionImporter` fills while reading HealthKit —
   never the default `RouteStore()`, which points elsewhere and would find no
   file. Corps still shows a waiting screen
-  (`CompanionPlaceholderView`) and will be filled in by SP5.
+  Body (`CompanionBodyView`, 2026-09-03, SP5) shows the latest weigh-in with
+  **its date spelled out**, body-fat share and mass, lean mass, the 30-day and
+  1-year deltas, and a weight curve over the chosen period. The date is not
+  decoration: the Withings → Health sync has been down since 18 June 2026, so
+  the screen routinely shows a weigh-in several weeks old, and passing it off
+  as today's value would be the real defect. No Sankey, no body composition —
+  muscle, water, bone and visceral fat only travel through the Withings API,
+  which the iPhone never calls; on that target the four `WithingsMeasureType`
+  series are therefore always empty, `weightSankey` is `nil`, and an iOS guard
+  checks it rather than leaving it to be discovered.
+
+  **Weight is read, never pushed.** `HKMapper` now knows `BodyMass`,
+  `BodyFatPercentage` and `LeanBodyMass`, so they enter `readTypes` and iOS
+  re-prompts for authorisation. But `SyncEngine` carries **two** lists:
+  `typeIdentifiers`, consumed by both passes, and `localOnlyTypes`, consumed
+  by local ingestion only. The Mac already holds these measurements through
+  the Withings API under different source identifiers, and since a weigh-in
+  has zero duration `SourcePriorityResolver` does not deduplicate it
+  (follow-up M2): pushing them would create genuine duplicates. `syncAll()`
+  therefore ingests those types locally **before** its push loop — otherwise
+  "Envoyer au Mac" would silently skip weight — and the guard
+  (`SyncEngineTests.test_syncAll_ingestsLocalOnlyTypesLocallyAndPushesNoneOfThem`)
+  observes what reaches the pusher, never the composition of the lists, which
+  would be true by construction. Two details worth writing down: body fat is
+  stored as a **fraction** (0.25, not 25), matching the Apple Health export and
+  the Withings API, and the unit label (`kg`, `%`) is part of `DedupKey` —
+  diverging from it would recreate the duplicates removed on 2026-09-03.
   Two further sub-screens hang off Home (2026-09-03, SP4): Trends
   (`CompanionTrendsView`) — four curves, resting heart rate, weight, VO2max
   and sleep, each doubled by its 7-day moving average — and Correlations
