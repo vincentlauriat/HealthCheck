@@ -506,8 +506,34 @@ manuel.
   déjà 180, exactement la fenêtre HealthKit. `MetricStyle` est remonté dans
   `HealthCheckShared/Views/` pour que chaque métrique garde la même couleur
   sur les deux cibles.
-  Corps affiche encore un écran d'attente
-  (`CompanionPlaceholderView`) et sera rempli au SP5. L'appairage et l'envoi au Mac, qui formaient un
+  Corps (`CompanionBodyView`, 2026-09-03, SP5) affiche la dernière pesée avec
+  **sa date en clair**, le taux et la masse grasse, les masses maigres, les
+  écarts à 30 jours et 1 an, et une courbe de poids sur la période choisie.
+  La date n'est pas un ornement : la synchro Withings → Santé est en panne
+  depuis le 18 juin 2026, donc l'écran montre couramment une pesée de
+  plusieurs semaines, et la donner pour la valeur du jour serait le vrai
+  défaut. Ni Sankey ni composition corporelle — muscle, eau, os et graisse
+  viscérale ne transitent que par l'API Withings, que l'iPhone n'appelle pas ;
+  sur cette cible les quatre séries de `WithingsMeasureType` sont donc
+  toujours vides, `weightSankey` est `nil`, et une garde iOS le vérifie plutôt
+  que de le laisser découvrir.
+
+  **Le poids est lu, jamais poussé.** `HKMapper` connaît désormais `BodyMass`,
+  `BodyFatPercentage` et `LeanBodyMass` — ils entrent donc dans `readTypes` et
+  iOS en redemande l'autorisation. Mais `SyncEngine` porte **deux** listes :
+  `typeIdentifiers`, que les deux passes consomment, et `localOnlyTypes`, que
+  seule l'ingestion locale consomme. Le Mac possède déjà ces mesures via
+  l'API Withings sous d'autres identifiants de source, et une pesée ayant une
+  durée nulle, `SourcePriorityResolver` ne la dédoublonne pas (suivi M2) : les
+  pousser créerait de vrais doublons. `syncAll()` ingère donc ces types
+  localement **avant** sa boucle de push — sans quoi « Envoyer au Mac »
+  sauterait silencieusement le poids — et la garde
+  (`SyncEngineTests.test_syncAll_ingestsLocalOnlyTypesLocallyAndPushesNoneOfThem`)
+  observe ce qui atteint le pousseur, jamais la composition des listes, qui
+  serait vraie par construction. Deux détails valent d'être écrits : le taux
+  de graisse est stocké en **fraction** (0,25 et non 25), comme l'export Apple
+  Santé et l'API Withings, et le libellé d'unité (`kg`, `%`) entre dans
+  `DedupKey` — s'en écarter recréerait les doublons supprimés le 2026-09-03. L'appairage et l'envoi au Mac, qui formaient un
   onglet, sont passés derrière un bouton Réglages présenté en feuille :
   c'est une configuration, pas une destination quotidienne. Accueil
   (`CompanionAdvisorView`) affiche forme, conseil du jour

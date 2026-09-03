@@ -59,7 +59,7 @@ SP1 l'a fait pour les sept autres. La vue reste propre à iOS.
 - Produces: `SyncEngine.localOnlyTypes: [String]` et le paramètre
   `localOnlyTypeIdentifiers` de `SyncEngine.init`.
 
-- [ ] **Step 1: Apprendre les trois types à `HKMapper`**
+- [x] **Step 1: Apprendre les trois types à `HKMapper`**
 
 Dans `quantityUnits`, après `vo2Max` — libellés verbatim, cf. piège 1 :
 
@@ -72,7 +72,7 @@ Dans `quantityUnits`, après `vo2Max` — libellés verbatim, cf. piège 1 :
 `readTypes` dérive de `quantityUnits.keys` : iOS redemandera l'autorisation
 au prochain lancement, sans autre changement.
 
-- [ ] **Step 2: Réécrire le test qui utilisait `bodyMass` comme exemple**
+- [x] **Step 2: Réécrire le test qui utilisait `bodyMass` comme exemple**
 
 `test_unknownQuantityType_isDropped` prenait `bodyMass` pour « type ignoré » :
 c'est précisément ce qui change. Le remplacer par un type que le mapper
@@ -104,7 +104,7 @@ deux gardes d'échelle du piège 2 :
     }
 ```
 
-- [ ] **Step 3: La seconde liste de types dans `SyncEngine`**
+- [x] **Step 3: La seconde liste de types dans `SyncEngine`**
 
 ```swift
     /// Types lus pour l'iPhone seul et **jamais poussés**. Le Mac possède déjà
@@ -134,7 +134,7 @@ Dans `syncAll()`, ajouter **avant** la boucle existante :
         }
 ```
 
-- [ ] **Step 4: La garde, sur le chemin de push et non sur la liste**
+- [x] **Step 4: La garde, sur le chemin de push et non sur la liste**
 
 `CompanionTests/LocalOnlyTypesTests.swift`. Une garde qui comparerait les deux
 listes serait vraie par construction ; celle-ci observe ce qui atteint le
@@ -173,14 +173,14 @@ Le stub de lecture et l'importeur espion existent peut-être déjà dans
 `CompanionTests/` (les suites de `SyncEngine` en utilisent) : les réutiliser
 plutôt qu'en écrire d'autres. Vérifier avant d'écrire.
 
-- [ ] **Step 5: Falsifier**
+- [x] **Step 5: Falsifier**
 
 Mutation de la spec : ajouter les trois types à `defaultTypes`. Attendu :
 l'assertion 2 tombe (un type corporel apparaît dans un batch poussé).
 Seconde mutation : retirer la boucle ajoutée dans `syncAll()`. Attendu :
 l'assertion 1 tombe. Restaurer après chacune, **relire le fichier**.
 
-- [ ] **Step 6: Lancer et commiter**
+- [x] **Step 6: Lancer et commiter**
 
 iOS (95 attendus : 92 + 3) et macOS (287, inchangés).
 
@@ -205,7 +205,7 @@ git commit -m "feat(companion): read body metrics locally without pushing them"
 `resolver.resolve` et `store.records` — tous déjà partagés. Seules les quatre
 constantes de `WithingsMapper` bloquent le déplacement.
 
-- [ ] **Step 1: Extraire les quatre identifiants**
+- [x] **Step 1: Extraire les quatre identifiants**
 
 `HealthCheckShared/Models/WithingsMeasureType.swift` :
 
@@ -233,7 +233,7 @@ tests existants :
     static let visceralFatType = WithingsMeasureType.visceralFat
 ```
 
-- [ ] **Step 2: Déplacer le fichier**
+- [x] **Step 2: Déplacer le fichier**
 
 `git mv HealthCheck/ViewModels/BodyViewModel.swift HealthCheckShared/ViewModels/`
 puis `xcodegen generate`. Les appelants de `WithingsMapper.muscleMassType` dans
@@ -244,13 +244,13 @@ requêtes Withings rendent des séries vides, donc `latestMuscleMass` et ses
 voisins restent `nil`, donc `weightSankey` est `nil` et la composition
 corporelle ne s'affiche pas. C'est exactement ce que la spec §6 prévoit.
 
-- [ ] **Step 3: Les deux suites**
+- [x] **Step 3: Les deux suites**
 
 macOS (287) est la garde du déplacement : `BodyViewModel` a déjà ses tests
 (`HealthCheckTests/BodyViewModelTests.swift`), qui doivent passer **inchangés**.
 iOS (95) prouve que la cible compile le fichier déplacé.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add HealthCheck HealthCheckShared
@@ -266,7 +266,7 @@ git commit -m "refactor: share BodyViewModel with the companion target"
 - Modify: `Companion/CompanionApp.swift`, `Companion/CompanionRootView.swift`
 - Create: `CompanionTests/BodyViewModelIOSTests.swift`
 
-- [ ] **Step 1: La garde d'abord**
+- [x] **Step 1: La garde d'abord**
 
 Ce que l'écran iPhone a de particulier : la dernière pesée peut être bien
 plus ancienne que la période affichée. La synchro Withings → Santé est en
@@ -281,7 +281,7 @@ visible plutôt que de laisser croire à une valeur du jour.
     }
 ```
 
-- [ ] **Step 2: La vue**
+- [x] **Step 2: La vue**
 
 Poids et masse grasse seulement (spec §6 : ni Sankey ni composition sur
 iPhone). En tête, la carte de la dernière pesée avec **sa date en clair**,
@@ -294,14 +294,14 @@ Chiffres affichés seulement `if let`, jamais de zéro fabriqué : la règle du
 SP3, et ici elle compte double, une masse grasse absente n'étant pas une
 masse grasse nulle.
 
-- [ ] **Step 3: Câbler**
+- [x] **Step 3: Câbler**
 
 `bodyViewModel` dans `CompanionApp` (`BodyViewModel(store: advisorStore,
 resolver: SourcePriorityResolver(priority: ["Watch", "iPhone"]))`), transmis
 par `CompanionRootView` à `CompanionBodyView`, qui remplace
 `CompanionPlaceholderView`.
 
-- [ ] **Step 4: Lancer, falsifier, commiter**
+- [x] **Step 4: Lancer, falsifier, commiter**
 
 iOS (96), macOS (287). Mutation de la garde : borner la lecture de `latest` à
 la période demandée.
@@ -310,16 +310,16 @@ la période demandée.
 
 ### Task 4: Documentation et contrôle sur appareil
 
-- [ ] **Step 1: Contrôle à l'écran** — iPhone **déverrouillé**. iOS demandera
+- [x] **Step 1: Contrôle à l'écran** — iPhone **déverrouillé**. iOS demandera
   l'autorisation des trois nouveaux types au premier lancement : **tant qu'elle
   n'est pas accordée, l'écran reste vide exactement comme si le SP5 avait
   échoué.** L'accorder d'abord, puis vérifier : l'onglet Corps affiche la
   dernière pesée avec sa date (probablement mi-juin, cf. spec §6), la courbe de
   poids, et la carte Poids de l'écran Tendances n'est plus vide.
-- [ ] **Step 2: Vérifier qu'aucun poids n'est parti vers le Mac** — après un
+- [x] **Step 2: Vérifier qu'aucun poids n'est parti vers le Mac** — après un
   « Envoyer au Mac », comparer le nombre de lignes `BodyMass` de la base du Mac
   avant et après. Il doit être identique.
-- [ ] **Step 3: Doc** — `ARCHITECTURE.md` + `ARCHITECTURE_EN.md` (miroirs, même
+- [x] **Step 3: Doc** — `ARCHITECTURE.md` + `ARCHITECTURE_EN.md` (miroirs, même
   tour), `CHANGES.md`, `TODOS.md`, `PLAN.md`, `COMMANDS.md`. La règle « le poids
   ne transite jamais » doit apparaître dans l'architecture, avec sa raison.
 
