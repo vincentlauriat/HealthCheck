@@ -59,6 +59,20 @@ final class TrendsViewModel: ObservableObject {
     @Published private(set) var vo2Max: [TrendPoint] = []
     @Published private(set) var sleepHours: [TrendPoint] = []
 
+    /// Date de la plus ancienne mesure effectivement chargée, toutes séries
+    /// confondues. L'écran iOS s'en sert pour dire depuis quand il a des
+    /// données : sur les 180 jours de fenêtre HealthKit, une courbe peut
+    /// légitimement commencer bien après le début de la période demandée, et
+    /// ce début abrupt ne doit pas se lire comme un trou. Les quatre séries
+    /// sont triées par date croissante — `dailyAverage` et
+    /// `SleepAggregator.nightlyHours` terminent toutes deux par un tri — donc
+    /// le premier point de chacune suffit.
+    var earliestMeasurement: Date? {
+        [restingHeartRate, weight, vo2Max, sleepHours]
+            .compactMap(\.first?.date)
+            .min()
+    }
+
     private let store: HealthStore
     private let resolver: SourcePriorityResolver
     private let calendar: Calendar
