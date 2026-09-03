@@ -87,6 +87,14 @@ are never loaded into memory.
 
 ## Source priority resolution
 
+**Source names are matched by case-insensitive substring** (2026-09-03).
+A sample's `sourceName` is whatever the user named their device — "Apple
+Watch de Vincent", "iPhone ☠️" — never the bare word "Watch". The original
+strict equality therefore matched no real source: priority was never
+applied and, on an overlap, the first sample seen won. The resolver's four
+tests passed because they built their fixtures with bare "Watch" and
+"iPhone".
+
 `SourcePriorityResolver` deduplicates overlapping samples from multiple
 sources (Watch > iPhone) **at read time** — raw data stays intact in
 the store. Implementation is a sweep line over start-sorted records
