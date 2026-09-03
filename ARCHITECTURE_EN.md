@@ -474,6 +474,15 @@ to the Mac receiver above — HealthKit on the phone, no manual export.
   stored as a **fraction** (0.25, not 25), matching the Apple Health export and
   the Withings API, and the unit label (`kg`, `%`) is part of `DedupKey` —
   diverging from it would recreate the duplicates removed on 2026-09-03.
+
+  An immediate consequence, fixed straight away: the Companion's Home screen
+  now reads weight too. `CompanionAdvisorViewModel.defaultCompute` repeats the
+  30-day window, the daily aggregation and the `WeightEngine` calls of
+  `DashboardViewModel.load()`, and passes the rate alert on to
+  `DailyAdviceEngine`. Without it the two Home screens would have given
+  different advice on the same data — the very divergence this sub-project was
+  meant to remove, reintroduced by construction.
+
   Two further sub-screens hang off Home (2026-09-03, SP4): Trends
   (`CompanionTrendsView`) — four curves, resting heart rate, weight, VO2max
   and sleep, each doubled by its 7-day moving average — and Correlations

@@ -22,6 +22,13 @@ xcodebuild test -scheme HealthCheckCompanion \
 Lister les simulateurs disponibles plutôt qu'en supposer un :
 `xcrun simctl list devices available`.
 
+Sur un échec, `xcodebuild` part collecter un sysdiagnose du simulateur et
+reste bloqué **dix minutes** dessus (« Failure collecting diagnostics from
+simulator: Timed out after 600.0 seconds ») alors que les tests, eux, ont
+rendu leur verdict en une demi-seconde. Ajouter `-collect-test-diagnostics
+never` pendant une passe de mutation, où l'échec est justement le résultat
+attendu.
+
 Un premier lancement après suppression de `build/` peut échouer pour des
 raisons d'environnement (réinstallation dans le simulateur, dépendances à
 re-résoudre). Relancer avant de conclure à une régression.
