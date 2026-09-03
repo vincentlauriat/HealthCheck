@@ -84,7 +84,119 @@ final class HealthStore: @unchecked Sendable {
                     createdAt TEXT NOT NULL
                 )
                 """)
+            try Self.migrateDedupKeys(db)
         }
+    }
+
+    /// Recalcule les `id` avec la clé normalisée de `DedupKey` et fusionne au
+    /// passage les lignes que l'ancienne clé laissait passer en double.
+    ///
+    /// Cette migration n'est pas un nettoyage optionnel : les `id` déjà en base
+    /// ont été calculés avec l'ancienne clé, donc sans elle le premier import
+    /// d'export XML après le changement ne reconnaîtrait plus **aucune** ligne
+    /// existante et rendrait la base entièrement en double.
+    ///
+    /// Ligne conservée dans chaque groupe : celle qui porte le plus
+    /// d'information — la trace GPX d'abord pour une séance, puis
+    /// l'horodatage à la milliseconde, que seule la synchro iPhone fournit.
+    private static func migrateDedupKeys(_ db: Database) throws {
+        guard try Int.fetchOne(db, sql: "PRAGMA user_version") == 0 else { return }
+
+        // La clé est un SHA-256 calculé en Swift : on l'expose à SQLite plutôt
+        // que de matérialiser 1,8 million de modèles pour les réinsérer. Les
+        // dates arrivent sous leur forme stockée (`2026-08-16T05:49:20.622Z`),
+        // dont les 19 premiers caractères sont déjà la seconde en UTC.
+        func text(_ value: DatabaseValue) -> String { String.fromDatabaseValue(value) ?? "" }
+        func second(_ value: DatabaseValue) -> String { String(text(value).prefix(19)) + "Z" }
+        func number(_ value: DatabaseValue) -> String {
+            DedupKey.rounded(Double.fromDatabaseValue(value) ?? 0)
+        }
+
+        let recordKey = DatabaseFunction("dedup_key_record", argumentCount: 6, pure: true) { values in
+            DedupKey.digest([text(values[0]), text(values[1]), text(values[2]),
+                             number(values[3]), second(values[4]), second(values[5])])
+        }
+        let workoutKey = DatabaseFunction("dedup_key_workout", argumentCount: 5, pure: true) { values in
+            DedupKey.digest([text(values[0]), text(values[1]), number(values[2]),
+                             second(values[3]), second(values[4])])
+        }
+        let sleepKey = DatabaseFunction("dedup_key_sleep", argumentCount: 5, pure: true) { values in
+            DedupKey.digest([text(values[0]), text(values[1]), text(values[2]),
+                             second(values[3]), second(values[4])])
+        }
+        db.add(function: recordKey)
+        db.add(function: workoutKey)
+        db.add(function: sleepKey)
+        defer {
+            db.remove(function: recordKey)
+            db.remove(function: workoutKey)
+            db.remove(function: sleepKey)
+        }
+
+        try db.execute(sql: """
+            CREATE TABLE health_record_migrated (
+                id TEXT PRIMARY KEY, type TEXT NOT NULL, sourceName TEXT NOT NULL,
+                device TEXT, unit TEXT, value REAL NOT NULL,
+                startDate TEXT NOT NULL, endDate TEXT NOT NULL, creationDate TEXT
+            )
+            """)
+        try db.execute(sql: """
+            INSERT OR IGNORE INTO health_record_migrated
+            SELECT dedup_key_record(type, sourceName, IFNULL(unit, ''), value, startDate, endDate),
+                   type, sourceName, device, unit, value, startDate, endDate, creationDate
+            FROM health_record
+            ORDER BY (startDate LIKE '%.000Z')
+            """)
+        try db.execute(sql: "DROP TABLE health_record")
+        try db.execute(sql: "ALTER TABLE health_record_migrated RENAME TO health_record")
+        try db.execute(sql: """
+            CREATE INDEX IF NOT EXISTS idx_health_record_type_start
+            ON health_record(type, startDate)
+            """)
+
+        try db.execute(sql: """
+            CREATE TABLE workout_migrated (
+                id TEXT PRIMARY KEY, activityType TEXT NOT NULL, sourceName TEXT NOT NULL,
+                duration REAL NOT NULL, durationUnit TEXT NOT NULL,
+                totalDistance REAL, totalDistanceUnit TEXT,
+                totalEnergyBurned REAL, totalEnergyBurnedUnit TEXT,
+                startDate TEXT NOT NULL, endDate TEXT NOT NULL, routeFileName TEXT
+            )
+            """)
+        try db.execute(sql: """
+            INSERT OR IGNORE INTO workout_migrated
+            SELECT dedup_key_workout(activityType, sourceName, duration, startDate, endDate),
+                   activityType, sourceName, duration, durationUnit,
+                   totalDistance, totalDistanceUnit, totalEnergyBurned, totalEnergyBurnedUnit,
+                   startDate, endDate, routeFileName
+            FROM workout
+            ORDER BY (routeFileName IS NULL), (startDate LIKE '%.000Z')
+            """)
+        try db.execute(sql: "DROP TABLE workout")
+        try db.execute(sql: "ALTER TABLE workout_migrated RENAME TO workout")
+
+        try db.execute(sql: """
+            CREATE TABLE sleep_record_migrated (
+                id TEXT PRIMARY KEY, type TEXT NOT NULL, sourceName TEXT NOT NULL,
+                device TEXT, value TEXT NOT NULL,
+                startDate TEXT NOT NULL, endDate TEXT NOT NULL, creationDate TEXT
+            )
+            """)
+        try db.execute(sql: """
+            INSERT OR IGNORE INTO sleep_record_migrated
+            SELECT dedup_key_sleep(type, sourceName, value, startDate, endDate),
+                   type, sourceName, device, value, startDate, endDate, creationDate
+            FROM sleep_record
+            ORDER BY (startDate LIKE '%.000Z')
+            """)
+        try db.execute(sql: "DROP TABLE sleep_record")
+        try db.execute(sql: "ALTER TABLE sleep_record_migrated RENAME TO sleep_record")
+        try db.execute(sql: """
+            CREATE INDEX IF NOT EXISTS idx_sleep_record_start
+            ON sleep_record(startDate)
+            """)
+
+        try db.execute(sql: "PRAGMA user_version = 1")
     }
 
     /// Store inutilisable, sans base sous-jacente : toute lecture ou écriture
