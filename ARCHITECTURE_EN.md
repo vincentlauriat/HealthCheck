@@ -448,6 +448,26 @@ to the Mac receiver above — HealthKit on the phone, no manual export.
   never the default `RouteStore()`, which points elsewhere and would find no
   file. Corps still shows a waiting screen
   (`CompanionPlaceholderView`) and will be filled in by SP5.
+  Two further sub-screens hang off Home (2026-09-03, SP4): Trends
+  (`CompanionTrendsView`) — four curves, resting heart rate, weight, VO2max
+  and sleep, each doubled by its 7-day moving average — and Correlations
+  (`CompanionCorrelationsView`), the same five questions as on the Mac with
+  their r, their French reading and their scatter plot. Sub-screens, not
+  tabs: five is the limit past which iOS stacks the rest behind a "More"
+  menu. Two measures make Trends honest about what the iPhone actually
+  holds, and either without the other would fall short: the selector stops
+  at 6 months (`TrendPeriod.companionCases`), because HealthKit is only
+  read over `HealthKitReaderLive.initialWindowDays` (180 days) and a
+  "1 year" curve would start mid-axis, indistinguishable from a gap; **and**
+  the screen states the date of the earliest measurement
+  (`TrendsViewModel.earliestMeasurement`) whenever history is shorter than
+  the requested period — a recent HealthKit account has only weeks of depth
+  even over 6 months. "6 months" is the accepted boundary case: expressed in
+  calendar months it reaches up to 184 days, four beyond the window, a
+  missing head measured in days rather than months. Correlations has nothing
+  to bound: `CorrelationsViewModel.windowDays` is already 180, exactly the
+  HealthKit window. `MetricStyle` moved up into `HealthCheckShared/Views/` so
+  each metric keeps the same colour on both targets.
   Pairing and pushing to the Mac, once a tab of their own, now
   sit behind a Réglages button presented as a sheet: they are configuration,
   not a daily destination. Accueil

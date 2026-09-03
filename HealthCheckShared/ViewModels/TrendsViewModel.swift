@@ -24,6 +24,32 @@ enum TrendPeriod: Hashable {
             return .distantPast
         }
     }
+
+    /// Libellé du sélecteur, partagé par les deux cibles pour qu'une période
+    /// ne s'appelle pas « 6 mois » ici et « Six mois » là.
+    var label: String {
+        switch self {
+        case .oneWeek: return "1 semaine"
+        case .oneMonth: return "1 mois"
+        case .threeMonths: return "3 mois"
+        case .sixMonths: return "6 mois"
+        case .oneYear: return "1 an"
+        case .all: return "Tout"
+        }
+    }
+
+    /// Les seules périodes qui ont un sens sur l'iPhone. HealthKit n'y est lu
+    /// que sur `HealthKitReaderLive.initialWindowDays` (180 jours) : proposer
+    /// « 1 an » afficherait une courbe qui commence brutalement à mi-axe,
+    /// impossible à distinguer d'un trou dans les données. Le Mac, lui, garde
+    /// toutes les périodes — il possède l'historique depuis 2012.
+    ///
+    /// « 6 mois » est le cas limite retenu : exprimé en mois calendaires il
+    /// remonte jusqu'à 184 jours selon le mois de départ, soit quatre jours
+    /// au-delà de la fenêtre. L'amorce manquante est de l'ordre du jour, pas
+    /// du mois — invisible à l'écran, contrairement aux 185 jours vides que
+    /// laisserait « 1 an ».
+    static let companionCases: [TrendPeriod] = [.oneWeek, .oneMonth, .threeMonths, .sixMonths]
 }
 
 @MainActor
@@ -32,6 +58,20 @@ final class TrendsViewModel: ObservableObject {
     @Published private(set) var weight: [TrendPoint] = []
     @Published private(set) var vo2Max: [TrendPoint] = []
     @Published private(set) var sleepHours: [TrendPoint] = []
+
+    /// Date de la plus ancienne mesure effectivement chargée, toutes séries
+    /// confondues. L'écran iOS s'en sert pour dire depuis quand il a des
+    /// données : sur les 180 jours de fenêtre HealthKit, une courbe peut
+    /// légitimement commencer bien après le début de la période demandée, et
+    /// ce début abrupt ne doit pas se lire comme un trou. Les quatre séries
+    /// sont triées par date croissante — `dailyAverage` et
+    /// `SleepAggregator.nightlyHours` terminent toutes deux par un tri — donc
+    /// le premier point de chacune suffit.
+    var earliestMeasurement: Date? {
+        [restingHeartRate, weight, vo2Max, sleepHours]
+            .compactMap(\.first?.date)
+            .min()
+    }
 
     private let store: HealthStore
     private let resolver: SourcePriorityResolver

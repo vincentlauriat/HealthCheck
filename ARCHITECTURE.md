@@ -483,7 +483,30 @@ manuel.
   `GPXParser` partagé). Les GPX viennent du `RouteStore` de `LocalStore`,
   celui que `CompanionImporter` remplit en lisant HealthKit — jamais le
   `RouteStore()` par défaut, qui pointe ailleurs et ne trouverait aucun
-  fichier. Corps affiche encore un écran d'attente
+  fichier.
+  De l'Accueil partent deux autres sous-écrans (2026-09-03, SP4) :
+  Tendances (`CompanionTrendsView`) — quatre courbes, FC de repos, poids,
+  VO2max et sommeil, chacune doublée de sa moyenne mobile 7 jours — et
+  Corrélations (`CompanionCorrelationsView`), les cinq mêmes questions que
+  sur le Mac avec leur r, leur lecture en français et leur nuage de points.
+  Des sous-écrans, pas des onglets : cinq est la limite au-delà de laquelle
+  iOS empile le reste derrière un menu « Plus ». Deux mesures rendent
+  Tendances honnête sur ce que l'iPhone possède, et l'une sans l'autre
+  serait insuffisante : le sélecteur s'arrête à 6 mois
+  (`TrendPeriod.companionCases`), parce que HealthKit n'est lu que sur
+  `HealthKitReaderLive.initialWindowDays` (180 jours) et qu'une courbe
+  « 1 an » commencerait à mi-axe, indiscernable d'un trou ; **et** l'écran
+  annonce la date de la plus ancienne mesure
+  (`TrendsViewModel.earliestMeasurement`) quand l'historique est plus court
+  que la période demandée — un compte HealthKit récent n'a que quelques
+  semaines de recul même sur 6 mois. « 6 mois » est le cas limite assumé :
+  en mois calendaires il remonte jusqu'à 184 jours, quatre au-delà de la
+  fenêtre, une amorce manquante de l'ordre du jour et non du mois.
+  Corrélations n'a rien à borner : `CorrelationsViewModel.windowDays` vaut
+  déjà 180, exactement la fenêtre HealthKit. `MetricStyle` est remonté dans
+  `HealthCheckShared/Views/` pour que chaque métrique garde la même couleur
+  sur les deux cibles.
+  Corps affiche encore un écran d'attente
   (`CompanionPlaceholderView`) et sera rempli au SP5. L'appairage et l'envoi au Mac, qui formaient un
   onglet, sont passés derrière un bouton Réglages présenté en feuille :
   c'est une configuration, pas une destination quotidienne. Accueil
