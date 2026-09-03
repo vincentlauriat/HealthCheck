@@ -137,7 +137,7 @@ struct CompanionAdvisorView: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text("\(missing.name) — non mesuré")
                     .font(.caption.weight(.medium))
-                Text("\(missing.reason.prefix(1).capitalized)\(missing.reason.dropFirst()) · poids \(missing.nominalWeight.formatted(.percent.precision(.fractionLength(0)))) réparti sur les autres.")
+                Text("\(missing.reason) · poids \(missing.nominalWeight.formatted(.percent.precision(.fractionLength(0)))) réparti sur les autres.")
                     .font(.caption2)
                     .fixedSize(horizontal: false, vertical: true)
             }

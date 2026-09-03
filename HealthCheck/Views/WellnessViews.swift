@@ -101,10 +101,10 @@ struct ReadinessCard: View {
                             HStack {
                                 Text(missing.name).font(.callout.weight(.medium))
                                 Spacer()
-                                Text("non mesuré — \(missing.reason)")
+                                Text("non mesuré")
                                     .font(.caption)
                             }
-                            Text("Poids \(missing.nominalWeight.formatted(.percent.precision(.fractionLength(0)))) réparti sur les autres composantes.")
+                            Text("\(missing.reason) · poids \(missing.nominalWeight.formatted(.percent.precision(.fractionLength(0)))) réparti sur les autres composantes.")
                                 .font(.caption2)
                         }
                         .foregroundStyle(.secondary)

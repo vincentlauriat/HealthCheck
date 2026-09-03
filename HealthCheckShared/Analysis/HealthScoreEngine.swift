@@ -26,7 +26,8 @@ struct MissingComponent: Equatable {
     let systemImage: String
     /// Poids nominal, celui qu'elle aurait pesé si elle avait été mesurée.
     let nominalWeight: Double
-    /// Pourquoi elle manque, en clair.
+    /// Pourquoi elle manque, en clair. Rédigée capitalisée : c'est une
+    /// phrase, pas un fragment à recoller à l'affichage.
     let reason: String
 }
 
@@ -128,10 +129,10 @@ enum HealthScoreEngine {
     /// finiraient par diverger, et c'est le libellé de l'absence qui explique
     /// à l'utilisateur pourquoi son score vaut ce qu'il vaut.
     private static let catalogue: [(name: String, systemImage: String, weight: Double, reason: String)] = [
-        ("Sommeil", "moon.zzz.fill", 0.35, "aucune nuit enregistrée depuis hier"),
-        ("FC repos", "heart.fill", 0.30, "aucune fréquence au repos aujourd'hui"),
-        ("Variabilité cardiaque", "waveform.path.ecg", 0.25, "aucune mesure de VFC aujourd'hui"),
-        ("Équilibre d'activité", "flame.fill", 0.10, "aucune dépense enregistrée hier")
+        ("Sommeil", "moon.zzz.fill", 0.35, "Aucune nuit enregistrée depuis hier"),
+        ("FC repos", "heart.fill", 0.30, "Aucune fréquence au repos aujourd'hui"),
+        ("Variabilité cardiaque", "waveform.path.ecg", 0.25, "Aucune mesure de VFC aujourd'hui"),
+        ("Équilibre d'activité", "flame.fill", 0.10, "Aucune dépense enregistrée hier")
     ]
 
     static func readiness(
