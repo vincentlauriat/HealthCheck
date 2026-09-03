@@ -89,6 +89,31 @@ final class HealthScoreCompositionTests: XCTestCase {
                        "la composante doit porter le nombre de mesures du jour, pas une constante")
     }
 
+    /// Sur un **total**, le nombre d'échantillons ne dit rien de la fiabilité
+    /// de la valeur : 506 échantillons d'énergie un jour et 94 le lendemain
+    /// sont deux totaux également complets. L'afficher inviterait à y lire une
+    /// précision qui n'existe pas — c'est le seul agrégat où la profondeur ne
+    /// doit pas remonter.
+    func test_dailyTotals_carryNoMeasurementDepth() {
+        let calendar = Calendar.current
+        let day = calendar.startOfDay(for: Date(timeIntervalSince1970: 1_786_859_360))
+        let records = (0..<4).map { index in
+            HealthRecord(type: "HKQuantityTypeIdentifierActiveEnergyBurned",
+                         sourceName: "Apple\u{00a0}Watch de Vincent", device: nil, unit: "kcal",
+                         value: 100, startDate: day.addingTimeInterval(Double(index) * 3600),
+                         endDate: day.addingTimeInterval(Double(index) * 3600 + 60),
+                         creationDate: day)
+        }
+
+        let totals = DailyAggregator.totals(records, calendar: calendar)
+        XCTAssertEqual(totals.first?.value, 400)
+        XCTAssertNil(totals.first?.sampleCount,
+                     "un total est complet ou ne l'est pas — sa profondeur n'informe sur rien")
+
+        // Contre-épreuve : sur une moyenne, la profondeur doit bien remonter.
+        XCTAssertEqual(DailyAggregator.averages(records, calendar: calendar).first?.sampleCount, 4)
+    }
+
     /// Toutes les composantes présentes : rien ne manque, et les parts valent
     /// les poids nominaux. Garde le cas nominal honnête — sans lui, un moteur
     /// qui déclarerait toujours « Sommeil manquant » passerait la garde
