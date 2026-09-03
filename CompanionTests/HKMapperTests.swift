@@ -48,8 +48,35 @@ final class HKMapperTests: XCTestCase {
     }
 
     func test_unknownQuantityType_isDropped() {
-        let sample = quantitySample(.bodyMass, unit: .gramUnit(with: .kilo), value: 88.9, duration: 0)
-        XCTAssertNil(HKMapper.record(from: sample)) // balance = territoire Withings (spec §2)
+        // La température corporelle n'alimente aucun écran : c'est elle,
+        // désormais, l'exemple d'un type hors périmètre. `bodyMass` ne l'est
+        // plus — le SP5 a renversé la règle « la balance reste Withings ».
+        let sample = quantitySample(.bodyTemperature, unit: .degreeCelsius(), value: 36.8, duration: 0)
+        XCTAssertNil(HKMapper.record(from: sample))
+    }
+
+    /// Les 7 274 lignes déjà en base vont de 0,03 à 0,4527 : une échelle 0-100
+    /// ferait diverger l'iPhone du Mac sur le même écran. Et le libellé entre
+    /// dans `DedupKey` depuis le 2026-09-03 — s'en écarter recréerait les
+    /// doublons qu'on vient de supprimer.
+    func test_bodyFatPercentage_isMappedAsAFractionUnderTheStoredLabel() throws {
+        let sample = quantitySample(.bodyFatPercentage, unit: .percent(), value: 0.253, duration: 0)
+        let record = try XCTUnwrap(HKMapper.record(from: sample))
+        XCTAssertEqual(record.value, 0.253, accuracy: 0.0001,
+                       "le taux de graisse est stocké en fraction, pas en pourcentage")
+        XCTAssertEqual(record.unit, "%")
+    }
+
+    func test_bodyMass_andLeanMass_areMappedInKilograms() throws {
+        let mass = try XCTUnwrap(HKMapper.record(from: quantitySample(
+            .bodyMass, unit: .gramUnit(with: .kilo), value: 88.5, duration: 0)))
+        XCTAssertEqual(mass.value, 88.5, accuracy: 0.0001)
+        XCTAssertEqual(mass.unit, "kg")
+
+        let lean = try XCTUnwrap(HKMapper.record(from: quantitySample(
+            .leanBodyMass, unit: .gramUnit(with: .kilo), value: 65.2, duration: 0)))
+        XCTAssertEqual(lean.value, 65.2, accuracy: 0.0001)
+        XCTAssertEqual(lean.unit, "kg")
     }
 
     func test_sleepPhases_mapToZipStrings() throws {

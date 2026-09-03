@@ -72,9 +72,20 @@ final class SyncEngineTests: XCTestCase {
                        endDate: Date(timeIntervalSince1970: Double(1_755_900_300 + n)), creationDate: nil)
     }
 
+    /// Sans type local-seul : ces suites-ci portent sur les ancres et le push
+    /// d'un type donné, et la liste par défaut (`SyncEngine.localOnlyTypes`)
+    /// leur ferait ingérer trois types de plus sans rapport avec leur objet.
+    /// Les tests qui portent, eux, sur cette seconde liste utilisent
+    /// `engine(types:localOnly:)`.
     private func engine(types: [String]) -> SyncEngine {
         SyncEngine(reader: reader, pusher: pusher, anchors: anchors, localAnchors: localAnchors,
-                   localImporter: importer, typeIdentifiers: types)
+                   localImporter: importer, typeIdentifiers: types, localOnlyTypeIdentifiers: [])
+    }
+
+    private func engine(types: [String], localOnly: [String]) -> SyncEngine {
+        SyncEngine(reader: reader, pusher: pusher, anchors: anchors, localAnchors: localAnchors,
+                   localImporter: importer, typeIdentifiers: types,
+                   localOnlyTypeIdentifiers: localOnly)
     }
 
     func test_chunk_splitsAtLimit_preservingOrder() {
@@ -282,4 +293,50 @@ final class SyncEngineTests: XCTestCase {
         XCTAssertNotNil(localAnchors.anchor(for: type))
         XCTAssertNil(anchors.anchor(for: type), "l'ancre du Mac n'a rien à voir avec cette passe")
     }
+    // MARK: - Types locaux seuls (SP5)
+
+    /// Un enregistrement qui porte vraiment son type, contrairement au
+    /// `record(_:)` de cette suite qui fabrique toujours des pas : sans ça, on
+    /// ne pourrait pas distinguer un type corporel dans un batch poussé.
+    private func typedRecord(_ type: String) -> ExchangeRecord {
+        ExchangeRecord(type: type, sourceName: "Watch", device: nil, unit: "kg", value: 88.5,
+                       startDate: Date(timeIntervalSince1970: 1_786_859_360),
+                       endDate: Date(timeIntervalSince1970: 1_786_859_360),
+                       creationDate: nil)
+    }
+
+    /// Le poids est lu pour l'écran Corps de l'iPhone et ne doit jamais partir
+    /// vers le Mac, qui tient les mêmes mesures de Withings sous d'autres
+    /// identifiants — les pousser y créerait de vrais doublons (spec §6).
+    ///
+    /// La garde observe ce qui atteint le pousseur, pas la composition des
+    /// listes : comparer `localOnlyTypes` à `defaultTypes` serait vrai par
+    /// construction et survivrait à la mutation qu'on veut attraper.
+    func test_syncAll_ingestsLocalOnlyTypesLocallyAndPushesNoneOfThem() async throws {
+        let pushed = "HKQuantityTypeIdentifierStepCount"
+        let localOnly = SyncEngine.localOnlyTypes
+        reader.provider = { [weak self] type, _ in
+            guard let self else { fatalError() }
+            return TypeDelta(typeIdentifier: type, records: [self.typedRecord(type)],
+                             sleep: [], workouts: [], newAnchor: HKQueryAnchor(fromValue: 1))
+        }
+
+        _ = await engine(types: [pushed], localOnly: localOnly).syncAll()
+
+        let ingestedTypes = Set(importer.ingestedBatches.flatMap { $0.records.map(\.type) })
+        for type in localOnly {
+            XCTAssertTrue(ingestedTypes.contains(type),
+                          "\(type) doit alimenter la base de l'iPhone")
+        }
+
+        let pushedTypes = Set(pusher.pushedBatches.flatMap { $0.records.map(\.type) })
+        // Sans cette assertion, la suivante serait vraie d'un push entièrement
+        // en panne — qui ne pousse rien, donc aucun type corporel non plus.
+        XCTAssertTrue(pushedTypes.contains(pushed), "le push doit bien avoir eu lieu")
+        for type in localOnly {
+            XCTAssertFalse(pushedTypes.contains(type),
+                           "\(type) ne doit jamais atteindre le Mac")
+        }
+    }
+
 }
