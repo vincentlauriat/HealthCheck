@@ -181,7 +181,7 @@ struct CompanionAdvisorView: View {
                 .font(.headline)
             Text(vo2VerdictLabel(trend.verdict))
                 .font(.callout.weight(.semibold))
-            Text("\(trend.recentAverage.formatted(.number.precision(.fractionLength(1)))) mL/min·kg (\(trend.delta >= 0 ? "+" : "")\(trend.delta.formatted(.number.precision(.fractionLength(1)))) vs. les 90 jours précédents)")
+            Text("Moyenne 30 jours : \(trend.recentAverage.formatted(.number.precision(.fractionLength(1)))) mL/min·kg (\(trend.delta >= 0 ? "+" : "")\(trend.delta.formatted(.number.precision(.fractionLength(1)))) vs. les 90 jours précédents)")
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 // « mL/min·kg » se lit caractère par caractère sans ceci.
@@ -205,7 +205,7 @@ struct CompanionAdvisorView: View {
         let average = trend.recentAverage.formatted(.number.precision(.fractionLength(1)))
         let delta = abs(trend.delta).formatted(.number.precision(.fractionLength(1)))
         let direction = trend.delta >= 0 ? "en hausse de" : "en baisse de"
-        return "\(average) millilitres par minute et par kilo, \(direction) \(delta) par rapport aux 90 jours précédents"
+        return "moyenne sur 30 jours, \(average) millilitres par minute et par kilo, \(direction) \(delta) par rapport aux 90 jours précédents"
     }
 
     private func vo2VerdictLabel(_ verdict: VO2MaxVerdict) -> String {

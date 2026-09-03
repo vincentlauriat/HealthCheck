@@ -88,7 +88,13 @@ struct CompanionTrainingView: View {
                 Text("\(trend.recentAverage.formatted(.number.precision(.fractionLength(1)))) mL/min·kg")
                     .font(.callout.weight(.semibold))
                     .monospacedDigit()
-                    .accessibilityLabel("VO2max \(trend.recentAverage.formatted(.number.precision(.fractionLength(1)))) millilitres par minute et par kilo")
+                    .accessibilityLabel("VO2max, moyenne sur 30 jours, \(trend.recentAverage.formatted(.number.precision(.fractionLength(1)))) millilitres par minute et par kilo")
+                // Sans cette ligne le nombre se lit comme la dernière mesure,
+                // alors que Tendances en affiche une autre sous le même
+                // libellé : les deux sont justes, ce sont deux grandeurs.
+                Text("Moyenne des 30 derniers jours")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
             if let alert = status.alert {
                 alertLabel(alert)
