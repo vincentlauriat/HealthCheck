@@ -53,7 +53,7 @@ struct CompanionImporter {
                            startDate: exchange.startDate, endDate: exchange.endDate,
                            routeFileName: routeFileName)
         }
-        inserted += try store.insertWorkouts(workouts)
+        inserted += try store.insertWorkouts(workouts).inserted
         return inserted
     }
 

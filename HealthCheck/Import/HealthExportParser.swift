@@ -15,6 +15,27 @@ final class HealthExportParser: NSObject, XMLParserDelegate {
 
     private var currentWorkoutAttributes: [String: String]?
     private var currentWorkoutRouteFileName: String?
+    /// Somme et unité de chaque `<WorkoutStatistics>` de la séance en cours.
+    ///
+    /// L'export d'Apple **ne porte pas** `totalDistance` ni `totalEnergyBurned`
+    /// en attributs de `<Workout>` : vérifié le 2026-09-04 sur un export de
+    /// 1 625 séances, aucune ne les avait. L'information vit dans des enfants
+    /// `<WorkoutStatistics type="…" sum="…" unit="…"/>`. Lire les seuls
+    /// attributs faisait perdre la distance de 98 % des séances importées, que
+    /// `TrainingPlanner.distanceKm` remplaçait alors par une estimation à
+    /// 7 min/km.
+    private var currentWorkoutStatistics: [String: (sum: Double, unit: String?)] = [:]
+
+    /// Par ordre de préférence. Une séance n'en porte qu'une en pratique ;
+    /// l'ordre ne tranche que le cas théorique où plusieurs coexistent.
+    /// Relevé sur l'export réel : marche/course (1 262), vélo (40),
+    /// natation (26, **en mètres**), ski (1).
+    private static let distanceStatisticTypes = [
+        "HKQuantityTypeIdentifierDistanceWalkingRunning",
+        "HKQuantityTypeIdentifierDistanceCycling",
+        "HKQuantityTypeIdentifierDistanceSwimming",
+        "HKQuantityTypeIdentifierDistanceDownhillSnowSports"
+    ]
 
     func parse(
         fileURL: URL,
@@ -98,6 +119,13 @@ final class HealthExportParser: NSObject, XMLParserDelegate {
         case "Workout":
             currentWorkoutAttributes = attributeDict
             currentWorkoutRouteFileName = nil
+            currentWorkoutStatistics = [:]
+
+        case "WorkoutStatistics":
+            guard currentWorkoutAttributes != nil,
+                  let type = attributeDict["type"],
+                  let sum = attributeDict["sum"].flatMap(Double.init) else { break }
+            currentWorkoutStatistics[type] = (sum, attributeDict["unit"])
 
         case "FileReference":
             if currentWorkoutAttributes != nil, let path = attributeDict["path"] {
@@ -119,7 +147,17 @@ final class HealthExportParser: NSObject, XMLParserDelegate {
         defer {
             currentWorkoutAttributes = nil
             currentWorkoutRouteFileName = nil
+            currentWorkoutStatistics = [:]
         }
+
+        // L'attribut d'abord quand il existe — un export ancien peut le
+        // porter — puis la statistique, qui est la seule source des exports
+        // récents.
+        let statistics = currentWorkoutStatistics
+        let distance = Self.distanceStatisticTypes.lazy
+            .compactMap { statistics[$0] }
+            .first
+        let energy = currentWorkoutStatistics["HKQuantityTypeIdentifierActiveEnergyBurned"]
 
         guard
             let activityType = attributes["workoutActivityType"],
@@ -137,10 +175,10 @@ final class HealthExportParser: NSObject, XMLParserDelegate {
             sourceName: sourceName,
             duration: duration,
             durationUnit: attributes["durationUnit"] ?? "",
-            totalDistance: attributes["totalDistance"].flatMap(Double.init),
-            totalDistanceUnit: attributes["totalDistanceUnit"],
-            totalEnergyBurned: attributes["totalEnergyBurned"].flatMap(Double.init),
-            totalEnergyBurnedUnit: attributes["totalEnergyBurnedUnit"],
+            totalDistance: attributes["totalDistance"].flatMap(Double.init) ?? distance?.sum,
+            totalDistanceUnit: attributes["totalDistanceUnit"] ?? distance?.unit,
+            totalEnergyBurned: attributes["totalEnergyBurned"].flatMap(Double.init) ?? energy?.sum,
+            totalEnergyBurnedUnit: attributes["totalEnergyBurnedUnit"] ?? energy?.unit,
             startDate: startDate,
             endDate: endDate,
             routeFileName: currentWorkoutRouteFileName

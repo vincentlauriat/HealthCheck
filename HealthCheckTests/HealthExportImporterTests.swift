@@ -61,4 +61,48 @@ final class HealthExportImporterTests: XCTestCase {
             XCTAssertTrue(error is DatabaseError, "expected the underlying store error to surface, got \(error)")
         }
     }
+
+    /// La clé de dédoublonnage d'une séance ne dépend ni de la distance ni de
+    /// l'énergie. Un `INSERT OR IGNORE` seul laissait donc à jamais vides les
+    /// 1 551 séances importées avant que le parseur n'apprenne à lire
+    /// `<WorkoutStatistics>` : corriger le parseur n'aurait rien réparé du
+    /// passé. Un import doit compléter ce qui manque — et ne jamais effacer ce
+    /// qui est déjà là.
+    func test_insertWorkouts_fillsInWhatWasMissingWithoutOverwriting() throws {
+        let store = try HealthStore(path: ":memory:")
+        let start = Date(timeIntervalSince1970: 1_786_859_360)
+        func run(distance: Double?, unit: String?, energy: Double?, route: String?) -> Workout {
+            Workout(activityType: "HKWorkoutActivityTypeRunning", sourceName: "Apple Watch de Vincent",
+                    duration: 26, durationUnit: "min",
+                    totalDistance: distance, totalDistanceUnit: unit,
+                    totalEnergyBurned: energy, totalEnergyBurnedUnit: energy.map { _ in "kcal" },
+                    startDate: start, endDate: start.addingTimeInterval(1560), routeFileName: route)
+        }
+
+        // Import d'avant le correctif : ni distance ni énergie.
+        let first = try store.insertWorkouts([run(distance: nil, unit: nil, energy: nil, route: nil)])
+        XCTAssertEqual(first.inserted, 1)
+        XCTAssertEqual(first.enriched, 0)
+
+        // Réimport du même export, cette fois lu correctement.
+        let second = try store.insertWorkouts([run(distance: 4.20131, unit: "km", energy: 301.571,
+                                                   route: "route.gpx")])
+        XCTAssertEqual(second.inserted, 0, "la séance est la même, pas une nouvelle")
+        XCTAssertEqual(second.enriched, 1)
+
+        let stored = try XCTUnwrap(store.workouts(from: start.addingTimeInterval(-60),
+                                                  to: start.addingTimeInterval(3600)).first)
+        XCTAssertEqual(try XCTUnwrap(stored.totalDistance), 4.20131, accuracy: 0.00001)
+        XCTAssertEqual(stored.totalDistanceUnit, "km")
+        XCTAssertEqual(try XCTUnwrap(stored.totalEnergyBurned), 301.571, accuracy: 0.001)
+        XCTAssertEqual(stored.routeFileName, "route.gpx")
+
+        // Un import plus pauvre ne doit rien effacer.
+        let third = try store.insertWorkouts([run(distance: nil, unit: nil, energy: nil, route: nil)])
+        XCTAssertEqual(third.enriched, 0, "rien à compléter, donc aucune écriture")
+        let after = try XCTUnwrap(store.workouts(from: start.addingTimeInterval(-60),
+                                                 to: start.addingTimeInterval(3600)).first)
+        XCTAssertEqual(try XCTUnwrap(after.totalDistance), 4.20131, accuracy: 0.00001)
+        XCTAssertEqual(after.routeFileName, "route.gpx")
+    }
 }

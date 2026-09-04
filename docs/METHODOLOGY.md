@@ -138,6 +138,31 @@ moyenne glissante si elle est courte et isolée.
 
 ---
 
+### Distance des séances : d'où elle vient
+
+L'export d'Apple **ne porte pas** `totalDistance` en attribut de `<Workout>` —
+vérifié le 2026-09-04 sur un export de 1 625 séances, aucune ne l'avait.
+L'information vit dans des enfants
+`<WorkoutStatistics type="HKQuantityTypeIdentifierDistanceWalkingRunning"
+sum="…" unit="…"/>`, avec quatre variantes selon l'activité : marche/course
+(1 262, km), vélo (40, km), natation (26, **m**), ski (1, km).
+
+`HealthExportParser` ne lisait que l'attribut. Conséquence mesurée sur la base
+réelle : **1 551 séances sur 1 582 sans distance** (98 %), dont 219 des 227
+séances de course de l'Apple Watch. Ces séances-là ne comptent pas pour zéro —
+`TrainingPlanner.distanceKm` retombe sur la durée à
+`fallbackPaceMinutesPerKm = 7.0`, une allure fixe. La charge d'entraînement
+courante n'était pas touchée (les 28 derniers jours viennent de la synchro
+iPhone, qui porte la distance), mais toute analyse remontant avant août 2026
+reposait sur cette allure supposée.
+
+Corollaire important : la clé de dédoublonnage d'une séance
+(`Workout.dedupKey`) ne dépend **ni** de la distance **ni** de l'énergie, et
+`insertWorkouts` faisait un `INSERT OR IGNORE` — réimporter n'aurait donc rien
+réparé. `insertWorkouts` complète désormais, en `COALESCE(existant, nouveau)`,
+ce qui manque à une séance déjà connue : un import ne peut qu'ajouter de
+l'information, jamais en effacer.
+
 ## 4. Score de forme quotidien — `HealthScoreEngine`
 
 **Question :** « suis-je en forme aujourd'hui ? » — un score 0-100 façon

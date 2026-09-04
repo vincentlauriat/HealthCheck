@@ -246,11 +246,48 @@ final class HealthStore: @unchecked Sendable {
     }
 
     @discardableResult
-    func insertWorkouts(_ workouts: [Workout], batchSize: Int = 5000) throws -> Int {
+    /// Insère les séances inconnues et **complète** celles déjà connues dont
+    /// il manquait la distance, l'énergie ou la trace GPS.
+    ///
+    /// Le complément n'est pas un raffinement : la clé de dédoublonnage d'une
+    /// séance ne dépend ni de la distance ni de l'énergie (§`Workout.dedupKey`),
+    /// donc un `INSERT OR IGNORE` seul laissait à jamais vides les 1 551
+    /// séances importées avant le 2026-09-04 — date à laquelle le parseur a
+    /// appris à lire `<WorkoutStatistics>`. Sans ce complément, corriger le
+    /// parseur n'aurait rien réparé du passé.
+    ///
+    /// `COALESCE` dans ce sens précis — l'existant d'abord — garantit qu'un
+    /// import ne peut qu'ajouter de l'information, jamais en effacer.
+    func insertWorkouts(_ workouts: [Workout], batchSize: Int = 5000) throws -> (inserted: Int, enriched: Int) {
         var insertedCount = 0
+        var enrichedCount = 0
         for batch in stride(from: 0, to: workouts.count, by: batchSize).map({ Array(workouts[$0..<min($0 + batchSize, workouts.count)]) }) {
             try queue().write { db in
                 for workout in batch {
+                    // D'abord le complément, pour que `changesCount` ci-dessous
+                    // ne compte que de vraies insertions.
+                    try db.execute(
+                        sql: """
+                            UPDATE workout SET
+                                totalDistance = COALESCE(totalDistance, ?),
+                                totalDistanceUnit = COALESCE(totalDistanceUnit, ?),
+                                totalEnergyBurned = COALESCE(totalEnergyBurned, ?),
+                                totalEnergyBurnedUnit = COALESCE(totalEnergyBurnedUnit, ?),
+                                routeFileName = COALESCE(routeFileName, ?)
+                            WHERE id = ?
+                              AND ((totalDistance IS NULL AND ? IS NOT NULL)
+                                OR (totalEnergyBurned IS NULL AND ? IS NOT NULL)
+                                OR (routeFileName IS NULL AND ? IS NOT NULL))
+                            """,
+                        arguments: [
+                            workout.totalDistance, workout.totalDistanceUnit,
+                            workout.totalEnergyBurned, workout.totalEnergyBurnedUnit,
+                            workout.routeFileName, workout.dedupKey,
+                            workout.totalDistance, workout.totalEnergyBurned, workout.routeFileName
+                        ]
+                    )
+                    enrichedCount += db.changesCount
+
                     try db.execute(
                         sql: """
                             INSERT OR IGNORE INTO workout
@@ -272,7 +309,7 @@ final class HealthStore: @unchecked Sendable {
                 }
             }
         }
-        return insertedCount
+        return (insertedCount, enrichedCount)
     }
 
     func records(type: String, from: Date, to: Date) throws -> [HealthRecord] {
