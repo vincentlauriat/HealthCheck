@@ -535,6 +535,19 @@ manuel.
   Santé et l'API Withings, et le libellé d'unité (`kg`, `%`) entre dans
   `DedupKey` — s'en écarter recréerait les doublons supprimés le 2026-09-03.
 
+  **Le score refuse désormais de conclure sur trop peu.** Deux verrous posés
+  le 2026-09-04. (1) `WellnessOrchestrator` n'attribue la journée d'hier que
+  si la base connaît quelque chose de postérieur à elle — critère factuel,
+  sans heure limite arbitraire. (2) `ReadinessScore.measuredWeight` porte
+  `totalWeight` **avant** renormalisation, la grandeur que la redistribution
+  effaçait, et `HealthScoreEngine.minimumMeasuredWeight = 0,50` en fixe le
+  plancher. Sous ce seuil, `isConclusive` est faux et trois consommateurs se
+  taisent ensemble : les deux vues affichent « Score indisponible » avec la
+  part mesurée et les composantes manquantes, `DailyAdviceEngine` ne rend
+  aucun conseil, `TrainingLoadMonitor` retient son alerte de forme basse.
+  L'objet reste non-nul à dessein — faire disparaître la carte remplacerait un
+  chiffre faux par un silence inexplicable.
+
   **Une journée « complète » ne l'est que dans le calendrier.** Mesuré le
   2026-09-04 en lançant `WellnessOrchestrator.compute` sur la base réelle du
   Mac : 13,8 / « Récupération conseillée », trois composantes absentes, et

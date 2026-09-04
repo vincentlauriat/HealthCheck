@@ -270,6 +270,40 @@ Le Mac n'affiche donc pas un score périmé mais plausible : il affiche un
 verdict assuré fabriqué à partir d'une synchro interrompue en cours de
 matinée. C'est un défaut de code, pas une simple péremption de données.
 
+**Les deux correctifs, arrêtés le 2026-09-04.**
+
+*Une journée n'est notée que si elle est close.* `WellnessOrchestrator`
+retenait la veille sur le seul test `$0.date < startOfToday`. Il exige
+désormais que la base connaisse quelque chose de **postérieur** à cette
+journée — sans quoi rien ne dit où elle a été coupée. Le critère est factuel
+et ne fixe aucune heure limite : un seuil horaire se tromperait sur une
+journée qui finit tôt, et serait arbitraire là où celui-ci est vérifiable.
+
+*Un score n'est annoncé que si la moitié du panier a été mesurée.*
+`ReadinessScore.measuredWeight` porte `totalWeight` avant renormalisation —
+la grandeur même que la redistribution effaçait, et dont l'effacement rendait
+un panier de 0,10 indiscernable d'un panier complet.
+`HealthScoreEngine.minimumMeasuredWeight = 0,50` en fixe le plancher.
+
+`readiness(...)` ne rend d'ailleurs **plus jamais `nil`** : quand rien n'a été
+mesuré — le cas exact du Mac ce 4 septembre une fois les deux verrous posés —
+il rend un score à 0 portant les quatre absences. Les deux vues masquaient
+sinon toute la section « Forme du jour », et la carte disparaissait sans un
+mot : un écran vide n'apprend rien, la liste des absences dit quoi réparer.
+
+En deçà du seuil, `isConclusive` est faux et **trois consommateurs se taisent**
+plutôt qu'un seul : les deux vues affichent « Score indisponible » avec la part
+réellement mesurée et la liste des composantes manquantes ; `DailyAdviceEngine`
+ne rend aucun conseil du jour ; `TrainingLoadMonitor` n'émet plus son alerte
+« Forme du jour basse ». Le score reste calculé et l'objet reste non-nul :
+faire disparaître la carte aurait remplacé un chiffre faux par un silence
+inexplicable.
+
+Ce seuil est un **choix**, pas une mesure. Il a un coût visible : cinq gardes
+du dépôt notaient un score sur la seule FC repos — 0,30 du panier — et ont dû
+recevoir une seconde composante pour continuer d'observer ce qu'elles
+vérifient. C'est précisément le signe que le changement mord.
+
 `TrendPoint.sampleCount` et `ScoreComponent.sampleCount` portent donc la
 profondeur de mesure jusqu'à l'écran (« 1 mesure », « 9 mesures »), dans les
 deux applications — sur les **moyennes** seulement : sur un total (énergie),

@@ -10,13 +10,24 @@ final class CompanionAdvisorViewModelTests: XCTestCase {
     // Baseline dégradée : FC repos +10 % vs. 10 jours à 60 bpm -> readiness
     // "Récupération conseillée" -> palier .repos. Fixture identique à celle
     // du sous-projet 3 (weight-advisor), déjà vérifiée produire ce résultat.
-    private func insertDegradedRestingHRHistory(_ store: HealthStore, now: Date, calendar: Calendar) throws {
+    private func insertDegradedRecoveryHistory(_ store: HealthStore, now: Date, calendar: Calendar) throws {
         var records: [HealthRecord] = (1...10).map { daysAgo in
             record(type: "HKQuantityTypeIdentifierRestingHeartRate", sourceName: "Watch", value: 60,
                   start: calendar.date(byAdding: .day, value: -daysAgo, to: calendar.startOfDay(for: now))!.addingTimeInterval(3600))
         }
         records.append(record(type: "HKQuantityTypeIdentifierRestingHeartRate", sourceName: "Watch",
                               value: 66, start: calendar.startOfDay(for: now).addingTimeInterval(3600)))
+        // Une seconde composante de récupération. La FC repos seule ne pèse
+        // que 0,30 du panier nominal, sous `minimumMeasuredWeight` : le moteur
+        // refuserait de conclure et le conseil du jour se tairait avec lui.
+        // VFC 10 jours à 40 ms puis 20 aujourd'hui → composante à 0, panier à
+        // 0,55, score global ≈ 22 : le palier observé reste REPOS.
+        records += (1...10).map { daysAgo in
+            record(type: "HKQuantityTypeIdentifierHeartRateVariabilitySDNN", sourceName: "Watch", value: 40,
+                  start: calendar.date(byAdding: .day, value: -daysAgo, to: calendar.startOfDay(for: now))!.addingTimeInterval(3600))
+        }
+        records.append(record(type: "HKQuantityTypeIdentifierHeartRateVariabilitySDNN", sourceName: "Watch",
+                              value: 20, start: calendar.startOfDay(for: now).addingTimeInterval(3600)))
         try store.insertRecords(records)
     }
 
@@ -24,7 +35,7 @@ final class CompanionAdvisorViewModelTests: XCTestCase {
         let store = try HealthStore(path: ":memory:")
         let now = Calendar.current.startOfDay(for: Date()).addingTimeInterval(23 * 3600)
         let calendar = Calendar.current
-        try insertDegradedRestingHRHistory(store, now: now, calendar: calendar)
+        try insertDegradedRecoveryHistory(store, now: now, calendar: calendar)
 
         let viewModel = CompanionAdvisorViewModel(store: store, resolver: SourcePriorityResolver(priority: ["Watch", "iPhone"]), now: { now })
         await viewModel.refresh()
@@ -60,14 +71,22 @@ final class CompanionAdvisorViewModelTests: XCTestCase {
         XCTAssertEqual(viewModel.vo2Trend?.verdict, .rising)
     }
 
-    func test_refresh_emptyStore_readinessAndAdviceAreNilWithoutError() async throws {
+    /// Base vide : plus rien ne casse, et le score existe désormais sous une
+    /// forme non concluante plutôt que `nil` — c'est lui qui porte la liste
+    /// des quatre absences, la seule chose que l'écran ait à dire. Aucun
+    /// chiffre n'en sort : ni conseil du jour, ni verdict.
+    func test_refresh_emptyStore_reportsAnInconclusiveScoreWithoutError() async throws {
         let store = try HealthStore(path: ":memory:")
         let viewModel = CompanionAdvisorViewModel(store: store, resolver: SourcePriorityResolver(priority: ["Watch", "iPhone"]))
         await viewModel.refresh()
 
         XCTAssertTrue(viewModel.hasLoaded)
         XCTAssertFalse(viewModel.storeUnavailable)
-        XCTAssertNil(viewModel.readiness)
+        let readiness = try XCTUnwrap(viewModel.readiness)
+        XCTAssertFalse(readiness.isConclusive)
+        XCTAssertEqual(readiness.measuredWeight, 0)
+        XCTAssertEqual(readiness.missing.count, 4,
+                       "les quatre absences sont ce qui reste à afficher")
         XCTAssertNil(viewModel.dailyAdvice)
         XCTAssertNil(viewModel.vo2Trend)
         XCTAssertNil(viewModel.vo2MaxAlert)
@@ -222,7 +241,7 @@ final class CompanionAdvisorViewModelTests: XCTestCase {
         let calendar = Calendar.current
         let now = calendar.startOfDay(for: Date(timeIntervalSince1970: 1_786_859_360))
             .addingTimeInterval(23 * 3600)
-        try insertDegradedRestingHRHistory(store, now: now, calendar: calendar)
+        try insertDegradedRecoveryHistory(store, now: now, calendar: calendar)
 
         let resolver = SourcePriorityResolver(priority: ["Watch", "iPhone"])
         let withoutWeight = CompanionAdvisorViewModel(store: store, resolver: resolver, now: { now })

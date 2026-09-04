@@ -82,7 +82,10 @@ enum TrainingLoadMonitor {
                         + "un nouveau plan ne repart jamais sous "
                         + formatKm(TrainingPlanner.minimumStartVolumeKm) + " km."))
             }
-            if let readiness, readiness.value < lowReadinessScore,
+            // `isConclusive` : ne pas transformer un panier trop mince en
+            // conseil de séance — un score assis sur la seule activité
+            // dirait « forme basse » dès que la veille a été calme.
+            if let readiness, readiness.isConclusive, readiness.value < lowReadinessScore,
                progress.matched.contains(where: {
                    !$0.isDone && ($0.session.kind == .longRun || $0.session.kind == .hills)
                }) {

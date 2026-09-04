@@ -55,9 +55,25 @@ struct ReadinessCard: View {
     var body: some View {
         HStack(alignment: .center, spacing: 28) {
             VStack(spacing: 8) {
-                ScoreRingView(score: readiness.value)
-                Text(readiness.label)
-                    .font(.subheadline.weight(.semibold))
+                if readiness.isConclusive {
+                    ScoreRingView(score: readiness.value)
+                    Text(readiness.label)
+                        .font(.subheadline.weight(.semibold))
+                } else {
+                    // Montrer le chiffre serait pire que ne rien montrer : il
+                    // se lirait comme un verdict alors que la majorité du
+                    // panier n'a pas été mesurée. La colonne de droite dit
+                    // exactement ce qui manque.
+                    Image(systemName: "questionmark.circle")
+                        .font(.system(size: 44, weight: .light))
+                        .foregroundStyle(.secondary)
+                    Text("Score indisponible")
+                        .font(.subheadline.weight(.semibold))
+                    Text("\(readiness.measuredWeight.formatted(.percent.precision(.fractionLength(0)))) du calcul mesuré")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
+                }
             }
 
             VStack(alignment: .leading, spacing: 12) {
