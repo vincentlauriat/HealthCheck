@@ -54,6 +54,21 @@ final class TrainingPlannerTests: XCTestCase {
 
     // MARK: - Lectures de charge
 
+    /// `distanceKm` normalise l'unité au lieu de lire `totalDistance` brut :
+    /// une séance en mètres pèserait mille fois trop lourd dans la charge.
+    func test_distanceKm_readsTheUnitRatherThanTheRawNumber() {
+        let start = Date(timeIntervalSince1970: 1_700_000_000)
+        let inMetres = Workout(
+            activityType: "HKWorkoutActivityTypeRunning", sourceName: "Watch",
+            duration: 30, durationUnit: "min",
+            totalDistance: 5000, totalDistanceUnit: "m",
+            totalEnergyBurned: nil, totalEnergyBurnedUnit: nil,
+            startDate: start, endDate: start.addingTimeInterval(1800),
+            routeFileName: nil
+        )
+        XCTAssertEqual(TrainingPlanner.distanceKm(inMetres), 5.0, accuracy: 0.0001)
+    }
+
     func test_distanceKm_usesRealDistanceWhenPresent() {
         XCTAssertEqual(TrainingPlanner.distanceKm(run("2026-08-18", km: 5.0, minutes: 60)),
                        5.0, accuracy: 0.001)

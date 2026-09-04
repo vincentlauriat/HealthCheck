@@ -37,6 +37,33 @@ final class WorkoutStatsEngineTests: XCTestCase {
         XCTAssertNil(WorkoutStatsEngine.durationMinutes(workout("t", start: base, minutes: 42, unit: "furlong")))
     }
 
+    private func swim(metres: Double, unit: String?) -> Workout {
+        let start = Date(timeIntervalSince1970: 1_700_000_000)
+        return Workout(
+            activityType: "HKWorkoutActivityTypeSwimming", sourceName: "Watch",
+            duration: 30, durationUnit: "min",
+            totalDistance: metres, totalDistanceUnit: unit,
+            totalEnergyBurned: nil, totalEnergyBurnedUnit: nil,
+            startDate: start, endDate: start.addingTimeInterval(1800),
+            routeFileName: nil
+        )
+    }
+
+    /// L'export réel mélange les unités : les nages sont en mètres, tout le
+    /// reste en kilomètres. Lire `totalDistance` brut donnerait « 1 500 km »
+    /// pour un 1 500 m.
+    func test_distanceKilometres_normalizesMetresToKilometres() {
+        XCTAssertEqual(WorkoutStatsEngine.distanceKilometres(swim(metres: 1500, unit: "m")), 1.5)
+        XCTAssertEqual(WorkoutStatsEngine.distanceKilometres(swim(metres: 12.4, unit: "km")), 12.4)
+    }
+
+    /// Même discipline que `durationMinutes` : sans unité reconnue, on ne
+    /// devine pas l'échelle.
+    func test_distanceKilometres_unrecognisedUnit_returnsNilRatherThanGuessing() {
+        XCTAssertNil(WorkoutStatsEngine.distanceKilometres(swim(metres: 1500, unit: "furlong")))
+        XCTAssertNil(WorkoutStatsEngine.distanceKilometres(swim(metres: 1500, unit: nil)))
+    }
+
     func test_label_mapsKnownTypesAndStripsPrefixOtherwise() {
         XCTAssertEqual(WorkoutStatsEngine.label(for: "HKWorkoutActivityTypeRunning"), "Course")
         XCTAssertEqual(WorkoutStatsEngine.label(for: "HKWorkoutActivityTypePickleball"), "Pickleball")
