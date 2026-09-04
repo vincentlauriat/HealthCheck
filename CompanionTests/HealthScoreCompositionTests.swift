@@ -15,6 +15,45 @@ final class HealthScoreCompositionTests: XCTestCase {
     /// faute de nuit enregistrée depuis le 25 août, le Mac affichait 97/100
     /// « Excellente forme » alors que sa composante la plus lourde (0,35)
     /// manquait. Le score doit donc dire ce qu'il n'a pas mesuré.
+    /// Le seuil de refus (b). Le 2026-09-04 le Mac annonçait 13,8
+    /// « Récupération conseillée » sur le seul équilibre d'activité : 0,10 de
+    /// poids nominal redistribué à 100 %, un verdict tranché sorti de presque
+    /// rien.
+    func test_readiness_withOnlyTheLightestComponent_refusesToConclude() throws {
+        let score = try XCTUnwrap(HealthScoreEngine.readiness(
+            sleep: nil, restingHeartRate: nil, hrv: nil,
+            activity: component("Équilibre d'activité", score: 13.8)))
+
+        XCTAssertEqual(score.measuredWeight, 0.10, accuracy: 0.0001,
+                       "seul l'équilibre d'activité a été mesuré")
+        XCTAssertFalse(score.isConclusive,
+                       "0,10 du panier ne suffit pas à prononcer un verdict")
+        XCTAssertEqual(score.missing.count, 3)
+    }
+
+    /// Le seuil ne doit pas non plus refuser un panier raisonnable : sommeil
+    /// et FC repos font 0,65, au-dessus de la moitié.
+    func test_readiness_withMostOfTheBasket_concludes() throws {
+        let score = try XCTUnwrap(HealthScoreEngine.readiness(
+            sleep: component("Sommeil", score: 80),
+            restingHeartRate: component("FC repos", score: 70),
+            hrv: nil, activity: nil))
+
+        XCTAssertEqual(score.measuredWeight, 0.65, accuracy: 0.0001)
+        XCTAssertTrue(score.isConclusive)
+    }
+
+    /// Un score non concluant ne doit pas ressortir déguisé en conseil du
+    /// jour : le conseil se lit comme un verdict.
+    func test_dailyAdvice_staysSilentOnAnInconclusiveScore() {
+        let inconclusive = try? XCTUnwrap(HealthScoreEngine.readiness(
+            sleep: nil, restingHeartRate: nil, hrv: nil,
+            activity: component("Équilibre d'activité", score: 13.8)))
+
+        XCTAssertNil(DailyAdviceEngine.advise(readiness: inconclusive, loadAlerts: [],
+                                              vo2MaxAlert: nil, weightAlert: nil))
+    }
+
     func test_readiness_reportsWhatItCouldNotMeasure() throws {
         let score = try XCTUnwrap(HealthScoreEngine.readiness(
             sleep: nil,
@@ -53,6 +92,85 @@ final class HealthScoreCompositionTests: XCTestCase {
     }
 
     // MARK: - Profondeur de mesure
+
+    private func energyRecord(kcal: Double, daysAgo: Int, hour: Int, now: Date, calendar: Calendar) -> HealthRecord {
+        let start = calendar.date(byAdding: .day, value: -daysAgo, to: calendar.startOfDay(for: now))!
+            .addingTimeInterval(Double(hour) * 3600)
+        return HealthRecord(type: "HKQuantityTypeIdentifierActiveEnergyBurned",
+                            sourceName: "Apple\u{00a0}Watch de Vincent", device: nil, unit: "kcal",
+                            value: kcal, startDate: start, endDate: start.addingTimeInterval(300),
+                            creationDate: start)
+    }
+
+    /// Une journée complète au calendrier ne l'est pas forcément dans les
+    /// données (a). Le 2026-09-04, la base du Mac s'arrêtait au 3 septembre à
+    /// 10 h 28 : ses 231 kcal de matinée, comparés aux 820 habituels,
+    /// produisaient à eux seuls « Récupération conseillée » à 13,8.
+    ///
+    /// Le critère ne fixe aucune heure limite : hier n'est close que si l'on
+    /// connaît quelque chose de postérieur à elle.
+    func test_wellness_withYesterdayCutShort_doesNotScoreActivity() throws {
+        let store = try HealthStore(path: ":memory:")
+        let calendar = Calendar.current
+        let now = calendar.startOfDay(for: Date(timeIntervalSince1970: 1_786_859_360))
+            .addingTimeInterval(20 * 3600)
+
+        // Huit jours pleins de baseline, à 800 kcal réparties sur la journée.
+        var records: [HealthRecord] = []
+        for day in 2...9 {
+            records += [8, 12, 16, 20].map {
+                energyRecord(kcal: 200, daysAgo: day, hour: $0, now: now, calendar: calendar)
+            }
+        }
+        // Hier : la synchro s'arrête à 10 h. 200 kcal au lieu de 800.
+        records.append(energyRecord(kcal: 200, daysAgo: 1, hour: 10, now: now, calendar: calendar))
+        // Une FC repos pour que le score existe : sans elle, écarter
+        // l'activité ne laisserait aucune composante et `readiness` serait
+        // nil, ce qui ne prouverait rien sur la complétude de la journée.
+        records += (1...10).map { hrRecord(bpm: 60, daysAgo: $0, hour: 8, now: now, calendar: calendar) }
+        records.append(hrRecord(bpm: 61, daysAgo: 0, hour: 8, now: now, calendar: calendar))
+        try store.insertRecords(records)
+
+        let result = try WellnessOrchestrator.compute(
+            store: store, resolver: SourcePriorityResolver(priority: ["Watch", "iPhone"]),
+            calendar: calendar, today: now)
+
+        let readiness = try XCTUnwrap(result.readiness)
+        XCTAssertNil(readiness.components.first { $0.name == "Équilibre d'activité" },
+                     "hier est le dernier jour connu : rien ne dit qu'il est entier")
+        XCTAssertTrue(readiness.missing.contains { $0.name == "Équilibre d'activité" })
+    }
+
+    /// Contre-épreuve : dès qu'un échantillon d'aujourd'hui existe, hier est
+    /// close et sa journée est notée normalement. Sans elle, la garde
+    /// ci-dessus passerait aussi sur un code qui refuserait toujours.
+    func test_wellness_withDataAfterYesterday_scoresActivity() throws {
+        let store = try HealthStore(path: ":memory:")
+        let calendar = Calendar.current
+        let now = calendar.startOfDay(for: Date(timeIntervalSince1970: 1_786_859_360))
+            .addingTimeInterval(20 * 3600)
+
+        var records: [HealthRecord] = []
+        for day in 2...9 {
+            records += [8, 12, 16, 20].map {
+                energyRecord(kcal: 200, daysAgo: day, hour: $0, now: now, calendar: calendar)
+            }
+        }
+        records.append(energyRecord(kcal: 200, daysAgo: 1, hour: 10, now: now, calendar: calendar))
+        records += (1...10).map { hrRecord(bpm: 60, daysAgo: $0, hour: 8, now: now, calendar: calendar) }
+        records.append(hrRecord(bpm: 61, daysAgo: 0, hour: 8, now: now, calendar: calendar))
+        // Le seul écart avec le test précédent : un échantillon d'aujourd'hui.
+        records.append(energyRecord(kcal: 50, daysAgo: 0, hour: 9, now: now, calendar: calendar))
+        try store.insertRecords(records)
+
+        let result = try WellnessOrchestrator.compute(
+            store: store, resolver: SourcePriorityResolver(priority: ["Watch", "iPhone"]),
+            calendar: calendar, today: now)
+
+        let readiness = try XCTUnwrap(result.readiness)
+        XCTAssertNotNil(readiness.components.first { $0.name == "Équilibre d'activité" },
+                        "hier est close : sa journée se note")
+    }
 
     private func hrRecord(bpm: Double, daysAgo: Int, hour: Int, now: Date, calendar: Calendar) -> HealthRecord {
         let start = calendar.date(byAdding: .day, value: -daysAgo, to: calendar.startOfDay(for: now))!

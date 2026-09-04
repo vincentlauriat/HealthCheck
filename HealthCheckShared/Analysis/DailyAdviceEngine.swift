@@ -22,7 +22,9 @@ enum DailyAdviceEngine {
         vo2MaxAlert: LoadAlert?,
         weightAlert: LoadAlert?
     ) -> DailyAdvice? {
-        guard let readiness else { return nil }
+        // Pas de conseil du jour sur un score non concluant : le conseil
+        // se lit comme un verdict, et il n'y a rien à juger.
+        guard let readiness, readiness.isConclusive else { return nil }
         let tier = Self.tier(for: readiness.label)
 
         // Une alerte .warning ne peut affiner le conseil que sous REPOS ou

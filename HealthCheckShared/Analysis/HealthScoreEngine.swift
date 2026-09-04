@@ -52,13 +52,26 @@ struct ReadinessScore: Equatable {
     /// du sommeil affiche 97/100 sans que rien n'indique que sa composante la
     /// plus lourde (0,35) manque et a été redistribuée sur les autres.
     let missing: [MissingComponent]
+    /// Part du panier nominal réellement mesurée, de 0 à 1 : 1,0 quand les
+    /// quatre composantes sont là, 0,10 quand seul l'équilibre d'activité
+    /// l'est. C'est `totalWeight` avant renormalisation — celui-là même que
+    /// la redistribution efface, et dont l'effacement rendait un panier
+    /// minuscule indiscernable d'un panier complet.
+    let measuredWeight: Double
+
+    /// `false` quand trop peu du panier a été mesuré pour qu'un chiffre
+    /// veuille dire quelque chose. Le score reste calculé : ce sont les vues
+    /// et les moteurs consommateurs qui décident de ne pas s'en servir, plutôt
+    /// qu'une valeur absente qui ferait disparaître la carte sans explication.
+    var isConclusive: Bool { measuredWeight >= HealthScoreEngine.minimumMeasuredWeight }
 
     init(value: Double, label: String, components: [ScoreComponent],
-         missing: [MissingComponent] = []) {
+         missing: [MissingComponent] = [], measuredWeight: Double = 1) {
         self.value = value
         self.label = label
         self.components = components
         self.missing = missing
+        self.measuredWeight = measuredWeight
     }
 }
 
@@ -69,6 +82,18 @@ struct ReadinessScore: Equatable {
 /// pénalise pas.
 enum HealthScoreEngine {
     static let minimumBaselineCount = 5
+
+    /// Part minimale du panier nominal qui doit avoir été mesurée pour qu'un
+    /// score soit annoncé. La moitié : en deçà, la majorité de ce que le score
+    /// prétend résumer n'a pas été observée.
+    ///
+    /// Le 2026-09-04, le Mac annonçait 13,8 « Récupération conseillée » sur le
+    /// seul équilibre d'activité — 0,10 de poids nominal redistribué à 100 %,
+    /// et cette seule composante assise sur une journée tronquée. Un verdict
+    /// tranché sorti de presque rien. Ce seuil est un choix, pas une mesure ;
+    /// il est ici plutôt que dans une vue pour que les deux applications et
+    /// les moteurs consommateurs s'accordent sur la même définition.
+    static let minimumMeasuredWeight = 0.50
 
     /// FC repos : en dessous de sa normale = bon signe, au-dessus = fatigue.
     /// +5 % au-dessus de la baseline → 70 ; +10 % → 40.
@@ -149,7 +174,10 @@ enum HealthScoreEngine {
         ("Sommeil", "moon.zzz.fill", 0.35, "Aucune nuit enregistrée depuis hier"),
         ("FC repos", "heart.fill", 0.30, "Aucune fréquence au repos aujourd'hui"),
         ("Variabilité cardiaque", "waveform.path.ecg", 0.25, "Aucune mesure de VFC aujourd'hui"),
-        ("Équilibre d'activité", "flame.fill", 0.10, "Aucune dépense enregistrée hier")
+        // Deux absences possibles derrière un même libellé : aucune dépense
+        // enregistrée hier, ou une journée d'hier que la synchro a coupée en
+        // route. La phrase couvre les deux plutôt que d'en affirmer une.
+        ("Équilibre d'activité", "flame.fill", 0.10, "Pas de journée de dépense complète avant aujourd'hui")
     ]
 
     static func readiness(
@@ -178,7 +206,8 @@ enum HealthScoreEngine {
                 : nil
         }
         return ReadinessScore(value: value, label: label(for: value),
-                              components: components, missing: missing)
+                              components: components, missing: missing,
+                              measuredWeight: totalWeight)
     }
 
     /// Explication affichée par les deux applications. Elle vit ici, contre la
@@ -190,7 +219,9 @@ enum HealthScoreEngine {
         à votre normale des 30 derniers jours. Une composante non mesurée est \
         retirée du calcul et son poids réparti sur les autres. La valeur du jour \
         est la moyenne des échantillons connus à cet instant : le score se \
-        précise à mesure que la journée avance.
+        précise à mesure que la journée avance. En deçà de la moitié du panier \
+        réellement mesurée, aucun score n'est annoncé — un chiffre tiré d'une \
+        seule composante se lirait comme un verdict.
         """
 
     static func label(for score: Double) -> String {

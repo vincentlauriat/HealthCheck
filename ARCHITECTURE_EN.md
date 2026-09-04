@@ -475,6 +475,19 @@ to the Mac receiver above — HealthKit on the phone, no manual export.
   the Withings API, and the unit label (`kg`, `%`) is part of `DedupKey` —
   diverging from it would recreate the duplicates removed on 2026-09-03.
 
+  **Readiness now refuses to conclude on too little.** Two locks added on
+  2026-09-04. (1) `WellnessOrchestrator` credits yesterday only when the
+  database knows something later than that day — a factual test with no
+  arbitrary cut-off hour. (2) `ReadinessScore.measuredWeight` carries
+  `totalWeight` **before** renormalisation, the quantity redistribution used
+  to erase, and `HealthScoreEngine.minimumMeasuredWeight = 0.50` sets its
+  floor. Below it `isConclusive` is false and three consumers fall silent
+  together: both views show "Score indisponible" with the measured share and
+  the missing components, `DailyAdviceEngine` returns no advice, and
+  `TrainingLoadMonitor` withholds its low-readiness alert. The object stays
+  non-nil on purpose — removing the card would trade a wrong number for an
+  unexplained silence.
+
   **A "complete" day is only complete on the calendar.** Measured on
   2026-09-04 by running `WellnessOrchestrator.compute` against the Mac's real
   database: 13.8 / "Récupération conseillée", three components missing, and

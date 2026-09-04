@@ -36,10 +36,13 @@ enum WellnessOrchestrator {
                                          store: store, resolver: resolver, calendar: calendar)
         let hrvDaily = try dailyAverages(type: "HKQuantityTypeIdentifierHeartRateVariabilitySDNN", from: d30, to: end,
                                           store: store, resolver: resolver, calendar: calendar)
-        let energyDaily = DailyAggregator.totals(
-            resolver.resolve(try store.records(type: "HKQuantityTypeIdentifierActiveEnergyBurned", from: d30, to: end)),
-            calendar: calendar
-        )
+        let energyRecords = resolver.resolve(
+            try store.records(type: "HKQuantityTypeIdentifierActiveEnergyBurned", from: d30, to: end))
+        let energyDaily = DailyAggregator.totals(energyRecords, calendar: calendar)
+        // Jusqu'où l'énergie est-elle connue ? Un total quotidien ne le dit
+        // pas : `DailyAggregator.totals` range la somme sous le début du jour
+        // et perd l'heure du dernier échantillon.
+        let lastEnergyKnown = energyRecords.map(\.endDate).max()
         let sleepNights = SleepAggregator.nightlyHours(
             resolver.resolve(try store.sleepRecords(from: d30, to: end)),
             calendar: calendar
@@ -62,8 +65,24 @@ enum WellnessOrchestrator {
         let sleep = split(sleepNights, latestNoOlderThan: yesterday)
 
         // Activité : la veille, seul jour complet — aujourd'hui est partiel.
+        //
+        // « Complet » au calendrier ne suffit pas. Si la synchro s'est
+        // interrompue en cours de journée d'hier, son total n'est qu'une
+        // fraction de journée que rien ne distingue d'un jour creux : le
+        // 2026-09-04, la base du Mac s'arrêtait au 3 septembre à 10 h 28 et
+        // ses 231 kcal de matinée, comparés aux 820 habituels, produisaient à
+        // eux seuls un « Récupération conseillée » à 13,8.
+        //
+        // Le critère retenu ne fixe aucune heure limite — un seuil horaire
+        // serait arbitraire et se tromperait sur une journée qui finit tôt.
+        // Il est purement factuel : **hier n'est close que si l'on connaît
+        // quelque chose de postérieur à elle**. Une journée qui est le dernier
+        // jour connu peut avoir été coupée n'importe où ; on ne la note pas.
         let completeDays = energyDaily.filter { $0.date < startOfToday }
-        let yesterdayEnergy = completeDays.last(where: { $0.date == yesterday })
+        let yesterdayIsClosed = (lastEnergyKnown ?? .distantPast) >= startOfToday
+        let yesterdayEnergy = yesterdayIsClosed
+            ? completeDays.last(where: { $0.date == yesterday })
+            : nil
         let energyBaseline = completeDays.filter { $0.date != yesterday }.map(\.value)
 
         let readiness = HealthScoreEngine.readiness(

@@ -61,6 +61,24 @@ final class SharedViewModelsAvailabilityTests: XCTestCase {
                                      value: 66, startDate: todayMeasurement,
                                      endDate: todayMeasurement.addingTimeInterval(300),
                                      creationDate: todayMeasurement))
+        // Une seconde composante — VFC, 10 jours à 40 ms puis 20 aujourd'hui.
+        // La FC repos seule ne pèse que 0,30 du panier nominal, en deçà de
+        // `HealthScoreEngine.minimumMeasuredWeight` : depuis le 2026-09-04 le
+        // moteur refuse de conclure sur si peu, et le conseil du jour se tait
+        // avec lui. Avec la VFC le panier atteint 0,55 et le palier observé
+        // reste REPOS, ce que ce test vient vérifier.
+        for day in 1...10 {
+            let date = calendar.date(byAdding: .day, value: -day, to: now)!
+            records.append(HealthRecord(type: "HKQuantityTypeIdentifierHeartRateVariabilitySDNN",
+                                        sourceName: "Watch", device: nil, unit: "ms",
+                                        value: 40, startDate: date,
+                                        endDate: date.addingTimeInterval(300), creationDate: date))
+        }
+        records.append(HealthRecord(type: "HKQuantityTypeIdentifierHeartRateVariabilitySDNN",
+                                     sourceName: "Watch", device: nil, unit: "ms",
+                                     value: 20, startDate: todayMeasurement,
+                                     endDate: todayMeasurement.addingTimeInterval(300),
+                                     creationDate: todayMeasurement))
         try store.insertRecords(records)
 
         let viewModel = DashboardViewModel(store: store, resolver: resolver, now: { now })

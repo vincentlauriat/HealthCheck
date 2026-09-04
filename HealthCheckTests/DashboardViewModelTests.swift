@@ -185,6 +185,17 @@ final class DashboardViewModelTests: XCTestCase {
         }
         records.append(record(type: "HKQuantityTypeIdentifierRestingHeartRate", sourceName: "Watch",
                               value: 66, start: calendar.startOfDay(for: now).addingTimeInterval(3600)))
+        // Seconde composante de récupération : sans elle le panier ne pèse
+        // que 0,30, sous `minimumMeasuredWeight`, et le moteur refuse de
+        // conclure — le conseil du jour se tait alors, et cette garde ne
+        // pourrait plus observer le câblage qu'elle vérifie. VFC 10 jours à
+        // 40 ms puis 20 aujourd'hui : panier 0,55, score ≈ 22, palier REPOS.
+        records += (1...10).map { daysAgo in
+            record(type: "HKQuantityTypeIdentifierHeartRateVariabilitySDNN", sourceName: "Watch", value: 40,
+                   start: calendar.date(byAdding: .day, value: -daysAgo, to: calendar.startOfDay(for: now))!.addingTimeInterval(3600))
+        }
+        records.append(record(type: "HKQuantityTypeIdentifierHeartRateVariabilitySDNN", sourceName: "Watch",
+                              value: 20, start: calendar.startOfDay(for: now).addingTimeInterval(3600)))
         try store.insertRecords(records)
 
         // Charge : chronic = (10+10+10+20)/4 = 12.5 km/semaine (>= 8.0, donc
@@ -234,6 +245,17 @@ final class DashboardViewModelTests: XCTestCase {
         }
         records.append(record(type: "HKQuantityTypeIdentifierRestingHeartRate", sourceName: "Watch",
                               value: 66, start: calendar.startOfDay(for: now).addingTimeInterval(3600)))
+        // Seconde composante de récupération : sans elle le panier ne pèse
+        // que 0,30, sous `minimumMeasuredWeight`, et le moteur refuse de
+        // conclure — le conseil du jour se tait alors, et cette garde ne
+        // pourrait plus observer le câblage qu'elle vérifie. VFC 10 jours à
+        // 40 ms puis 20 aujourd'hui : panier 0,55, score ≈ 22, palier REPOS.
+        records += (1...10).map { daysAgo in
+            record(type: "HKQuantityTypeIdentifierHeartRateVariabilitySDNN", sourceName: "Watch", value: 40,
+                   start: calendar.date(byAdding: .day, value: -daysAgo, to: calendar.startOfDay(for: now))!.addingTimeInterval(3600))
+        }
+        records.append(record(type: "HKQuantityTypeIdentifierHeartRateVariabilitySDNN", sourceName: "Watch",
+                              value: 20, start: calendar.startOfDay(for: now).addingTimeInterval(3600)))
 
         // Poids : moyenne antérieure (14 jours avant la fenêtre récente)
         // 100 kg, moyenne récente (14 derniers jours) 97 kg -> rythme

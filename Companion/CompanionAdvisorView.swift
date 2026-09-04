@@ -66,14 +66,25 @@ struct CompanionAdvisorView: View {
         VStack(alignment: .leading, spacing: 6) {
             Label("Forme", systemImage: "heart.fill")
                 .font(.headline)
-            Text("\(Int(readiness.value.rounded())) / 100")
-                .font(.title2.bold())
-                .monospacedDigit()
-                // « 62 / 100 » se lit « 62 barre oblique 100 » sans ceci.
-                .accessibilityLabel("\(Int(readiness.value.rounded())) sur 100")
-            Text(readiness.label)
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
+            if readiness.isConclusive {
+                Text("\(Int(readiness.value.rounded())) / 100")
+                    .font(.title2.bold())
+                    .monospacedDigit()
+                    // « 62 / 100 » se lit « 62 barre oblique 100 » sans ceci.
+                    .accessibilityLabel("\(Int(readiness.value.rounded())) sur 100")
+                Text(readiness.label)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            } else {
+                // Même règle que sur le Mac : pas de chiffre quand la
+                // majorité du panier n'a pas été mesurée. Ce qui manque est
+                // listé juste en dessous.
+                Text("Score indisponible")
+                    .font(.title3.bold())
+                Text("\(readiness.measuredWeight.formatted(.percent.precision(.fractionLength(0)))) du calcul mesuré")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            }
 
             // Le détail des composantes existait déjà sur le Mac et pas ici :
             // l'iPhone n'affichait qu'un nombre, impossible à expliquer quand
