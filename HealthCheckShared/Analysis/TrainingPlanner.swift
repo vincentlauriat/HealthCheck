@@ -101,8 +101,11 @@ enum TrainingPlanner {
     /// séance contribue 0 km plutôt qu'un chiffre fabriqué à partir d'une
     /// unité qu'on ne comprend pas — un 0 rate silencieusement une séance,
     /// une distance inventée fausserait la base d'ancrage du plan.
+    ///
+    /// La distance passe par `WorkoutStatsEngine.distanceKilometres` : la
+    /// lire brute prendrait des mètres pour des kilomètres.
     static func distanceKm(_ workout: Workout) -> Double {
-        if let d = workout.totalDistance { return d }
+        if let km = WorkoutStatsEngine.distanceKilometres(workout) { return km }
         guard let minutes = WorkoutStatsEngine.durationMinutes(workout) else { return 0 }
         return minutes / fallbackPaceMinutesPerKm
     }

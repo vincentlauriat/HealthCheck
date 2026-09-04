@@ -163,6 +163,23 @@ réparé. `insertWorkouts` complète désormais, en `COALESCE(existant, nouveau)
 ce qui manque à une séance déjà connue : un import ne peut qu'ajouter de
 l'information, jamais en effacer.
 
+### Une distance ne se lit jamais sans son unité
+
+Les quatre variantes ci-dessus ne partagent pas la même unité : **les nages
+sont en mètres**, tout le reste en kilomètres (relevé le 2026-09-04 : 1 303
+séances en km, 26 en m). Lire `totalDistance` brut afficherait un 1 500 m
+comme « 1 500 km ».
+
+`WorkoutStatsEngine.distanceKilometres` normalise, et c'est le seul chemin :
+`TrainingPlanner.distanceKm` et `WorkoutsViewModel` passent par lui. Comme
+`durationMinutes`, il rend `nil` sur une unité non reconnue plutôt qu'un
+nombre dont on ignore l'échelle.
+
+Le défaut était **latent** : les 31 séances qui portaient une distance avant
+ce correctif venaient toutes de la synchro iPhone, que `HKMapper` convertit
+en kilomètres. Il ne serait devenu visible qu'au premier réimport, sur les 25
+nages de la base.
+
 ## 4. Score de forme quotidien — `HealthScoreEngine`
 
 **Question :** « suis-je en forme aujourd'hui ? » — un score 0-100 façon

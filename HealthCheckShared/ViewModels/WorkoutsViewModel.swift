@@ -8,6 +8,8 @@ struct WorkoutItem: Equatable {
     /// `nil` quand l'export porte une unité de durée non reconnue — pas de
     /// nombre fabriqué à afficher.
     let minutes: Double?
+    /// `nil` quand la séance n'a pas de distance, ou que son unité n'est
+    /// pas reconnue — jamais un nombre dont on ignore l'échelle.
     let distanceKm: Double?
     let energyKcal: Double?
     let averageHeartRate: Double?
@@ -63,7 +65,7 @@ final class WorkoutsViewModel: ObservableObject {
                 label: WorkoutStatsEngine.label(for: workout.activityType),
                 startDate: workout.startDate,
                 minutes: WorkoutStatsEngine.durationMinutes(workout),
-                distanceKm: workout.totalDistance,
+                distanceKm: WorkoutStatsEngine.distanceKilometres(workout),
                 energyKcal: workout.totalEnergyBurned,
                 averageHeartRate: try store.averageValue(
                     type: "HKQuantityTypeIdentifierHeartRate",

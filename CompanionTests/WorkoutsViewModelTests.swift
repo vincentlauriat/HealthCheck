@@ -29,6 +29,31 @@ final class WorkoutsViewModelTests: XCTestCase {
                        routeFileName: nil)
     }
 
+    /// Les nages de l'export Apple portent leur distance en mètres. La liste
+    /// des séances affiche des kilomètres : sans conversion, un 1 500 m
+    /// s'annoncerait « 1500,0 km ».
+    func test_load_withASwimInMetres_reportsKilometres() throws {
+        let store = try HealthStore(path: ":memory:")
+        let calendar = Calendar.current
+        let now = fixedNow
+        let start = calendar.date(byAdding: .day, value: -1, to: now)!
+        _ = try store.insertWorkouts([
+            Workout(activityType: "HKWorkoutActivityTypeSwimming", sourceName: "Watch",
+                    duration: 40, durationUnit: "min",
+                    totalDistance: 1500, totalDistanceUnit: "m",
+                    totalEnergyBurned: 300, totalEnergyBurnedUnit: "kcal",
+                    startDate: start, endDate: start.addingTimeInterval(2400),
+                    routeFileName: nil)
+        ])
+
+        let viewModel = WorkoutsViewModel(store: store, routeStore: emptyRouteStore(), now: { now })
+        try viewModel.load()
+
+        let swim = try XCTUnwrap(viewModel.recentWorkouts.first)
+        XCTAssertEqual(swim.label, "Natation")
+        XCTAssertEqual(try XCTUnwrap(swim.distanceKm), 1.5, accuracy: 0.0001)
+    }
+
     func test_load_listsRecentWorkoutsMostRecentFirst() throws {
         let store = try HealthStore(path: ":memory:")
         let calendar = Calendar.current

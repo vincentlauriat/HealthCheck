@@ -80,6 +80,23 @@ enum WorkoutStatsEngine {
         }
     }
 
+    /// Distance en kilomètres quelle que soit l'unité stockée dans
+    /// l'export. `nil` quand la séance n'a pas de distance, ou quand
+    /// l'unité n'est pas reconnue — même discipline que `durationMinutes`.
+    ///
+    /// Ce n'est pas théorique : relevé le 2026-09-04 sur l'export réel, les
+    /// 26 séances de natation portent leur distance **en mètres** quand les
+    /// 1 303 autres sont en kilomètres. Lire `totalDistance` brut afficherait
+    /// une nage de 1 500 m comme « 1 500 km ».
+    static func distanceKilometres(_ workout: Workout) -> Double? {
+        guard let distance = workout.totalDistance else { return nil }
+        switch workout.totalDistanceUnit {
+        case "km": return distance
+        case "m": return distance / 1000
+        default: return nil
+        }
+    }
+
     /// Volume par semaine, ventilé par activité, semaines vides incluses
     /// pour que le graphique ne saute pas de colonnes.
     ///
