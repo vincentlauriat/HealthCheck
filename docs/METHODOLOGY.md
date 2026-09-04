@@ -247,9 +247,28 @@ matin contre les neuf de la journée complète : **57,0 contre 95,4** — de
 « Récupération conseillée » à « Excellente forme », mêmes données, même jour.
 La cause est la saturation : la VFC matinale (17,4 ms) s'écarte tellement de la
 normale (32,9) que sa composante tombe à 0, et sur un panier amputé du sommeil
-elle pèse 38 %. C'est la raison pour laquelle le Mac et l'iPhone n'affichent
-pas le même score : le Mac ne voit que ce qui a été poussé, l'iPhone lit
-HealthKit en direct.
+elle pèse 38 %.
+
+**Ce n'est pas, en revanche, la cause principale de l'écart Mac/iPhone.**
+Mesuré le 2026-09-04 en faisant tourner `WellnessOrchestrator.compute` sur la
+base réelle du Mac : **13,8 / « Récupération conseillée »**, avec *trois*
+composantes absentes — sommeil (rien depuis le 25 août), FC repos et VFC
+(rien depuis le 3 septembre au matin). La seule survivante est l'équilibre
+d'activité, dont le poids nominal de **0,10 est redistribué à 100 %**.
+
+Elle vaut 13,8 parce que « hier » (le 3) totalise 231 kcal contre 820
+habituels — mais la base du Mac s'arrête au **3 septembre à 10 h 28**. Cette
+journée n'est complète que dans le calendrier, pas dans les données :
+`WellnessOrchestrator` retient « la veille, seul jour complet » par
+`completeDays.filter { $0.date < startOfToday }`, un test de date qui ne
+regarde pas l'heure du dernier échantillon. `DailyAggregator.totals` ne
+renseigne pas `sampleCount` (à raison : sur un total il ne dit rien de la
+fiabilité), donc **rien dans le chemin du score ne permet de distinguer une
+vraie journée à 231 kcal d'une matinée tronquée**.
+
+Le Mac n'affiche donc pas un score périmé mais plausible : il affiche un
+verdict assuré fabriqué à partir d'une synchro interrompue en cours de
+matinée. C'est un défaut de code, pas une simple péremption de données.
 
 `TrendPoint.sampleCount` et `ScoreComponent.sampleCount` portent donc la
 profondeur de mesure jusqu'à l'écran (« 1 mesure », « 9 mesures »), dans les
@@ -257,7 +276,10 @@ deux applications — sur les **moyennes** seulement : sur un total (énergie),
 le nombre d'échantillons ne dit rien de la fiabilité de la valeur. Le score n'est **pas** modifié : une composante assise sur
 un seul échantillon pèse toujours autant qu'une assise sur neuf. Refuser de
 noter en deçà d'un seuil reste une option ouverte, non tranchée — le seuil
-serait arbitraire là où le compte affiché ne l'est pas.
+serait arbitraire là où le compte affiché ne l'est pas. La mesure du
+2026-09-04 ci-dessus donne cependant un cas limite concret : une composante à
+0,10 de poids nominal portant 100 % du panier produit un verdict tranché à
+partir de presque rien.
 
 **Seuils du libellé final** (`HealthScoreEngine.swift:109-116`) :
 

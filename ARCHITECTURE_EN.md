@@ -475,6 +475,18 @@ to the Mac receiver above — HealthKit on the phone, no manual export.
   the Withings API, and the unit label (`kg`, `%`) is part of `DedupKey` —
   diverging from it would recreate the duplicates removed on 2026-09-03.
 
+  **A "complete" day is only complete on the calendar.** Measured on
+  2026-09-04 by running `WellnessOrchestrator.compute` against the Mac's real
+  database: 13.8 / "Récupération conseillée", three components missing, and
+  activity balance — nominal weight 0.10 — redistributed to **100 %**. Its
+  value comes from "yesterday", which `completeDays.filter { $0.date <
+  startOfToday }` selects on a date test alone; the database stopped at
+  3 September 10:28. Nothing in the readiness path distinguishes a real day
+  from a truncated morning: `DailyAggregator.totals` rightly leaves
+  `sampleCount` nil. The Mac therefore issues a confident verdict built from
+  an interrupted sync — a code defect, not stale data. This dominates the
+  Mac/iPhone divergence, ahead of the sensitivity described below.
+
   **Measurement depth now reaches the screen.** A readiness component's "today"
   value is the mean of the samples known at that instant: on 2026-09-02 the
   same day read 57.0 seen with one HRV sample and 95.4 seen with nine.

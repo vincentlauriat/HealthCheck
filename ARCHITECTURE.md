@@ -535,6 +535,18 @@ manuel.
   Santé et l'API Withings, et le libellé d'unité (`kg`, `%`) entre dans
   `DedupKey` — s'en écarter recréerait les doublons supprimés le 2026-09-03.
 
+  **Une journée « complète » ne l'est que dans le calendrier.** Mesuré le
+  2026-09-04 en lançant `WellnessOrchestrator.compute` sur la base réelle du
+  Mac : 13,8 / « Récupération conseillée », trois composantes absentes, et
+  l'équilibre d'activité — poids nominal 0,10 — redistribué à **100 %**. Sa
+  valeur vient d'« hier », que `completeDays.filter { $0.date < startOfToday }`
+  retient sur un test de date seul ; or la base s'arrêtait au 3 septembre à
+  10 h 28. Rien dans le chemin du score ne distingue une vraie journée d'une
+  matinée tronquée : `DailyAggregator.totals` laisse `sampleCount` nul, à
+  raison. Le Mac produit donc un verdict assuré à partir d'une synchro
+  interrompue — défaut de code, pas péremption de données. C'est la cause
+  dominante de l'écart Mac/iPhone, devant la sensibilité décrite ci-dessus.
+
   **La profondeur de mesure remonte jusqu'à l'écran.** La valeur « du jour »
   d'une composante de forme est la moyenne des échantillons connus à cet
   instant : le 2026-09-02, la même journée valait 57,0 vue à une mesure de VFC
