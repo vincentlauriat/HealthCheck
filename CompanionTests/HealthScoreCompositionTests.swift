@@ -15,6 +15,21 @@ final class HealthScoreCompositionTests: XCTestCase {
     /// faute de nuit enregistrée depuis le 25 août, le Mac affichait 97/100
     /// « Excellente forme » alors que sa composante la plus lourde (0,35)
     /// manquait. Le score doit donc dire ce qu'il n'a pas mesuré.
+    /// Rien de mesuré ne doit pas rendre `nil` : les deux vues masquaient
+    /// alors toute la section « Forme du jour », et la carte disparaissait
+    /// sans explication. C'est le cas réel du Mac le 2026-09-04, une fois les
+    /// deux verrous en place.
+    func test_readiness_withNothingMeasured_stillReportsTheFourAbsences() throws {
+        let score = try XCTUnwrap(HealthScoreEngine.readiness(
+            sleep: nil, restingHeartRate: nil, hrv: nil, activity: nil),
+            "un écran vide n'apprend rien : il faut pouvoir dire ce qui manque")
+
+        XCTAssertEqual(score.measuredWeight, 0)
+        XCTAssertFalse(score.isConclusive)
+        XCTAssertTrue(score.components.isEmpty)
+        XCTAssertEqual(score.missing.count, 4)
+    }
+
     /// Le seuil de refus (b). Le 2026-09-04 le Mac annonçait 13,8
     /// « Récupération conseillée » sur le seul équilibre d'activité : 0,10 de
     /// poids nominal redistribué à 100 %, un verdict tranché sorti de presque

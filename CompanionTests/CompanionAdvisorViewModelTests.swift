@@ -71,14 +71,22 @@ final class CompanionAdvisorViewModelTests: XCTestCase {
         XCTAssertEqual(viewModel.vo2Trend?.verdict, .rising)
     }
 
-    func test_refresh_emptyStore_readinessAndAdviceAreNilWithoutError() async throws {
+    /// Base vide : plus rien ne casse, et le score existe désormais sous une
+    /// forme non concluante plutôt que `nil` — c'est lui qui porte la liste
+    /// des quatre absences, la seule chose que l'écran ait à dire. Aucun
+    /// chiffre n'en sort : ni conseil du jour, ni verdict.
+    func test_refresh_emptyStore_reportsAnInconclusiveScoreWithoutError() async throws {
         let store = try HealthStore(path: ":memory:")
         let viewModel = CompanionAdvisorViewModel(store: store, resolver: SourcePriorityResolver(priority: ["Watch", "iPhone"]))
         await viewModel.refresh()
 
         XCTAssertTrue(viewModel.hasLoaded)
         XCTAssertFalse(viewModel.storeUnavailable)
-        XCTAssertNil(viewModel.readiness)
+        let readiness = try XCTUnwrap(viewModel.readiness)
+        XCTAssertFalse(readiness.isConclusive)
+        XCTAssertEqual(readiness.measuredWeight, 0)
+        XCTAssertEqual(readiness.missing.count, 4,
+                       "les quatre absences sont ce qui reste à afficher")
         XCTAssertNil(viewModel.dailyAdvice)
         XCTAssertNil(viewModel.vo2Trend)
         XCTAssertNil(viewModel.vo2MaxAlert)

@@ -285,8 +285,14 @@ la grandeur même que la redistribution effaçait, et dont l'effacement rendait
 un panier de 0,10 indiscernable d'un panier complet.
 `HealthScoreEngine.minimumMeasuredWeight = 0,50` en fixe le plancher.
 
-En deçà, `isConclusive` est faux et **trois consommateurs se taisent** plutôt
-qu'un seul : les deux vues affichent « Score indisponible » avec la part
+`readiness(...)` ne rend d'ailleurs **plus jamais `nil`** : quand rien n'a été
+mesuré — le cas exact du Mac ce 4 septembre une fois les deux verrous posés —
+il rend un score à 0 portant les quatre absences. Les deux vues masquaient
+sinon toute la section « Forme du jour », et la carte disparaissait sans un
+mot : un écran vide n'apprend rien, la liste des absences dit quoi réparer.
+
+En deçà du seuil, `isConclusive` est faux et **trois consommateurs se taisent**
+plutôt qu'un seul : les deux vues affichent « Score indisponible » avec la part
 réellement mesurée et la liste des composantes manquantes ; `DailyAdviceEngine`
 ne rend aucun conseil du jour ; `TrainingLoadMonitor` n'émet plus son alerte
 « Forme du jour basse ». Le score reste calculé et l'objet reste non-nul :

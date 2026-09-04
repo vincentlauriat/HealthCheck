@@ -189,10 +189,16 @@ enum HealthScoreEngine {
         let entries = zip(catalogue, [sleep, restingHeartRate, hrv, activity])
         let weighted = entries.compactMap { entry, component in component.map { ($0, entry.weight) } }
 
-        guard !weighted.isEmpty else { return nil }
-
+        // Aucune composante mesurée ne rend plus `nil` : les deux vues
+        // masquaient alors toute la section « Forme du jour », et la carte
+        // disparaissait sans un mot — un écran vide n'apprend rien, là où la
+        // liste des quatre absences dit exactement quoi réparer. Le score
+        // vaut 0 et `measuredWeight` aussi, donc `isConclusive` est faux et
+        // aucun chiffre n'est affiché.
         let totalWeight = weighted.reduce(0) { $0 + $1.1 }
-        let value = weighted.reduce(0) { $0 + $1.0.score * $1.1 } / totalWeight
+        let value = totalWeight > 0
+            ? weighted.reduce(0) { $0 + $1.0.score * $1.1 } / totalWeight
+            : 0
 
         let components = weighted.map { component, weight in
             ScoreComponent(name: component.name, systemImage: component.systemImage,

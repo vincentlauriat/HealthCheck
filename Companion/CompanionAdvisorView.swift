@@ -25,7 +25,10 @@ struct CompanionAdvisorView: View {
                     // les cartes déjà affichées, il n'y a que ce premier écran
                     // à remplir.
                     loadingCard
-                } else if viewModel.readiness == nil && viewModel.dailyAdvice == nil
+                // `isConclusive != true` et non `readiness == nil` : le
+                // moteur rend désormais toujours un score, non concluant
+                // quand rien n'a été mesuré.
+                } else if viewModel.readiness?.isConclusive != true && viewModel.dailyAdvice == nil
                     && viewModel.vo2Trend == nil && viewModel.today == nil {
                     notEnoughDataCard
                 } else {

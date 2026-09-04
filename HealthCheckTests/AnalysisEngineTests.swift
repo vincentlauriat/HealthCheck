@@ -41,7 +41,13 @@ final class HealthScoreEngineTests: XCTestCase {
         XCTAssertEqual(score.components.count, 2)
         XCTAssertEqual(score.label, "Excellente forme")
 
-        XCTAssertNil(HealthScoreEngine.readiness(sleep: nil, restingHeartRate: nil, hrv: nil, activity: nil))
+        // Rien de mesuré ne rend plus `nil` : les vues masquaient alors toute
+        // la section « Forme du jour » sans explication. Le score existe, non
+        // concluant, et porte les quatre absences.
+        let nothing = HealthScoreEngine.readiness(sleep: nil, restingHeartRate: nil, hrv: nil, activity: nil)
+        XCTAssertEqual(nothing?.measuredWeight, 0)
+        XCTAssertEqual(nothing?.isConclusive, false)
+        XCTAssertEqual(nothing?.missing.count, 4)
     }
 }
 
