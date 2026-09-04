@@ -66,6 +66,19 @@ struct ImportView: View {
                 )
                 .font(.callout)
                 .foregroundStyle(.green)
+
+                // Sans cette ligne, un import qui ne fait que compléter des
+                // séances déjà connues annonce « 0 nouveaux » et donne à
+                // croire qu'il n'a rien fait.
+                if summary.workoutsEnriched > 0 {
+                    Label(
+                        "\(summary.workoutsEnriched.formatted()) séances complétées (distance, énergie ou trace jusque-là manquantes)",
+                        systemImage: "arrow.triangle.merge"
+                    )
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                }
             }
 
             if let error = viewModel.lastError {

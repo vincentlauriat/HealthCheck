@@ -5,6 +5,9 @@ struct ImportSummary {
     let recordsInserted: Int
     let workoutsSeen: Int
     let workoutsInserted: Int
+    /// Séances déjà connues qu'un import a complétées — distance, énergie ou
+    /// trace GPS jusque-là manquantes.
+    let workoutsEnriched: Int
     let sleepRecordsSeen: Int
     let sleepRecordsInserted: Int
 }
@@ -41,6 +44,7 @@ final class HealthExportImporter {
         var recordsInserted = 0
         var workoutsSeen = 0
         var workoutsInserted = 0
+        var workoutsEnriched = 0
         var sleepRecordsSeen = 0
         var sleepRecordsInserted = 0
         var recordBuffer: [HealthRecord] = []
@@ -55,7 +59,9 @@ final class HealthExportImporter {
         }
         func flushWorkouts() throws {
             guard !workoutBuffer.isEmpty else { return }
-            workoutsInserted += try store.insertWorkouts(workoutBuffer)
+            let outcome = try store.insertWorkouts(workoutBuffer)
+            workoutsInserted += outcome.inserted
+            workoutsEnriched += outcome.enriched
             workoutBuffer.removeAll(keepingCapacity: true)
         }
         func flushSleepRecords() throws {
@@ -103,6 +109,7 @@ final class HealthExportImporter {
             recordsInserted: recordsInserted,
             workoutsSeen: workoutsSeen,
             workoutsInserted: workoutsInserted,
+            workoutsEnriched: workoutsEnriched,
             sleepRecordsSeen: sleepRecordsSeen,
             sleepRecordsInserted: sleepRecordsInserted
         )
