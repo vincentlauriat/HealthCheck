@@ -36,13 +36,6 @@ enum WellnessOrchestrator {
                                          store: store, resolver: resolver, calendar: calendar)
         let hrvDaily = try dailyAverages(type: "HKQuantityTypeIdentifierHeartRateVariabilitySDNN", from: d30, to: end,
                                           store: store, resolver: resolver, calendar: calendar)
-        let energyRecords = resolver.resolve(
-            try store.records(type: "HKQuantityTypeIdentifierActiveEnergyBurned", from: d30, to: end))
-        let energyDaily = DailyAggregator.totals(energyRecords, calendar: calendar)
-        // Jusqu'où l'énergie est-elle connue ? Un total quotidien ne le dit
-        // pas : `DailyAggregator.totals` range la somme sous le début du jour
-        // et perd l'heure du dernier échantillon.
-        let lastEnergyKnown = energyRecords.map(\.endDate).max()
         let sleepNights = SleepAggregator.nightlyHours(
             resolver.resolve(try store.sleepRecords(from: d30, to: end)),
             calendar: calendar
@@ -78,12 +71,24 @@ enum WellnessOrchestrator {
         // Il est purement factuel : **hier n'est close que si l'on connaît
         // quelque chose de postérieur à elle**. Une journée qui est le dernier
         // jour connu peut avoir été coupée n'importe où ; on ne la note pas.
-        let completeDays = energyDaily.filter { $0.date < startOfToday }
-        let yesterdayIsClosed = (lastEnergyKnown ?? .distantPast) >= startOfToday
-        let yesterdayEnergy = yesterdayIsClosed
-            ? completeDays.last(where: { $0.date == yesterday })
-            : nil
-        let energyBaseline = completeDays.filter { $0.date != yesterday }.map(\.value)
+        //
+        // Et ce test se fait **série par série**. Juger hier close parce que
+        // les pas continuent après minuit, alors que l'énergie s'est arrêtée à
+        // 10 h, rouvrirait exactement le trou qu'il ferme : le total tronqué
+        // d'un capteur serait noté comme une journée entière.
+        func closedYesterday(type: String) throws -> (yesterday: Double?, baseline: [Double]) {
+            let records = resolver.resolve(try store.records(type: type, from: d30, to: end))
+            let daily = DailyAggregator.totals(records, calendar: calendar)
+            let completeDays = daily.filter { $0.date < startOfToday }
+            let isClosed = (records.map(\.endDate).max() ?? .distantPast) >= startOfToday
+            return (isClosed ? completeDays.last(where: { $0.date == yesterday })?.value : nil,
+                    completeDays.filter { $0.date != yesterday }.map(\.value))
+        }
+
+        let energy = try closedYesterday(type: "HKQuantityTypeIdentifierActiveEnergyBurned")
+        // Les pas entrent dans la même composante que l'énergie : une journée
+        // de marche sans séance ne dépense pas beaucoup, mais elle compte.
+        let steps = try closedYesterday(type: "HKQuantityTypeIdentifierStepCount")
 
         let readiness = HealthScoreEngine.readiness(
             sleep: sleep.latest.flatMap { HealthScoreEngine.sleepScore(lastNightHours: $0.value, baseline: sleep.baseline,
@@ -92,8 +97,9 @@ enum WellnessOrchestrator {
                                                                                          sampleCount: $0.sampleCount) },
             hrv: hrv.latest.flatMap { HealthScoreEngine.hrvScore(today: $0.value, baseline: hrv.baseline,
                                                                 sampleCount: $0.sampleCount) },
-            activity: yesterdayEnergy.flatMap { HealthScoreEngine.activityBalanceScore(yesterday: $0.value, baseline: energyBaseline,
-                                                                                      sampleCount: $0.sampleCount) }
+            activity: HealthScoreEngine.activityBalanceScore(
+                yesterdayEnergy: energy.yesterday, energyBaseline: energy.baseline,
+                yesterdaySteps: steps.yesterday, stepsBaseline: steps.baseline)
         )
 
         let vo2Records = try store.records(type: VO2MaxEngine.vo2MaxType, from: d120, to: end)

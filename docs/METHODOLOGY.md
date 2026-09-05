@@ -212,8 +212,12 @@ score = clamp(100 + deviation × 300, 0...100)     // −10 % → 70
 // Sommeil : la nuit dernière rapportée à la durée habituelle
 score = clamp((nuit / moyenne) × 100, 0...100)    // nuit = baseline → 100
 
-// Équilibre d'activité : écart absolu, dans les deux sens, à l'habitude
-deviation = |(hier − moyenne) / moyenne|
+// Équilibre d'activité : écart absolu, dans les deux sens, à l'habitude.
+// Deux signaux — énergie active et nombre de pas — chacun contre sa propre
+// baseline. La journée est notée sur celui qui la place le plus près de son
+// habitude ; un signal absent est simplement ignoré.
+deviation = min(|(hier_kcal − moy_kcal) / moy_kcal|,
+                |(hier_pas  − moy_pas ) / moy_pas |)
 score = clamp(100 − deviation × 120, 0...100)     // ±25 % → 70
 ```
 (`HealthScoreEngine.swift:26-86`)
@@ -292,12 +296,59 @@ sinon toute la section « Forme du jour », et la carte disparaissait sans un
 mot : un écran vide n'apprend rien, la liste des absences dit quoi réparer.
 
 En deçà du seuil, `isConclusive` est faux et **trois consommateurs se taisent**
-plutôt qu'un seul : les deux vues affichent « Score indisponible » avec la part
+plutôt qu'un seul : les deux vues affichent « Score en préparation » avec la part
 réellement mesurée et la liste des composantes manquantes ; `DailyAdviceEngine`
 ne rend aucun conseil du jour ; `TrainingLoadMonitor` n'émet plus son alerte
 « Forme du jour basse ». Le score reste calculé et l'objet reste non-nul :
 faire disparaître la carte aurait remplacé un chiffre faux par un silence
 inexplicable.
+
+### Les pas entrent dans l'équilibre d'activité
+
+Ajouté le 2026-09-05. L'énergie active seule sous-évalue une journée de marche.
+Relevé sur les 30 jours au 2026-09-04 dans la base réelle, le rapport
+**kcal / 1 000 pas va de 32,2 à 91,6** — un facteur trois. Le 1er septembre,
+un record de 31 575 pas n'a produit que 1 045 kcal, à peine au-dessus des 864
+habituels. Le 15 août, 23 387 pas contre 18 300 habituels étaient notés **13,3**
+par la formule sur l'énergie seule, quand les pas plaçaient la journée à 64,9.
+
+La composante lit donc les deux séries et retient **celle des deux qui place la
+veille le plus près de son habitude**. Ni l'un ni l'autre capteur ne voit tout :
+une marche lente est presque invisible à l'énergie, une sortie vélo l'est aux
+pas. Retenir systématiquement le plus sévère punirait le capteur, pas la
+personne. Simulée sur ces mêmes 30 jours, la règle déplace la note de plus de
+trois points **11 jours sur 31** ; une variante asymétrique (les pas ne
+« secourant » qu'une journée jugée basse par l'énergie) n'en aurait déplacé que
+4, d'où le choix de la règle symétrique.
+
+Elle est plus indulgente, y compris sur les journées molles — le 6 août, 9 948
+pas et 410 kcal passent de 36,0 à 44,4. C'est assumé : les deux signaux disent
+là que la journée était creuse, et les pas montrent seulement qu'elle l'était
+un peu moins que l'énergie ne le prétend.
+
+La clôture de la veille (le premier verrou ci-dessus) se décide **série par
+série**. Juger hier close parce que les pas continuent après minuit, alors que
+l'énergie s'est arrêtée à 10 h, rouvrirait exactement le trou fermé le
+2026-09-04 : le total tronqué d'un capteur serait noté comme une journée
+entière. (`WellnessOrchestrator.closedYesterday`)
+
+### « Score en préparation » plutôt que « Score indisponible »
+
+Refondu le 2026-09-05. Le refus de conclure était juste, sa présentation ne
+l'était pas : un point d'interrogation gris et le mot « indisponible » font
+lire une panne là où il ne manque que des données — et où la plupart
+reviennent en bougeant. Les deux vues montrent désormais une progression (un
+anneau sur le Mac, une jauge sur l'iPhone) remplie à hauteur de la part
+mesurée, avec le seuil à atteindre, et chaque composante absente porte une
+`action` disant **ce qui la débloque**.
+
+Ces phrases sont écrites pour rester vraies **sans supposer la cause** de
+l'absence : un sommeil manquant peut venir d'une montre non portée, d'une
+synchro en retard ou d'un suivi désactivé, et « portez votre montre la nuit »
+en affirmerait une. Elles disent donc ce qui débloque la part, pas ce qui
+aurait dû être fait. Seule celle de l'activité est prescriptive, parce que là
+l'action est sans ambiguïté : « Bougez : la marche compte autant qu'une séance,
+vos pas suffisent. »
 
 Ce seuil est un **choix**, pas une mesure. Il a un coût visible : cinq gardes
 du dépôt notaient un score sur la seule FC repos — 0,30 du panier — et ont dû

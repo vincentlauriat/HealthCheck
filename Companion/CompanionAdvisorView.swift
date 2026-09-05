@@ -80,13 +80,19 @@ struct CompanionAdvisorView: View {
                     .foregroundStyle(.secondary)
             } else {
                 // Même règle que sur le Mac : pas de chiffre quand la
-                // majorité du panier n'a pas été mesurée. Ce qui manque est
-                // listé juste en dessous.
-                Text("Score indisponible")
+                // majorité du panier n'a pas été mesurée — mais une barre qui
+                // se remplit plutôt qu'un « indisponible » qui sonne comme une
+                // panne. La jauge est linéaire et non l'anneau du Mac : la
+                // carte de l'iPhone est étroite et déjà dense.
+                Text("Score en préparation")
                     .font(.title3.bold())
-                Text("\(readiness.measuredWeight.formatted(.percent.precision(.fractionLength(0)))) du calcul mesuré")
+                ProgressView(value: readiness.measuredWeight)
+                    .tint(Color.accentColor)
+                    .accessibilityHidden(true)
+                Text("\(readiness.measuredWeight.formatted(.percent.precision(.fractionLength(0)))) de données réunies — le score s'affiche à partir de \(HealthScoreEngine.minimumMeasuredWeight.formatted(.percent.precision(.fractionLength(0)))).")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
 
             // Le détail des composantes existait déjà sur le Mac et pas ici :
@@ -128,9 +134,14 @@ struct CompanionAdvisorView: View {
                             .foregroundStyle(.secondary)
                     }
                     Spacer()
+                    // Le détail de l'équilibre d'activité porte deux signaux
+                    // depuis qu'il compte les pas. La carte de l'iPhone est
+                    // étroite : sans ceci il serait tronqué.
                     Text(component.detail)
                         .font(.caption2)
                         .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.trailing)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
                 // Une composante assise sur une seule mesure pèse autant
                 // qu'une assise sur neuf. C'est la seule trace visible de
@@ -157,8 +168,17 @@ struct CompanionAdvisorView: View {
                 .foregroundStyle(.tertiary)
                 .frame(width: 18)
             VStack(alignment: .leading, spacing: 2) {
-                Text("\(missing.name) — non mesuré")
+                // « à débloquer » plutôt que « non mesuré » : les deux disent
+                // la même chose, mais l'un décrit un manque et l'autre ce
+                // qu'il reste à faire.
+                Text("\(missing.name) — à débloquer")
                     .font(.caption.weight(.medium))
+                if !missing.action.isEmpty {
+                    Text(missing.action)
+                        .font(.caption2)
+                        .foregroundStyle(Color.accentColor)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
                 Text("\(missing.reason) · poids \(missing.nominalWeight.formatted(.percent.precision(.fractionLength(0)))) réparti sur les autres.")
                     .font(.caption2)
                     .fixedSize(horizontal: false, vertical: true)
