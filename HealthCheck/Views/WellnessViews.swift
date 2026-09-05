@@ -138,9 +138,14 @@ struct ReadinessCard: View {
                                         .help("Part de cette composante dans le score, après redistribution du poids des composantes non mesurées.")
                                 }
                                 Spacer()
+                                // Le détail de l'équilibre d'activité porte
+                                // deux signaux depuis qu'il compte les pas :
+                                // il ne tient plus sur une ligne étroite.
                                 Text(component.detail)
                                     .font(.caption)
                                     .foregroundStyle(.secondary)
+                                    .multilineTextAlignment(.trailing)
+                                    .fixedSize(horizontal: false, vertical: true)
                                 if let depth = component.depthLabel {
                                     Text("· \(depth)")
                                         .font(.caption2)

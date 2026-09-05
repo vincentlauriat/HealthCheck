@@ -134,9 +134,14 @@ struct CompanionAdvisorView: View {
                             .foregroundStyle(.secondary)
                     }
                     Spacer()
+                    // Le détail de l'équilibre d'activité porte deux signaux
+                    // depuis qu'il compte les pas. La carte de l'iPhone est
+                    // étroite : sans ceci il serait tronqué.
                     Text(component.detail)
                         .font(.caption2)
                         .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.trailing)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
                 // Une composante assise sur une seule mesure pèse autant
                 // qu'une assise sur neuf. C'est la seule trace visible de

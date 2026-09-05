@@ -195,10 +195,14 @@ enum HealthScoreEngine {
     ///
     /// Chaque signal est facultatif et jugé séparément : la composante existe
     /// dès que l'un des deux est disponible avec une baseline suffisante.
+    ///
+    /// Pas de `sampleCount`, contrairement aux trois autres composantes :
+    /// `DailyAggregator.totals` n'en produit pas, et à raison — sur un
+    /// **total**, le nombre d'échantillons ne dit rien de la fiabilité de la
+    /// valeur. Le paramètre existait et valait toujours `nil`.
     static func activityBalanceScore(
         yesterdayEnergy: Double?, energyBaseline: [Double],
-        yesterdaySteps: Double?, stepsBaseline: [Double],
-        sampleCount: Int? = nil
+        yesterdaySteps: Double?, stepsBaseline: [Double]
     ) -> ScoreComponent? {
         func deviation(_ yesterday: Double?, _ baseline: [Double]) -> ActivityDeviation? {
             guard let yesterday, yesterday >= 0, baseline.count >= minimumBaselineCount else { return nil }
@@ -238,8 +242,7 @@ enum HealthScoreEngine {
             name: "Équilibre d'activité",
             systemImage: "flame.fill",
             score: score,
-            detail: "\(yesterdayParts.joined(separator: " · ")) hier — habituel \(habitualParts.joined(separator: " · "))",
-            sampleCount: sampleCount
+            detail: "\(yesterdayParts.joined(separator: " · ")) hier — habituel \(habitualParts.joined(separator: " · "))"
         )
     }
 
