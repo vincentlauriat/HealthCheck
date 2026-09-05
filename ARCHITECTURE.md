@@ -542,11 +542,34 @@ manuel.
   `totalWeight` **avant** renormalisation, la grandeur que la redistribution
   effaçait, et `HealthScoreEngine.minimumMeasuredWeight = 0,50` en fixe le
   plancher. Sous ce seuil, `isConclusive` est faux et trois consommateurs se
-  taisent ensemble : les deux vues affichent « Score indisponible » avec la
+  taisent ensemble : les deux vues affichent « Score en préparation » avec la
   part mesurée et les composantes manquantes, `DailyAdviceEngine` ne rend
   aucun conseil, `TrainingLoadMonitor` retient son alerte de forme basse.
   L'objet reste non-nul à dessein — faire disparaître la carte remplacerait un
   chiffre faux par un silence inexplicable.
+
+  **Les pas comptent autant que les séances.** Ajouté le 2026-09-05. Mesuré
+  sur les 30 jours au 2026-09-04 dans la base réelle, le rapport kcal / 1 000
+  pas va de 32,2 à 91,6 : l'énergie active seule ne voit pas une journée de
+  marche. Le 15 août, 23 387 pas contre 18 300 habituels étaient notés 13,3
+  par l'énergie seule, 64,9 par les pas. `activityBalanceScore` lit désormais
+  les deux séries contre leurs baselines respectives et retient **celle qui
+  place la veille le plus près de son habitude** — ni l'un ni l'autre capteur
+  ne voit tout, et retenir le plus sévère punirait le capteur, pas la
+  personne. Simulée sur ces 30 jours, la règle déplace la note de plus de
+  trois points 11 jours sur 31. Corollaire : la clôture d'hier se décide
+  **série par série** (`WellnessOrchestrator.closedYesterday`), sans quoi des
+  pas plus frais que l'énergie feraient noter une journée d'énergie tronquée
+  comme entière — le trou même que le verrou (1) a fermé.
+
+  **Une absence doit dire ce qui la débloque.** Refondu le 2026-09-05. Le
+  refus de conclure était juste, sa présentation faisait lire une panne. Les
+  deux vues montrent une progression remplie à hauteur de `measuredWeight`
+  (anneau `ReadinessProgressRingView` sur le Mac, jauge linéaire sur
+  l'iPhone) et le seuil à atteindre ; `MissingComponent.action` donne à chaque
+  absence sa suite à donner. Ces phrases sont écrites pour rester vraies
+  **sans supposer la cause** de l'absence — une seule est prescriptive, celle
+  de l'activité, parce que là l'action est sans ambiguïté.
 
   **Une journée « complète » ne l'est que dans le calendrier.** Mesuré le
   2026-09-04 en lançant `WellnessOrchestrator.compute` sur la base réelle du

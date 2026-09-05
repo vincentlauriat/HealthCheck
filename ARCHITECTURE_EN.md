@@ -482,11 +482,34 @@ to the Mac receiver above — HealthKit on the phone, no manual export.
   `totalWeight` **before** renormalisation, the quantity redistribution used
   to erase, and `HealthScoreEngine.minimumMeasuredWeight = 0.50` sets its
   floor. Below it `isConclusive` is false and three consumers fall silent
-  together: both views show "Score indisponible" with the measured share and
+  together: both views show "Score en préparation" with the measured share and
   the missing components, `DailyAdviceEngine` returns no advice, and
   `TrainingLoadMonitor` withholds its low-readiness alert. The object stays
   non-nil on purpose — removing the card would trade a wrong number for an
   unexplained silence.
+
+  **Steps count as much as workouts.** Added 2026-09-05. Measured over the 30
+  days to 2026-09-04 in the real database, the kcal per 1 000 steps ratio
+  ranges from 32.2 to 91.6: active energy alone cannot see a walking day. On
+  15 August, 23 387 steps against a usual 18 300 scored 13.3 on energy alone
+  and 64.9 on steps. `activityBalanceScore` now reads both series against
+  their own baselines and keeps **whichever places yesterday closest to its
+  habit** — neither sensor sees everything, and always keeping the harsher one
+  would punish the sensor, not the person. Simulated over those 30 days, the
+  rule moves the score by more than three points on 11 days out of 31.
+  Corollary: yesterday's closure is decided **series by series**
+  (`WellnessOrchestrator.closedYesterday`); otherwise steps fresher than
+  energy would let a truncated energy day be scored as a whole one — the very
+  hole lock (1) closed.
+
+  **An absence must say what unlocks it.** Reworked 2026-09-05. Refusing to
+  conclude was right; presenting it as "unavailable" read like a fault. Both
+  views now show progress filled to `measuredWeight` (a
+  `ReadinessProgressRingView` ring on the Mac, a linear gauge on iPhone) plus
+  the threshold to reach, and `MissingComponent.action` gives every absence
+  its next step. Those sentences are written to stay true **without assuming
+  the cause** of the absence — only the activity one is prescriptive, because
+  there the action is unambiguous.
 
   **A "complete" day is only complete on the calendar.** Measured on
   2026-09-04 by running `WellnessOrchestrator.compute` against the Mac's real

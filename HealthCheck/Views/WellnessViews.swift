@@ -48,6 +48,47 @@ struct ScoreRingView: View {
     }
 }
 
+/// Anneau de progression « données réunies », montré à la place du score quand
+/// le moteur a refusé de conclure.
+///
+/// Volontairement distinct de `ScoreRingView` : sa teinte ne dépend d'aucune
+/// valeur — il n'y a précisément rien à juger — et son remplissage mesure une
+/// collecte, pas une performance. C'est ce qui le sépare d'un message d'erreur :
+/// un anneau qui se remplit annonce une progression, là où « Score
+/// indisponible » annonçait une panne.
+struct ReadinessProgressRingView: View {
+    let measuredWeight: Double
+    @State private var animatedProgress: Double = 0
+
+    var body: some View {
+        ZStack {
+            Circle()
+                .stroke(.quaternary, lineWidth: 12)
+            Circle()
+                .trim(from: 0, to: animatedProgress)
+                .stroke(Color.accentColor, style: StrokeStyle(lineWidth: 12, lineCap: .round))
+                .rotationEffect(.degrees(-90))
+            VStack(spacing: 0) {
+                Text(measuredWeight.formatted(.percent.precision(.fractionLength(0))))
+                    .font(.system(size: 32, weight: .bold, design: .rounded))
+                    .monospacedDigit()
+                Text("réunis")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .frame(width: 130, height: 130)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("\(measuredWeight.formatted(.percent.precision(.fractionLength(0)))) des données du score réunies")
+        .onAppear {
+            withAnimation(.easeOut(duration: 0.8)) { animatedProgress = measuredWeight }
+        }
+        .onChange(of: measuredWeight) { _, newWeight in
+            withAnimation(.easeOut(duration: 0.5)) { animatedProgress = newWeight }
+        }
+    }
+}
+
 /// Carte « Forme du jour » : anneau + détail des composantes avec mini-jauges.
 struct ReadinessCard: View {
     let readiness: ReadinessScore
@@ -62,17 +103,21 @@ struct ReadinessCard: View {
                 } else {
                     // Montrer le chiffre serait pire que ne rien montrer : il
                     // se lirait comme un verdict alors que la majorité du
-                    // panier n'a pas été mesurée. La colonne de droite dit
-                    // exactement ce qui manque.
-                    Image(systemName: "questionmark.circle")
-                        .font(.system(size: 44, weight: .light))
-                        .foregroundStyle(.secondary)
-                    Text("Score indisponible")
+                    // panier n'a pas été mesurée. Mais l'annoncer
+                    // « indisponible » derrière un point d'interrogation le
+                    // faisait passer pour une panne, alors qu'il ne manque que
+                    // des données — et que la plupart reviennent en bougeant.
+                    // L'anneau montre donc le chemin parcouru, et la colonne
+                    // de droite ce qui débloque le reste.
+                    ReadinessProgressRingView(measuredWeight: readiness.measuredWeight)
+                    Text("Score en préparation")
                         .font(.subheadline.weight(.semibold))
-                    Text("\(readiness.measuredWeight.formatted(.percent.precision(.fractionLength(0)))) du calcul mesuré")
+                    Text("Il s'affiche à partir de \(HealthScoreEngine.minimumMeasuredWeight.formatted(.percent.precision(.fractionLength(0)))) de données réunies.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .multilineTextAlignment(.center)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .frame(maxWidth: 150)
                 }
             }
 
@@ -123,8 +168,18 @@ struct ReadinessCard: View {
                             HStack {
                                 Text(missing.name).font(.callout.weight(.medium))
                                 Spacer()
-                                Text("non mesuré")
+                                // « à débloquer » plutôt que « non mesuré » :
+                                // les deux disent la même chose, mais l'un
+                                // décrit un manque et l'autre ce qu'il reste
+                                // à faire.
+                                Text("à débloquer")
                                     .font(.caption)
+                            }
+                            if !missing.action.isEmpty {
+                                Text(missing.action)
+                                    .font(.caption)
+                                    .foregroundStyle(Color.accentColor)
+                                    .fixedSize(horizontal: false, vertical: true)
                             }
                             Text("\(missing.reason) · poids \(missing.nominalWeight.formatted(.percent.precision(.fractionLength(0)))) réparti sur les autres composantes.")
                                 .font(.caption2)
