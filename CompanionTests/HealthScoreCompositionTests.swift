@@ -261,4 +261,144 @@ final class HealthScoreCompositionTests: XCTestCase {
         XCTAssertTrue(score.missing.isEmpty)
         XCTAssertEqual(score.components.first?.share ?? 0, 0.35, accuracy: 0.0001)
     }
+
+    private func stepRecord(steps: Double, daysAgo: Int, hour: Int, now: Date, calendar: Calendar) -> HealthRecord {
+        let start = calendar.date(byAdding: .day, value: -daysAgo, to: calendar.startOfDay(for: now))!
+            .addingTimeInterval(Double(hour) * 3600)
+        return HealthRecord(type: "HKQuantityTypeIdentifierStepCount",
+                            sourceName: "Apple\u{00a0}Watch de Vincent", device: nil, unit: "count",
+                            value: steps, startDate: start, endDate: start.addingTimeInterval(300),
+                            creationDate: start)
+    }
+
+    // MARK: - Les pas dans l'équilibre d'activité
+
+    /// Une grosse journée de marche ne doit pas être notée sur la seule
+    /// énergie active. Mesuré sur les 30 jours au 2026-09-04 : le rapport
+    /// kcal / 1 000 pas va de 32 à 92 — un facteur trois. Le 15 août, 23 387
+    /// pas contre 18 300 habituels étaient notés 13,3 par l'énergie seule.
+    ///
+    /// Fixture calquée sur ce jour-là : l'énergie s'écarte fortement, les pas
+    /// à peine. La note doit suivre les pas.
+    func test_activityBalance_withABigWalkingDay_isNotJudgedOnEnergyAlone() throws {
+        let component = try XCTUnwrap(HealthScoreEngine.activityBalanceScore(
+            yesterdayEnergy: 1450, energyBaseline: Array(repeating: 800, count: 8),
+            yesterdaySteps: 20_000, stepsBaseline: Array(repeating: 18_000, count: 8)))
+
+        // Énergie : +81 % → 2,5. Pas : +11 % → 86,7. C'est le second qui gagne.
+        XCTAssertEqual(component.score, 86.7, accuracy: 0.5,
+                       "la journée est notée sur le signal qui la place le plus près de son habitude")
+        XCTAssertTrue(component.detail.contains("pas"), "les pas doivent être visibles : \(component.detail)")
+        XCTAssertTrue(component.detail.contains("kcal"), "l'énergie reste affichée : \(component.detail)")
+    }
+
+    /// Contre-épreuve : sans pas, la composante retombe exactement sur
+    /// l'ancien comportement. Sans elle, la garde ci-dessus passerait aussi
+    /// sur un code qui ignorerait purement l'énergie.
+    func test_activityBalance_withoutSteps_scoresOnEnergyAlone() throws {
+        let component = try XCTUnwrap(HealthScoreEngine.activityBalanceScore(
+            yesterdayEnergy: 1450, energyBaseline: Array(repeating: 800, count: 8),
+            yesterdaySteps: nil, stepsBaseline: []))
+
+        XCTAssertEqual(component.score, 2.5, accuracy: 0.5, "+81 % d'écart, sans second signal pour nuancer")
+        XCTAssertFalse(component.detail.contains("pas"))
+    }
+
+    /// Symétrique : une sortie vélo est invisible aux pas. L'énergie doit
+    /// alors l'emporter — la règle n'est pas « les pas gagnent », c'est
+    /// « le signal le plus proche de l'habitude gagne ».
+    func test_activityBalance_withACyclingDay_isNotJudgedOnStepsAlone() throws {
+        let component = try XCTUnwrap(HealthScoreEngine.activityBalanceScore(
+            yesterdayEnergy: 880, energyBaseline: Array(repeating: 800, count: 8),
+            yesterdaySteps: 4_000, stepsBaseline: Array(repeating: 18_000, count: 8)))
+
+        // Énergie : +10 % → 88. Pas : −78 % → 6,7.
+        XCTAssertEqual(component.score, 88, accuracy: 0.5)
+    }
+
+    /// La clôture d'hier se décide **série par série**. Si les pas continuent
+    /// après minuit mais que l'énergie s'est arrêtée à 10 h, juger hier close
+    /// sur l'union des deux rouvrirait le trou que le verrou de complétude a
+    /// fermé : le total tronqué de l'énergie serait noté comme une journée
+    /// entière.
+    func test_wellness_withStepsFresherThanEnergy_doesNotScoreTheTruncatedEnergy() throws {
+        let store = try HealthStore(path: ":memory:")
+        let calendar = Calendar.current
+        let now = calendar.startOfDay(for: Date(timeIntervalSince1970: 1_786_859_360))
+            .addingTimeInterval(20 * 3600)
+
+        var records: [HealthRecord] = []
+        for day in 1...9 {
+            records += [8, 12, 16, 20].map {
+                stepRecord(steps: 4_500, daysAgo: day, hour: $0, now: now, calendar: calendar)
+            }
+            guard day > 1 else { continue }
+            records += [8, 12, 16, 20].map {
+                energyRecord(kcal: 200, daysAgo: day, hour: $0, now: now, calendar: calendar)
+            }
+        }
+        // Hier, l'énergie s'arrête à 10 h — 200 kcal au lieu de 800.
+        records.append(energyRecord(kcal: 200, daysAgo: 1, hour: 10, now: now, calendar: calendar))
+        // Les pas, eux, continuent ce matin : leur série est close sur hier.
+        records.append(stepRecord(steps: 900, daysAgo: 0, hour: 9, now: now, calendar: calendar))
+        try store.insertRecords(records)
+
+        let result = try WellnessOrchestrator.compute(
+            store: store, resolver: SourcePriorityResolver(priority: ["Watch", "iPhone"]),
+            calendar: calendar, today: now)
+
+        let readiness = try XCTUnwrap(result.readiness)
+        let activity = try XCTUnwrap(readiness.components.first { $0.name == "Équilibre d'activité" },
+                                     "les pas d'hier sont complets : la composante existe")
+        XCTAssertFalse(activity.detail.contains("kcal"),
+                       "l'énergie d'hier est tronquée, elle ne doit pas entrer dans la note : \(activity.detail)")
+        XCTAssertTrue(activity.detail.contains("pas"))
+    }
+
+    /// Le chemin complet : les deux séries closes, les deux dans le détail.
+    func test_wellness_withBothSeriesClosed_reportsStepsAndEnergy() throws {
+        let store = try HealthStore(path: ":memory:")
+        let calendar = Calendar.current
+        let now = calendar.startOfDay(for: Date(timeIntervalSince1970: 1_786_859_360))
+            .addingTimeInterval(20 * 3600)
+
+        var records: [HealthRecord] = []
+        for day in 1...9 {
+            records += [8, 12, 16, 20].flatMap {
+                [stepRecord(steps: 4_500, daysAgo: day, hour: $0, now: now, calendar: calendar),
+                 energyRecord(kcal: 200, daysAgo: day, hour: $0, now: now, calendar: calendar)]
+            }
+        }
+        records += [stepRecord(steps: 900, daysAgo: 0, hour: 9, now: now, calendar: calendar),
+                    energyRecord(kcal: 50, daysAgo: 0, hour: 9, now: now, calendar: calendar)]
+        try store.insertRecords(records)
+
+        let result = try WellnessOrchestrator.compute(
+            store: store, resolver: SourcePriorityResolver(priority: ["Watch", "iPhone"]),
+            calendar: calendar, today: now)
+
+        let readiness = try XCTUnwrap(result.readiness)
+        let activity = try XCTUnwrap(readiness.components.first { $0.name == "Équilibre d'activité" })
+        XCTAssertTrue(activity.detail.contains("kcal"), activity.detail)
+        XCTAssertTrue(activity.detail.contains("pas"), activity.detail)
+    }
+
+    // MARK: - Ce que l'utilisateur peut faire d'une absence
+
+    /// Une absence sans suite à donner se lit comme une panne — c'est ce que
+    /// reprochait la carte « Score indisponible ». Chaque composante manquante
+    /// doit dire ce qui la débloque, et l'équilibre d'activité doit parler de
+    /// marche : c'est la part qui se regagne en bougeant.
+    func test_readiness_everyMissingComponent_saysWhatUnlocksIt() throws {
+        let score = try XCTUnwrap(HealthScoreEngine.readiness(
+            sleep: nil, restingHeartRate: nil, hrv: nil, activity: nil))
+
+        for missing in score.missing {
+            XCTAssertFalse(missing.action.isEmpty,
+                           "« \(missing.name) » n'indique rien à faire")
+        }
+        let activity = try XCTUnwrap(score.missing.first { $0.name == "Équilibre d'activité" })
+        XCTAssertTrue(activity.action.localizedCaseInsensitiveContains("marche"),
+                      "la part d'activité se regagne en marchant : \(activity.action)")
+    }
 }
