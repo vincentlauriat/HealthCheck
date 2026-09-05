@@ -36,7 +36,7 @@ L'app est organisée en neuf sections :
 
 | Section | Contenu |
 |---|---|
-| **Accueil** | Score de forme quotidien 0-100 calculé sur vos baselines personnelles 30 j (sommeil 35 %, FC repos 30 %, HRV 25 %, activité 10 %), observations générées en français, cartes jour/semaine avec deltas honnêtes (comparaison à la même portion écoulée de la semaine précédente). |
+| **Accueil** | Score de forme quotidien 0-100 calculé sur vos baselines personnelles 30 j (sommeil 35 %, FC repos 30 %, HRV 25 %, activité 10 % — énergie active **et** nombre de pas, pour qu'une journée de marche compte sans séance). Le score n'est annoncé qu'au-delà de la moitié du panier réellement mesurée : en deçà, la carte montre sa progression et ce qui débloque chaque composante. Observations générées en français, cartes jour/semaine avec deltas honnêtes (comparaison à la même portion écoulée de la semaine précédente). |
 | **Sommeil** | Score de nuit 0-100 (durée vs cible 8 h, % profond, % REM, continuité), phases empilées sur 14 nuits, moyennes. |
 | **Effort** | Minutes par zone cardiaque Z1-Z5 (bornées sur la FC max réellement observée), score d'effort quotidien pondéré, historique 14 j coloré par intensité. |
 | **Séances** | Volume hebdomadaire par activité sur 12 semaines, 25 dernières séances (durée, distance, kcal, FC moyenne), trace GPS dépliable sur carte MapKit. |
