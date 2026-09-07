@@ -1,0 +1,372 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "HealthCheck — System Architecture",
+    "locale": "en",
+    "output": "docs/diagrams/healthcheck-architecture.html",
+    "quality_profile": "showcase",
+    "repository": {
+      "url": "https://github.com/vincentlauriat/HealthCheck",
+      "revision": "e72e309a194223fc21285128f7f65dac52e0466a"
+    },
+    "views": [
+      {
+        "id": "ingestion",
+        "label": "Three ingestion paths",
+        "focus": [
+          "healthkit",
+          "sync_engine",
+          "sync_server",
+          "zip_export",
+          "importers",
+          "withings",
+          "withings_client",
+          "store"
+        ],
+        "note": "Zip export, local-network companion push and Withings all funnel into one SQLite store."
+      },
+      {
+        "id": "read-side",
+        "label": "Read side",
+        "focus": [
+          "store",
+          "engines",
+          "viewmodels"
+        ],
+        "note": "Pure engines compute from stored rows; ViewModels load once per section."
+      },
+      {
+        "id": "crossings",
+        "label": "Network crossings",
+        "focus": [
+          "sync_engine",
+          "sync_server",
+          "withings",
+          "withings_client"
+        ],
+        "note": "Only Withings leaves the machine; the companion path stays on the local network."
+      }
+    ]
+  },
+  "components": [
+    {
+      "id": "healthkit",
+      "type": "external",
+      "label": "Apple HealthKit",
+      "sublabel": "iPhone + Apple Watch",
+      "pos": [
+        60,
+        60
+      ],
+      "size": [
+        170,
+        64
+      ]
+    },
+    {
+      "id": "sync_engine",
+      "type": "backend",
+      "label": "SyncEngine + HKMapper",
+      "sublabel": "ack-gated anchors",
+      "tag": "iOS",
+      "pos": [
+        380,
+        60
+      ],
+      "size": [
+        170,
+        64
+      ],
+      "sources": [
+        {
+          "path": "Companion/Sync/SyncEngine.swift",
+          "label": "delta push"
+        }
+      ]
+    },
+    {
+      "id": "companion",
+      "type": "frontend",
+      "label": "Companion UI",
+      "sublabel": "SwiftUI · LocalStore",
+      "tag": "iOS",
+      "pos": [
+        740,
+        60
+      ],
+      "size": [
+        170,
+        64
+      ],
+      "sources": [
+        {
+          "path": "Companion/LocalStore.swift",
+          "label": "on-phone store"
+        }
+      ]
+    },
+    {
+      "id": "sync_server",
+      "type": "security",
+      "label": "SyncServer + Router",
+      "sublabel": "NWListener · _healthcheck._tcp",
+      "pos": [
+        690,
+        205
+      ],
+      "size": [
+        170,
+        64
+      ],
+      "sources": [
+        {
+          "path": "HealthCheck/Import/SyncServer.swift",
+          "label": "listener"
+        }
+      ]
+    },
+    {
+      "id": "zip_export",
+      "type": "external",
+      "label": "Health app zip export",
+      "sublabel": "844 MB · 1.8M records",
+      "pos": [
+        60,
+        350
+      ],
+      "size": [
+        170,
+        64
+      ]
+    },
+    {
+      "id": "importers",
+      "type": "backend",
+      "label": "Import pipeline",
+      "sublabel": "ZipExtractor · SAX parser",
+      "pos": [
+        380,
+        350
+      ],
+      "size": [
+        170,
+        64
+      ],
+      "sources": [
+        {
+          "path": "HealthCheck/Import/HealthExportParser.swift",
+          "label": "streaming parse"
+        }
+      ]
+    },
+    {
+      "id": "withings",
+      "type": "cloud",
+      "label": "Withings Cloud API",
+      "sublabel": "getmeas · 7 meastypes",
+      "pos": [
+        60,
+        495
+      ],
+      "size": [
+        170,
+        64
+      ]
+    },
+    {
+      "id": "withings_client",
+      "type": "backend",
+      "label": "WithingsClient",
+      "sublabel": "OAuth2 · loopback :8723",
+      "pos": [
+        380,
+        495
+      ],
+      "size": [
+        170,
+        64
+      ],
+      "sources": [
+        {
+          "path": "HealthCheck/Import/WithingsClient.swift",
+          "label": "OAuth2 + sync"
+        }
+      ]
+    },
+    {
+      "id": "store",
+      "type": "database",
+      "label": "HealthStore",
+      "sublabel": "SQLite via GRDB",
+      "pos": [
+        690,
+        350
+      ],
+      "size": [
+        170,
+        70
+      ],
+      "sources": [
+        {
+          "path": "HealthCheckShared/Store/HealthStore.swift",
+          "line": 20,
+          "label": "schema"
+        }
+      ]
+    },
+    {
+      "id": "engines",
+      "type": "backend",
+      "label": "Analysis engines",
+      "sublabel": "18 pure enums · nonisolated",
+      "pos": [
+        1000,
+        350
+      ],
+      "size": [
+        170,
+        64
+      ],
+      "sources": [
+        {
+          "path": "HealthCheckShared/Analysis/HealthScoreEngine.swift",
+          "label": "readiness"
+        }
+      ]
+    },
+    {
+      "id": "viewmodels",
+      "type": "backend",
+      "label": "ViewModels + SwiftUI",
+      "sublabel": "@MainActor · 9 sections",
+      "pos": [
+        1000,
+        495
+      ],
+      "size": [
+        170,
+        64
+      ],
+      "sources": [
+        {
+          "path": "HealthCheck/Views/ContentView.swift",
+          "label": "sections"
+        }
+      ]
+    }
+  ],
+  "boundaries": [
+    {
+      "kind": "region",
+      "label": "iPhone · HealthCheck Companion (iOS 17+)",
+      "wraps": [
+        "healthkit",
+        "sync_engine",
+        "companion"
+      ],
+      "pad": 22
+    },
+    {
+      "kind": "region",
+      "label": "Mac · HealthCheck.app (macOS 15+, App Sandbox)",
+      "wraps": [
+        "sync_server",
+        "importers",
+        "withings_client",
+        "store",
+        "engines",
+        "viewmodels"
+      ],
+      "pad": 22
+    }
+  ],
+  "connections": [
+    {
+      "from": "healthkit",
+      "to": "sync_engine",
+      "label": "HKAnchoredObjectQuery"
+    },
+    {
+      "from": "sync_engine",
+      "to": "companion",
+      "label": "local ingest",
+      "variant": "dashed"
+    },
+    {
+      "from": "sync_engine",
+      "to": "sync_server",
+      "label": "POST /batch · Bearer",
+      "variant": "security"
+    },
+    {
+      "from": "sync_server",
+      "to": "store",
+      "label": "idempotent ingest",
+      "labelDy": 66
+    },
+    {
+      "from": "zip_export",
+      "to": "importers",
+      "label": "export.zip + GPX"
+    },
+    {
+      "from": "importers",
+      "to": "store",
+      "label": "5000 rows / tx",
+      "variant": "emphasis"
+    },
+    {
+      "from": "withings",
+      "to": "withings_client",
+      "label": "OAuth2 · getmeas",
+      "variant": "security"
+    },
+    {
+      "from": "withings_client",
+      "to": "store",
+      "label": "mapped onto HK types"
+    },
+    {
+      "from": "store",
+      "to": "engines",
+      "label": "typed range queries",
+      "variant": "emphasis"
+    },
+    {
+      "from": "engines",
+      "to": "viewmodels",
+      "label": "scores + series",
+      "labelDy": 61
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Why three ingestion paths",
+      "items": [
+        "macOS has no HealthKit — isHealthDataAvailable() is false",
+        "Zip export is primary; the iPhone pushes deltas over the LAN",
+        "Withings holds muscle mass, hydration and bone mass"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "Idempotent by construction",
+      "items": [
+        "Primary key = SHA-256 of type, source, device, dates, value",
+        "INSERT OR IGNORE, 5000 rows per transaction",
+        "Re-importing 1.79M records inserts 0"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "Local by design, shared by construction",
+      "items": [
+        "Withings and the Sparkle appcast are the only outbound calls",
+        "Tokens in Application Support, chmod 600",
+        "HealthCheckShared compiles into both targets"
+      ]
+    }
+  ]
+}

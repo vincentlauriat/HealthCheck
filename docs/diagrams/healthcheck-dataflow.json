@@ -1,0 +1,324 @@
+{
+  "schema_version": 1,
+  "diagram_type": "dataflow",
+  "meta": {
+    "title": "HealthCheck — Data Pipeline",
+    "locale": "en",
+    "output": "docs/diagrams/healthcheck-dataflow.html",
+    "quality_profile": "showcase",
+    "views": [
+      {
+        "id": "write-path",
+        "label": "Write path",
+        "focus": [
+          "parser",
+          "importer",
+          "withings_map",
+          "dedup",
+          "health_record",
+          "sleep_record",
+          "workout"
+        ],
+        "note": "Three writers, one dedup gate, three tables — every path is idempotent."
+      },
+      {
+        "id": "read-path",
+        "label": "Read path",
+        "focus": [
+          "health_record",
+          "sleep_record",
+          "workout",
+          "resolver",
+          "sqlagg",
+          "workoutstats"
+        ],
+        "note": "Overlap resolution and unit normalisation happen at read time; stored rows stay raw."
+      },
+      {
+        "id": "analysis",
+        "label": "Analysis",
+        "focus": [
+          "resolver",
+          "sqlagg",
+          "workoutstats",
+          "monitor",
+          "engines"
+        ],
+        "note": "Pure functions over value types; today and calendar are always parameters."
+      }
+    ],
+    "viewBox": [
+      1080,
+      500
+    ]
+  },
+  "stages": [
+    {
+      "label": "Ingest & parse"
+    },
+    {
+      "label": "Dedup gate"
+    },
+    {
+      "label": "SQLite via GRDB"
+    },
+    {
+      "label": "Read path"
+    },
+    {
+      "label": "Analysis"
+    }
+  ],
+  "nodes": [
+    {
+      "id": "parser",
+      "type": "backend",
+      "label": "HealthExportParser",
+      "sublabel": "export.zip · SAX",
+      "stage": 0,
+      "row": 0,
+      "tag": "1.8M records",
+      "width": 138,
+      "height": 64
+    },
+    {
+      "id": "importer",
+      "type": "backend",
+      "label": "CompanionImporter",
+      "sublabel": "ExchangeBatch · LAN",
+      "stage": 0,
+      "row": 1,
+      "tag": "local network",
+      "width": 138,
+      "height": 64
+    },
+    {
+      "id": "withings_map",
+      "type": "backend",
+      "label": "WithingsMeasureType",
+      "sublabel": "value × 10^unit",
+      "stage": 0,
+      "row": 2,
+      "tag": "cloud",
+      "width": 138,
+      "height": 64
+    },
+    {
+      "id": "dedup",
+      "type": "security",
+      "label": "DedupKey",
+      "sublabel": "SHA-256 synthetic id",
+      "stage": 1,
+      "row": 1,
+      "tag": "INSERT OR IGNORE",
+      "width": 138,
+      "height": 64
+    },
+    {
+      "id": "health_record",
+      "type": "database",
+      "label": "health_record",
+      "sublabel": "idx(type, startDate)",
+      "stage": 2,
+      "row": 0,
+      "tag": "2.2M rows",
+      "width": 138,
+      "height": 64
+    },
+    {
+      "id": "sleep_record",
+      "type": "database",
+      "label": "sleep_record",
+      "sublabel": "phase strings",
+      "stage": 2,
+      "row": 1,
+      "tag": "categorical",
+      "width": 138,
+      "height": 64
+    },
+    {
+      "id": "workout",
+      "type": "database",
+      "label": "workout",
+      "sublabel": "duration · distance",
+      "stage": 2,
+      "row": 2,
+      "tag": "sessions",
+      "width": 138,
+      "height": 64
+    },
+    {
+      "id": "resolver",
+      "type": "backend",
+      "label": "SourcePriorityResolver",
+      "sublabel": "sweep line, Watch first",
+      "stage": 3,
+      "row": 1,
+      "tag": "read-time",
+      "width": 138,
+      "height": 64
+    },
+    {
+      "id": "sqlagg",
+      "type": "database",
+      "label": "SQL aggregates",
+      "sublabel": "averageValue / maxValue",
+      "stage": 3,
+      "row": 0,
+      "tag": "never in memory",
+      "width": 138,
+      "height": 64
+    },
+    {
+      "id": "workoutstats",
+      "type": "backend",
+      "label": "WorkoutStatsEngine",
+      "sublabel": "km, not metres",
+      "stage": 3,
+      "row": 2,
+      "tag": "unit guard",
+      "width": 138,
+      "height": 64
+    },
+    {
+      "id": "monitor",
+      "type": "backend",
+      "label": "TrainingLoadMonitor",
+      "sublabel": "ACWR · plan vs actual",
+      "stage": 4,
+      "row": 2,
+      "tag": "load",
+      "width": 138,
+      "height": 64
+    },
+    {
+      "id": "engines",
+      "type": "backend",
+      "label": "Score engines",
+      "sublabel": "readiness · sleep · r",
+      "stage": 4,
+      "row": 0,
+      "tag": "pure",
+      "width": 138,
+      "height": 64
+    }
+  ],
+  "flows": [
+    {
+      "from": "parser",
+      "to": "dedup",
+      "label": "5000-row tx",
+      "classification": "batched",
+      "variant": "emphasis",
+      "route": "vertical-channel",
+      "channelX": 180
+    },
+    {
+      "from": "importer",
+      "to": "dedup",
+      "label": "batches"
+    },
+    {
+      "from": "withings_map",
+      "to": "dedup",
+      "label": "HK type ids",
+      "classification": "7 meastypes",
+      "route": "vertical-channel",
+      "channelX": 236
+    },
+    {
+      "from": "dedup",
+      "to": "health_record",
+      "label": "samples",
+      "classification": "idempotent",
+      "variant": "emphasis"
+    },
+    {
+      "from": "dedup",
+      "to": "sleep_record",
+      "label": "phases",
+      "labelDy": 13
+    },
+    {
+      "from": "dedup",
+      "to": "workout",
+      "label": "sessions",
+      "classification": "idempotent"
+    },
+    {
+      "from": "health_record",
+      "to": "sqlagg",
+      "label": "avg / max",
+      "classification": "SQL-side",
+      "route": "straight",
+      "labelDy": -45
+    },
+    {
+      "from": "health_record",
+      "to": "resolver",
+      "label": "[from, to)",
+      "classification": "half-open",
+      "variant": "emphasis",
+      "route": "vertical-channel",
+      "channelX": 667
+    },
+    {
+      "from": "sleep_record",
+      "to": "resolver",
+      "label": "nights",
+      "route": "straight"
+    },
+    {
+      "from": "workout",
+      "to": "workoutstats",
+      "label": "raw sessions"
+    },
+    {
+      "from": "sqlagg",
+      "to": "engines",
+      "label": "RHR / maxHR",
+      "route": "straight"
+    },
+    {
+      "from": "resolver",
+      "to": "engines",
+      "label": "deduped",
+      "classification": "Watch wins",
+      "variant": "emphasis"
+    },
+    {
+      "from": "workoutstats",
+      "to": "monitor",
+      "label": "km volumes"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "emerald",
+      "title": "One synthetic key, three writers",
+      "items": [
+        "id = SHA-256 of type, source, device, dates, value, unit",
+        "Apple exposes no stable record ID; INSERT OR IGNORE closes it",
+        "Re-importing 1.79M records inserts 0 rows"
+      ]
+    },
+    {
+      "dot": "cyan",
+      "title": "Reading is where the rules live",
+      "items": [
+        "Overlaps are resolved at read time; stored rows stay raw",
+        "Sweep line — the old linear scan was O(n²) on 28k samples",
+        "Sources match by substring: \"Apple Watch de Vincent\""
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "Boundaries that bite",
+      "items": [
+        "Half-open ranges: midnight is never counted twice",
+        "388k heart-rate rows are aggregated in SQL, not in memory",
+        "distanceKilometres: the export mixes km and metres"
+      ]
+    }
+  ]
+}

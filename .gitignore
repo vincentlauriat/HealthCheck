@@ -18,6 +18,9 @@ xcuserdata/
 .build/
 .swiftpm/
 
+# ── archify visual-check byproducts (evidence, not deliverables) ──
+docs/diagrams/*.visual-check.*
+
 # ── Release artifacts ──
 *.dmg
 release/
