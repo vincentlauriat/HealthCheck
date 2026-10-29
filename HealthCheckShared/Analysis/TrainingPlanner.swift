@@ -4,6 +4,8 @@ import Foundation
 enum WeekRole: Equatable {
     case currentWeekClosing  // semaine en cours trop entamée pour recevoir des cibles
     case build
+    case recovery            // semaine allégée : cycle 3 + 1, ou lendemain d'une course longue
+    case tuneUp              // semaine d'une course de préparation
     case peak                // course − 2
     case taper               // course − 1
     case raceWeek
@@ -16,6 +18,7 @@ enum SessionKind: Equatable {
     case baseEndurance
     case optionalEasy
     case legOpener
+    case tuneUpRace          // la course de préparation elle-même
 }
 
 struct PlannedSession: Equatable {
@@ -35,6 +38,19 @@ struct PlannedWeek: Equatable {
     let role: WeekRole
     let targetKm: Double
     var sessions: [PlannedSession]
+    /// Course de préparation courue cette semaine-là, s'il y en a une.
+    /// Renseignée quel que soit le rôle : une course qui tombe en semaine
+    /// de pic ou d'affûtage remplace sa sortie longue sans changer le rôle.
+    let tuneUp: RaceGoal?
+
+    init(monday: Date, role: WeekRole, targetKm: Double, sessions: [PlannedSession],
+         tuneUp: RaceGoal? = nil) {
+        self.monday = monday
+        self.role = role
+        self.targetKm = targetKm
+        self.sessions = sessions
+        self.tuneUp = tuneUp
+    }
 }
 
 struct TrainingPlan: Equatable {
@@ -52,6 +68,12 @@ struct TrainingPlan: Equatable {
     /// 1.15 (reprise) ou 1.10 (base établie) — le facteur choisi une seule
     /// fois à l'ancrage, exposé pour la même raison que `anchorBaseKm`.
     let rampFactor: Double
+    /// Volume hebdomadaire que la montée ne dépasse pas : calculé
+    /// (`TrainingPlanner.volumeCapKm`) ou choisi par l'utilisateur.
+    let volumeCapKm: Double
+
+    /// Vrai quand le plafond vient de l'utilisateur et non du calcul.
+    var isVolumeCapOverridden: Bool { goal.peakWeeklyKmOverride != nil }
 
     /// Plus longue sortie longue du plan, toutes semaines confondues.
     /// Calculée, pas stockée : elle ne peut pas se désynchroniser des
@@ -74,6 +96,17 @@ struct TrainingPlan: Equatable {
     /// Nombre de semaines qui redescendent (affûtage + semaine de course).
     var taperWeekCount: Int {
         weeks.filter { $0.role == .taper || $0.role == .raceWeek }.count
+    }
+
+    /// Semaines allégées insérées dans la montée (cycle 3 + 1 ou
+    /// récupération après une course de préparation longue).
+    var recoveryWeekCount: Int {
+        weeks.filter { $0.role == .recovery }.count
+    }
+
+    /// Courses de préparation que le plan intègre, toutes semaines confondues.
+    var tuneUpRaces: [RaceGoal] {
+        weeks.compactMap(\.tuneUp)
     }
 }
 
@@ -185,9 +218,31 @@ enum TrainingPlanner {
                    acuteKm(history: history, today: dayBefore, calendar: calendar))
     }
 
+    // MARK: - Plafonds
+
+    /// Plafond de volume de la montée. Choisi par l'utilisateur s'il l'a
+    /// fixé — appliqué tel quel, sans borne : c'est son plan. Sinon
+    /// 1,5 × le kilomètre-effort de la course (la distance seule
+    /// sous-estimait une course à dénivelé), et **jamais sous la base
+    /// mesurée** : un coureur déjà au-dessus ne se voit pas demander de
+    /// courir moins au pic qu'il ne court aujourd'hui.
+    static func volumeCapKm(goal: RaceGoal, anchorBaseKm: Double) -> Double {
+        if let override = goal.peakWeeklyKmOverride, override > 0 { return override }
+        return max(goal.effortKm * peakVolumeMultiplier, anchorBaseKm)
+    }
+
+    /// Plafond de la sortie longue. Jusqu'au semi, la distance de course
+    /// elle-même : la courir à l'entraînement, à allure conversation, est
+    /// l'usage courant et rassure le jour J. Au-delà, 75 % de la distance,
+    /// borné à 32 km — ce qui dépasse s'use plus qu'il ne construit.
+    static func longRunCapKm(goal: RaceGoal) -> Double {
+        if goal.distanceKm <= halfMarathonKm { return goal.distanceKm }
+        return min(goal.distanceKm * longRaceLongRunShare, maximumLongRunKm)
+    }
+
     // MARK: - Plan
 
-    static func plan(goal: RaceGoal, history: [Workout], hrMax: Double,
+    static func plan(goal: RaceGoal, tuneUps: [RaceGoal] = [], history: [Workout], hrMax: Double,
                      today: Date, calendar: Calendar) -> TrainingPlan {
         let runs = history.filter { $0.activityType == runningActivityType }
         let currentMonday = monday(of: today, calendar: calendar)
@@ -218,6 +273,7 @@ enum TrainingPlanner {
         let anchorBase = max(measuredBaseKm(history: runs, before: firstMonday, calendar: calendar),
                              minimumStartVolumeKm)
         let factor = anchorBase < goal.distanceKm ? comebackRampFactor : steadyRampFactor
+        let volumeCap = volumeCapKm(goal: goal, anchorBaseKm: anchorBase)
 
         var weeks: [PlannedWeek] = []
         // La semaine de création trop entamée n'est affichée que pendant
@@ -230,10 +286,19 @@ enum TrainingPlanner {
         }
         guard !mondays.isEmpty else {
             return TrainingPlan(goal: goal, weeks: weeks, hrMax: hrMax, isMaintenance: false,
-                                anchorBaseKm: anchorBase, rampFactor: factor)
+                                anchorBaseKm: anchorBase, rampFactor: factor, volumeCapKm: volumeCap)
         }
 
-        let volumeCap = goal.distanceKm * peakVolumeMultiplier
+        // Une course de préparation par semaine au plus (la première si
+        // deux tombent la même semaine), jamais la semaine de la course
+        // principale : celle-ci a déjà son propre allègement.
+        var tuneUpByMonday: [Date: RaceGoal] = [:]
+        for race in tuneUps.sorted(by: { $0.raceDate < $1.raceDate }) {
+            let raceWeekMonday = monday(of: race.raceDate, calendar: calendar)
+            guard raceWeekMonday >= firstMonday, raceWeekMonday < raceMonday,
+                  tuneUpByMonday[raceWeekMonday] == nil else { continue }
+            tuneUpByMonday[raceWeekMonday] = race
+        }
 
         // Même ancrage pour la graine de sortie longue : lue avant la
         // première semaine, puis repliée en avant. Sinon les cibles de
@@ -241,7 +306,10 @@ enum TrainingPlanner {
         // raison que les volumes.
         let anchorDayBefore = calendar.date(byAdding: .day, value: -1, to: firstMonday)!
         var previousLong = longestRecentRunKm(history: runs, today: anchorDayBefore, calendar: calendar)
-        let peakClimb = min(maximumClimbM, goal.elevationGainM * 0.75)
+        // Plus de plafond absolu de 300 m : le dénivelé de la séance dédiée
+        // suit celui de la course, quel qu'il soit.
+        let peakClimb = goal.elevationGainM * peakClimbShare
+        let firstClimb = min(firstWeekClimbM, peakClimb)
 
         // Deux semaines ou moins **à la création** : trop tard pour
         // progresser, on entretient.
@@ -259,46 +327,78 @@ enum TrainingPlanner {
                 // relire `test_plan_raceTooClose_isTaperOnlyAndNeverRamps`.
                 let target = anchorBase * taperFactor
                 let climb: Double = role == .raceWeek ? 0 : peakClimb * 0.5
-                let weekSessions = sessions(role: role, targetKm: target, previousLongKm: previousLong,
+                let tuneUp = tuneUpByMonday[monday]
+                var weekSessions = sessions(role: role, targetKm: target, previousLongKm: previousLong,
                                             climbTargetM: climb, goal: goal, hrMax: hrMax,
                                             weekIndexInRamp: nil)
                 if let long = weekSessions.first(where: { $0.kind == .longRun }) { previousLong = long.targetKm }
-                weeks.append(PlannedWeek(monday: monday, role: role, targetKm: target, sessions: weekSessions))
+                if let tuneUp { weekSessions = replacingLongRun(weekSessions, with: tuneUp, hrMax: hrMax) }
+                weeks.append(PlannedWeek(monday: monday, role: role, targetKm: target,
+                                         sessions: weekSessions, tuneUp: tuneUp))
             }
             return TrainingPlan(goal: goal, weeks: weeks, hrMax: hrMax, isMaintenance: true,
-                                anchorBaseKm: anchorBase, rampFactor: factor)
+                                anchorBaseKm: anchorBase, rampFactor: factor, volumeCapKm: volumeCap)
         }
 
         // Le pic est à course − 2 ; on monte jusqu'à lui, puis on relâche.
         let peakIndex = mondays.count - 3
-        var previousTarget = 0.0
+        // Dernière cible de **montée** : les semaines allégées et les
+        // semaines de course de préparation n'y touchent pas. La montée
+        // reprend donc là où elle s'était arrêtée au lieu de repartir du
+        // creux — sans quoi chaque récupération coûterait trois semaines.
+        var lastRampTarget: Double?
         var peakVolume = anchorBase
+        var buildStreak = 0
+        var recoveryOwed = false
         for (i, monday) in mondays.enumerated() {
+            let tuneUp = tuneUpByMonday[monday]
+            let reference = lastRampTarget ?? anchorBase
             let role: WeekRole
             let target: Double
             if i <= peakIndex {
-                let base: Double
-                if i == 0 {
-                    base = anchorBase
-                } else if monday <= currentMonday {
-                    // Semaine passée ou en cours : on relit la charge
-                    // d'avant son lundi, plafonnée par la cible précédente.
-                    // C'est la règle du non-rattrapage : une semaine courue
-                    // court re-base les suivantes vers le bas, une semaine
-                    // dépassée ne les remonte pas.
-                    base = min(measuredBaseKm(history: runs, before: monday, calendar: calendar),
-                               previousTarget)
+                if let tuneUp, i < peakIndex {
+                    // La course compte pour la sortie longue : la semaine est
+                    // allégée autour, mais jamais au point de ne pas contenir
+                    // la course elle-même plus un footing.
+                    role = .tuneUp
+                    target = max(reference * tuneUpWeekFactor, tuneUp.distanceKm + minimumBaseKm)
+                    buildStreak = 0
+                    recoveryOwed = tuneUp.effortKm >= recoveryAfterRaceEffortKm
+                } else if i < peakIndex,
+                          recoveryOwed || (buildStreak >= buildWeeksPerCycle && i < peakIndex - 1) {
+                    // Cycle 3 + 1 : trois semaines qui montent, une qui
+                    // allège. Jamais la semaine qui précède le pic — on
+                    // arrive au pic sur une montée — ni le pic lui-même.
+                    role = .recovery
+                    target = reference * recoveryFactor
+                    buildStreak = 0
+                    recoveryOwed = false
                 } else {
-                    // Semaine à venir : projection pure, **aucune lecture de
-                    // charge**. Une semaine qui n'a pas commencé n'a pas de
-                    // « charge d'avant son lundi » ; y substituer celle
-                    // d'aujourd'hui ferait bouger tout l'aperçu à chaque
-                    // sortie — le défaut d'origine, déplacé.
-                    base = previousTarget
+                    let base: Double
+                    if lastRampTarget == nil {
+                        base = anchorBase
+                    } else if monday <= currentMonday {
+                        // Semaine passée ou en cours : on relit la charge
+                        // d'avant son lundi, plafonnée par la dernière cible
+                        // de montée. C'est la règle du non-rattrapage : une
+                        // semaine courue court re-base les suivantes vers le
+                        // bas, une semaine dépassée ne les remonte pas.
+                        base = min(measuredBaseKm(history: runs, before: monday, calendar: calendar),
+                                   reference)
+                    } else {
+                        // Semaine à venir : projection pure, **aucune lecture de
+                        // charge**. Une semaine qui n'a pas commencé n'a pas de
+                        // « charge d'avant son lundi » ; y substituer celle
+                        // d'aujourd'hui ferait bouger tout l'aperçu à chaque
+                        // sortie — le défaut d'origine, déplacé.
+                        base = reference
+                    }
+                    target = min(base * factor, volumeCap)
+                    role = i == peakIndex ? .peak : .build
+                    if i == peakIndex { peakVolume = target }
+                    lastRampTarget = target
+                    buildStreak += 1
                 }
-                target = min(base * factor, volumeCap)
-                role = i == peakIndex ? .peak : .build
-                if i == peakIndex { peakVolume = target }
             } else if i == mondays.count - 1 {
                 role = .raceWeek
                 target = peakVolume * raceWeekFactor
@@ -306,23 +406,33 @@ enum TrainingPlanner {
                 role = .taper
                 target = peakVolume * taperFactor
             }
+            let rampClimb = firstClimb + (peakClimb - firstClimb) * Double(i) / Double(max(peakIndex, 1))
             let climb: Double
             switch role {
             case .peak:      climb = peakClimb
-            case .build:     climb = firstWeekClimbM
-                                    + (peakClimb - firstWeekClimbM) * Double(i) / Double(max(peakIndex, 1))
+            case .build:     climb = rampClimb
+            case .recovery:  climb = rampClimb * 0.5
             case .taper:     climb = peakClimb * 0.5
             default:         climb = 0
             }
-            let weekSessions = sessions(role: role, targetKm: target, previousLongKm: previousLong,
+            var weekSessions = sessions(role: role, targetKm: target, previousLongKm: previousLong,
                                         climbTargetM: climb, goal: goal, hrMax: hrMax,
-                                        weekIndexInRamp: i <= peakIndex ? i : nil)
-            if let long = weekSessions.first(where: { $0.kind == .longRun }) { previousLong = long.targetKm }
-            previousTarget = target
-            weeks.append(PlannedWeek(monday: monday, role: role, targetKm: target, sessions: weekSessions))
+                                        weekIndexInRamp: i <= peakIndex ? i : nil, tuneUp: tuneUp)
+            // La progression de la sortie longue ne se lit que sur les
+            // semaines qui la portent vraiment : une semaine allégée ou de
+            // course ne la fait ni reculer ni avancer.
+            if role != .recovery, role != .tuneUp,
+               let long = weekSessions.first(where: { $0.kind == .longRun }) {
+                previousLong = long.targetKm
+            }
+            if let tuneUp, role != .tuneUp {
+                weekSessions = replacingLongRun(weekSessions, with: tuneUp, hrMax: hrMax)
+            }
+            weeks.append(PlannedWeek(monday: monday, role: role, targetKm: target,
+                                     sessions: weekSessions, tuneUp: tuneUp))
         }
         return TrainingPlan(goal: goal, weeks: weeks, hrMax: hrMax, isMaintenance: false,
-                            anchorBaseKm: anchorBase, rampFactor: factor)
+                            anchorBaseKm: anchorBase, rampFactor: factor, volumeCapKm: volumeCap)
     }
 }
 
@@ -333,7 +443,28 @@ extension TrainingPlanner {
     static let minimumBaseKm = 3.0
     static let defaultPreviousLongKm = 5.0
     static let firstWeekClimbM = 100.0
-    static let maximumClimbM = 300.0
+    /// Part du D+ de la course visée par la séance de côtes au pic.
+    static let peakClimbShare = 0.75
+
+    // Saison et périodisation (spec 2026-10-29 season planning).
+    /// Semaines de montée consécutives avant une semaine allégée (3 + 1).
+    static let buildWeeksPerCycle = 3
+    /// Volume d'une semaine allégée, en part de la dernière cible de montée.
+    static let recoveryFactor = 0.70
+    /// Sortie longue d'une semaine allégée, en part de la précédente.
+    static let recoveryLongRunFactor = 0.70
+    /// Volume d'une semaine de course de préparation, en part de la
+    /// dernière cible de montée (plancher : la course + un footing).
+    static let tuneUpWeekFactor = 0.85
+    /// Une course de préparation d'au moins 15 km-effort est suivie d'une
+    /// semaine allégée ; un 10 km plat ne l'est pas.
+    static let recoveryAfterRaceEffortKm = 15.0
+    /// Gradient à partir duquel la course est un trail : la sortie longue
+    /// porte alors elle aussi du dénivelé.
+    static let trailGradientMPerKm = 30.0
+    static let halfMarathonKm = 21.1
+    static let longRaceLongRunShare = 0.75
+    static let maximumLongRunKm = 32.0
 
     static func hrRange(_ low: Double, _ high: Double, hrMax: Double) -> ClosedRange<Double> {
         (hrMax * low)...(hrMax * high)
@@ -360,9 +491,12 @@ extension TrainingPlanner {
     /// la sortie longue seulement — du rôle de la semaine : une sortie
     /// longue en semaine de pic ne se justifie pas comme une sortie longue
     /// allégée en affûtage.
-    static func rationale(for kind: SessionKind, isTaper: Bool) -> String {
+    static func rationale(for kind: SessionKind, isTaper: Bool, isRecovery: Bool = false) -> String {
         switch kind {
         case .longRun:
+            if isRecovery {
+                return "Semaine allégée : l'organisme assimile la charge (ou la course) qui précède. C'est pendant ces semaines-là que la forme se fabrique — les sauter, c'est empiler de la fatigue."
+            }
             return isTaper
                 ? "Allégée volontairement. À ce stade, entretenir suffit : ce que vous gagnez maintenant, c'est de la fraîcheur, pas de la forme."
                 : "Elle construit votre distance : plus de capillaires, plus de mitochondries, une meilleure utilisation des graisses comme carburant. C'est 60 % du volume de la semaine — la séance à ne jamais sacrifier."
@@ -376,30 +510,101 @@ extension TrainingPlanner {
             return "Elle absorbe les bonnes semaines, elle ne rattrape pas les mauvaises. À ne faire que si les trois autres sont faites."
         case .legOpener:
             return "Réveiller les jambes sans les fatiguer. Les accélérations sont courtes — quelques dizaines de secondes, pas du fractionné."
+        case .tuneUpRace:
+            return "Une course sur le chemin vaut une sortie longue de qualité : le dossard, la gestion de l'effort, le ravitaillement en conditions réelles. Elle remplace la sortie longue de la semaine ; l'intensité, c'est vous qui la choisissez."
         }
+    }
+
+    /// La séance « course de préparation » : distance et D+ de la course,
+    /// zone large — de la sortie longue au vrai test, au choix du coureur.
+    static func raceSession(_ race: RaceGoal, hrMax: Double) -> PlannedSession {
+        let km = race.distanceKm.formatted(.number.precision(.fractionLength(0...1))
+            .locale(Locale(identifier: "fr_FR")))
+        var note = "Course de préparation : \(race.name), \(km) km"
+        if race.elevationGainM > 0 { note += " et \(Int(race.elevationGainM.rounded())) m de D+" }
+        note += ". En sortie longue en course ou en vrai test : à vous de voir."
+        return PlannedSession(kind: .tuneUpRace, targetKm: race.distanceKm, targetMinutes: nil,
+                              targetClimbM: race.elevationGainM,
+                              hrRange: hrRange(0.75, 0.95, hrMax: hrMax),
+                              note: note,
+                              rationale: rationale(for: .tuneUpRace, isTaper: false))
+    }
+
+    /// Une course qui tombe une semaine qui n'est pas la sienne (pic,
+    /// affûtage, maintien) prend la place de la sortie longue : on ne
+    /// court pas les deux.
+    static func replacingLongRun(_ sessions: [PlannedSession], with race: RaceGoal,
+                                 hrMax: Double) -> [PlannedSession] {
+        let race = raceSession(race, hrMax: hrMax)
+        guard let index = sessions.firstIndex(where: { $0.kind == .longRun }) else {
+            return [race] + sessions
+        }
+        var result = sessions
+        result[index] = race
+        return result
     }
 
     static func sessions(role: WeekRole, targetKm: Double, previousLongKm: Double,
                          climbTargetM: Double, goal: RaceGoal, hrMax: Double,
-                         weekIndexInRamp: Int? = nil) -> [PlannedSession] {
+                         weekIndexInRamp: Int? = nil, tuneUp: RaceGoal? = nil) -> [PlannedSession] {
         let isTaper = role == .taper || role == .raceWeek
-        var longKm = min(targetKm * longRunShare,
-                         previousLongKm + longRunWeeklyGrowthKm,
-                         min(14.0, goal.distanceKm * 0.8))
-        if isTaper { longKm = min(longKm, goal.distanceKm * 0.4) }
+        let isRecovery = role == .recovery
 
         let easy = hrRange(0.60, 0.75, hrMax: hrMax)
         let endurance = hrRange(0.70, 0.80, hrMax: hrMax)
         let hard = hrRange(0.85, 0.92, hrMax: hrMax)
         let intervals = hrRange(0.90, 0.97, hrMax: hrMax)
 
+        // Semaine de course de préparation : la course tient lieu de sortie
+        // longue, un déverrouillage la précède, le reste est facile.
+        if role == .tuneUp, let tuneUp {
+            let race = raceSession(tuneUp, hrMax: hrMax)
+            return [
+                race,
+                PlannedSession(kind: .legOpener, targetKm: 0, targetMinutes: 15,
+                               targetClimbM: 0, hrRange: easy,
+                               note: "Déverrouillage, deux ou trois jours avant la course : 15 min souples avec quelques accélérations courtes.",
+                               rationale: rationale(for: .legOpener, isTaper: true)),
+                PlannedSession(kind: .baseEndurance,
+                               targetKm: max(targetKm - race.targetKm, minimumBaseKm),
+                               targetMinutes: nil, targetClimbM: 0, hrRange: easy,
+                               note: "Endurance fondamentale : facile, vraiment facile. Plutôt après la course qu'avant.",
+                               rationale: rationale(for: .baseEndurance, isTaper: true))
+            ]
+        }
+
+        var longKm = min(targetKm * longRunShare,
+                         previousLongKm + longRunWeeklyGrowthKm,
+                         longRunCapKm(goal: goal))
+        if isTaper { longKm = min(longKm, goal.distanceKm * 0.4) }
+        if isRecovery {
+            longKm = min(targetKm * longRunShare, previousLongKm * recoveryLongRunFactor)
+        }
+
+        // Sur un trail, la sortie longue porte le gradient de la course :
+        // c'est elle qui habitue les jambes à enchaîner montées et descentes
+        // sur la durée. Moitié moins en semaine allégée ou d'affûtage.
+        let longClimb: Double = goal.isTrail
+            ? longKm * goal.elevationGainM / goal.distanceKm * (isTaper || isRecovery ? 0.5 : 1)
+            : 0
+        let longNote: String
+        if isRecovery {
+            longNote = "Sortie longue raccourcie : semaine allégée, tout en aisance."
+        } else if isTaper {
+            longNote = "Sortie longue allégée — restez très à l'aise."
+        } else {
+            longNote = "Sortie longue : la séance qui construit votre distance. Allure conversation."
+        }
+        let longNoteWithClimb = longClimb > 0
+            ? longNote + " Terrain vallonné : environ \(Int(longClimb.rounded())) m de D+, marcher dans les raides est permis."
+            : longNote
+
         var result = [
             PlannedSession(kind: .longRun, targetKm: longKm, targetMinutes: nil,
-                           targetClimbM: 0, hrRange: isTaper ? easy : endurance,
-                           note: isTaper
-                               ? "Sortie longue allégée — restez très à l'aise."
-                               : "Sortie longue : la séance qui construit votre distance. Allure conversation.",
-                           rationale: rationale(for: .longRun, isTaper: isTaper))
+                           targetClimbM: longClimb,
+                           hrRange: isTaper || isRecovery ? easy : endurance,
+                           note: longNoteWithClimb,
+                           rationale: rationale(for: .longRun, isTaper: isTaper, isRecovery: isRecovery))
         ]
 
         if role == .raceWeek {
@@ -407,7 +612,7 @@ extension TrainingPlanner {
                                          targetClimbM: 0, hrRange: easy,
                                          note: "Déverrouillage : 15 min souples avec deux ou trois accélérations courtes.",
                                          rationale: rationale(for: .legOpener, isTaper: isTaper)))
-        } else {
+        } else if !isRecovery {
             let usesIntervals: Bool
             if let index = weekIndexInRamp, role == .build {
                 usesIntervals = index % 2 == 1
@@ -435,7 +640,7 @@ extension TrainingPlanner {
                                      note: "Endurance fondamentale : facile, vraiment facile.",
                                      rationale: rationale(for: .baseEndurance, isTaper: isTaper)))
 
-        if !isTaper {
+        if !isTaper, !isRecovery {
             result.append(PlannedSession(kind: .optionalEasy, targetKm: 0, targetMinutes: 30,
                                          targetClimbM: 0, hrRange: easy,
                                          note: "Optionnelle : 30 min faciles, seulement si les trois autres séances sont faites et que vous vous sentez bien.",

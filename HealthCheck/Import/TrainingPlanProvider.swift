@@ -38,7 +38,8 @@ struct TrainingPlanProvider: TrainingPlanProviding {
         let hrMaxCutoff = calendar.date(byAdding: .day, value: -Self.hrMaxWindowDays, to: today)!
         let hrMax = (try? store.maxValue(type: Self.heartRateType, from: hrMaxCutoff, to: today))
             .flatMap { $0 } ?? Self.defaultHRMax
-        let plan = TrainingPlanner.plan(goal: goal, history: history, hrMax: hrMax, today: today, calendar: calendar)
+        let plan = TrainingPlanner.plan(goal: goal, tuneUps: RaceGoal.tuneUps(for: goal, in: goals),
+                                        history: history, hrMax: hrMax, today: today, calendar: calendar)
 
         return TrainingPlanResponse(
             generatedAt: today,
@@ -63,7 +64,9 @@ struct TrainingPlanProvider: TrainingPlanProviding {
     private func weekSummary(_ week: PlannedWeek, hrMax: Double) -> TrainingWeekSummary {
         TrainingWeekSummary(
             monday: week.monday,
-            role: roleLabel(week.role),
+            // Le compagnon affiche le rôle tel quel : la course de la semaine
+            // y figure donc sans changer le protocole d'échange.
+            role: week.tuneUp.map { roleLabel(week.role) + " · " + $0.name } ?? roleLabel(week.role),
             targetKm: week.targetKm,
             sessions: week.sessions.map { sessionSummary($0, hrMax: hrMax) }
         )
@@ -84,6 +87,8 @@ struct TrainingPlanProvider: TrainingPlanProviding {
         switch role {
         case .currentWeekClosing: return "Semaine en cours"
         case .build: return "Construction"
+        case .recovery: return "Semaine allégée"
+        case .tuneUp: return "Course de préparation"
         case .peak: return "Pic"
         case .taper: return "Affûtage"
         case .raceWeek: return "Semaine de course"
@@ -98,6 +103,7 @@ struct TrainingPlanProvider: TrainingPlanProviding {
         case .baseEndurance: return "Endurance"
         case .optionalEasy: return "Optionnelle"
         case .legOpener: return "Déverrouillage"
+        case .tuneUpRace: return "Course"
         }
     }
 
@@ -125,6 +131,7 @@ struct TrainingPlanProvider: TrainingPlanProviding {
         case .hills, .vo2MaxIntervals: return "intensité"
         case .baseEndurance, .optionalEasy: return "récupération active"
         case .legOpener: return "réveil"
+        case .tuneUpRace: return "course, à votre main"
         }
     }
 }

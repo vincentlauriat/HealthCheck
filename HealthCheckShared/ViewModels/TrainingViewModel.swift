@@ -14,10 +14,10 @@ final class TrainingViewModel: ObservableObject {
     @Published private(set) var assessment: LoadAssessment?
     @Published private(set) var vo2MaxStatus: VO2MaxStatus?
 
-    /// Toutes les courses encore à venir, la plus proche d'abord. La v1 ne
-    /// planifie que la première (`goal`), mais la vue doit pouvoir dire
-    /// qu'une autre suit — sinon un second objectif est chargé puis
-    /// silencieusement jeté.
+    /// Toutes les courses encore à venir, la plus proche d'abord : la
+    /// saison telle que l'écran la liste. Le plan prépare la course
+    /// principale (`goal`) et intègre les courses de préparation qui la
+    /// précèdent ; une course principale plus lointaine attend son tour.
     @Published private(set) var upcomingGoals: [RaceGoal] = []
 
     /// Vrai après le premier chargement — même sémantique que
@@ -53,10 +53,7 @@ final class TrainingViewModel: ObservableObject {
         let goals = try store.raceGoals()
         let activeGoal = RaceGoal.active(in: goals, today: end, calendar: calendar)
         goal = activeGoal
-        let startOfToday = calendar.startOfDay(for: end)
-        upcomingGoals = goals
-            .filter { calendar.startOfDay(for: $0.raceDate) >= startOfToday }
-            .sorted { $0.raceDate < $1.raceDate }
+        upcomingGoals = RaceGoal.upcoming(in: goals, today: end, calendar: calendar)
 
         // La fenêtre d'historique est dérivée de l'objectif, pas d'une
         // constante (§5.2bis) : le repliage remonte à 28 jours avant la
@@ -100,7 +97,9 @@ final class TrainingViewModel: ObservableObject {
         let hrMax = (try? store.maxValue(type: Self.heartRateType, from: hrMaxCutoff, to: end))
             .flatMap { $0 } ?? Self.defaultHRMax
 
-        let computedPlan = TrainingPlanner.plan(goal: activeGoal, history: history, hrMax: hrMax,
+        let computedPlan = TrainingPlanner.plan(goal: activeGoal,
+                                                 tuneUps: RaceGoal.tuneUps(for: activeGoal, in: goals),
+                                                 history: history, hrMax: hrMax,
                                                  today: end, calendar: calendar)
         plan = computedPlan
 
@@ -117,15 +116,25 @@ final class TrainingViewModel: ObservableObject {
                                                 readiness: readiness, today: end, calendar: calendar)
     }
 
-    func createGoal(name: String, raceDate: Date, distanceKm: Double, elevationGainM: Double) throws {
+    /// `peakWeeklyKmOverride` : plafond hebdomadaire choisi par
+    /// l'utilisateur, appliqué tel quel. `nil` (ou ≤ 0) : plafond calculé.
+    func createGoal(name: String, raceDate: Date, distanceKm: Double, elevationGainM: Double,
+                    priority: RaceGoal.Priority = .main, peakWeeklyKmOverride: Double? = nil) throws {
+        let override = peakWeeklyKmOverride.flatMap { $0 > 0 ? $0 : nil }
         let newGoal = RaceGoal(id: UUID().uuidString, name: name, raceDate: raceDate,
                                distanceKm: distanceKm, elevationGainM: elevationGainM,
-                               objective: .finishComfortable, createdAt: now())
+                               objective: .finishComfortable, createdAt: now(),
+                               priority: priority, peakWeeklyKmOverride: override)
         try store.saveRaceGoal(newGoal)
     }
 
     func deleteActiveGoal() throws {
         guard let goal else { return }
         try store.deleteRaceGoal(id: goal.id)
+    }
+
+    /// Retire une course de la saison, principale ou de préparation.
+    func deleteGoal(id: String) throws {
+        try store.deleteRaceGoal(id: id)
     }
 }

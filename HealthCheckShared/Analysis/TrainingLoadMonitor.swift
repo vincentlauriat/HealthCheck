@@ -28,6 +28,9 @@ enum TrainingLoadMonitor {
     static let behindFactor = 0.5
     static let lateWeekDaysLeft = 2
     static let lowReadinessScore = 50.0
+    /// Un plafond personnalisé au-delà de 1,3 × le plafond calculé mérite
+    /// une mention (jamais un refus).
+    static let highOverrideFactor = 1.3
 
     /// Seuil d'effondrement d'une cible de semaine de rampe. La cible
     /// d'une semaine de rampe ne peut baisser que si la précédente a été
@@ -63,8 +66,12 @@ enum TrainingLoadMonitor {
             let progress = SessionMatcher.match(week: week,
                 executed: runsOfWeek(runs, monday: week.monday, calendar: calendar))
             if progress.executedKm > week.targetKm * overshootFactor {
+                // Le moteur conseille, il n'interdit pas : on dit l'écart et
+                // ce qui protège, pas « restez dans les clous ».
                 alerts.append(LoadAlert(severity: .warning,
-                    message: "Vous dépassez le plan — tenez-vous-en aux séances prévues."))
+                    message: "Au-dessus du plan cette semaine : " + formatKm(progress.executedKm)
+                        + " km pour " + formatKm(week.targetKm) + " km prévus. Rien d'interdit — "
+                        + "gardez les séances faciles vraiment faciles et surveillez la fatigue."))
             } else if progress.executedKm < week.targetKm * behindFactor,
                       TrainingPlanner.daysRemainingInWeek(from: today, calendar: calendar) <= lateWeekDaysLeft {
                 alerts.append(LoadAlert(severity: .info,
@@ -82,6 +89,11 @@ enum TrainingLoadMonitor {
                         + "un nouveau plan ne repart jamais sous "
                         + formatKm(TrainingPlanner.minimumStartVolumeKm) + " km."))
             }
+            if week.role == .recovery {
+                alerts.append(LoadAlert(severity: .info,
+                    message: "Semaine allégée : c'est voulu. La forme se construit pendant la "
+                        + "récupération, pas pendant l'effort."))
+            }
             // `isConclusive` : ne pas transformer un panier trop mince en
             // conseil de séance — un score assis sur la seule activité
             // dirait « forme basse » dès que la veille a été calme.
@@ -92,7 +104,22 @@ enum TrainingLoadMonitor {
                 alerts.append(LoadAlert(severity: .info,
                     message: "Forme du jour basse — intervertissez avec une séance facile."))
             }
-        } else if plan == nil, let acwr {
+        }
+
+        // Plafond choisi par l'utilisateur et nettement au-dessus de ce que
+        // le calcul proposerait : on l'applique (spec saison), on le dit.
+        if let plan, let override = plan.goal.peakWeeklyKmOverride,
+           override > TrainingPlanner.volumeCapKm(goal: plan.goal.withoutOverride,
+                                                  anchorBaseKm: plan.anchorBaseKm) * highOverrideFactor {
+            alerts.append(LoadAlert(severity: .info,
+                message: "Plafond personnalisé à " + formatKm(override) + " km par semaine, au-delà des "
+                    + formatKm(TrainingPlanner.volumeCapKm(goal: plan.goal.withoutOverride,
+                                                           anchorBaseKm: plan.anchorBaseKm))
+                    + " km que le calcul proposerait. C'est votre choix : écoutez le sommeil et les "
+                    + "jambes, et reculez d'une semaine au moindre signal."))
+        }
+
+        if plan == nil, let acwr {
             if acwr > highRatio {
                 alerts.append(LoadAlert(severity: .warning,
                     message: "Vous progressez trop vite — réduisez cette semaine."))
@@ -106,9 +133,10 @@ enum TrainingLoadMonitor {
     }
 
     /// Seules les semaines de montée en charge portent une cible dont la
-    /// baisse est anormale. Un relâchement (`.taper` = pic × 0,75) ou une
-    /// semaine de course (pic × 0,5) baissent **par construction**, et une
-    /// semaine de clôture porte une cible nulle qui n'est pas un
+    /// baisse est anormale. Un relâchement (`.taper` = pic × 0,75), une
+    /// semaine de course (pic × 0,5), une semaine allégée (× 0,7) ou une
+    /// semaine de course de préparation baissent **par construction**, et
+    /// une semaine de clôture porte une cible nulle qui n'est pas un
     /// effondrement.
     static func isRampWeek(_ role: WeekRole) -> Bool {
         role == .build || role == .peak

@@ -7,6 +7,10 @@ struct TrainingView: View {
     @State private var goalRaceDate = Calendar.current.date(byAdding: .day, value: 90, to: Date()) ?? Date()
     @State private var goalDistanceText = ""
     @State private var goalClimbText = ""
+    @State private var goalPriority: RaceGoal.Priority = .main
+    @State private var goalOverrideText = ""
+    @State private var showingAddRace = false
+    @State private var goalPendingDeletion: RaceGoal?
 
     @State private var errorMessage: String?
     @State private var showingDeleteConfirmation = false
@@ -18,11 +22,7 @@ struct TrainingView: View {
             VStack(alignment: .leading, spacing: 24) {
                 if let goal = viewModel.goal, let plan = viewModel.plan {
                     goalCard(goal: goal, plan: plan)
-                    if let next = nextGoalAfterActive {
-                        Text("Objectif suivant : \(next.name), le \(raceDateText(next.raceDate)).")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
+                    seasonSection(activeGoal: goal)
                     if let progress = viewModel.progress {
                         thisWeekSection(progress, hrMax: plan.hrMax)
                     }
@@ -63,6 +63,15 @@ struct TrainingView: View {
         } message: {
             Text("Le plan associé disparaîtra. Cette action est irréversible.")
         }
+        .confirmationDialog("Retirer cette course de la saison ?",
+                            isPresented: Binding(get: { goalPendingDeletion != nil },
+                                                 set: { if !$0 { goalPendingDeletion = nil } }),
+                            titleVisibility: .visible) {
+            Button("Retirer", role: .destructive) { deletePendingGoal() }
+            Button("Annuler", role: .cancel) { goalPendingDeletion = nil }
+        } message: {
+            Text("Le plan sera recalculé sans elle.")
+        }
     }
 
     // MARK: - État vide
@@ -81,7 +90,7 @@ struct TrainingView: View {
 
     private var createGoalForm: some View {
         VStack(alignment: .leading, spacing: 16) {
-            Text("Créer un objectif").font(.title2.bold())
+            Text(viewModel.goal == nil ? "Créer un objectif" : "Ajouter une course").font(.title2.bold())
 
             TextField("Nom de la course", text: $goalName)
                 .textFieldStyle(.roundedBorder)
@@ -94,6 +103,30 @@ struct TrainingView: View {
                     .textFieldStyle(.roundedBorder)
                 TextField("Dénivelé positif (m)", text: $goalClimbText)
                     .textFieldStyle(.roundedBorder)
+            }
+
+            Picker("Place dans la saison", selection: $goalPriority) {
+                Text("Course principale").tag(RaceGoal.Priority.main)
+                Text("Course de préparation").tag(RaceGoal.Priority.tuneUp)
+            }
+            .pickerStyle(.segmented)
+            Text(goalPriority == .main
+                 ? "Le plan prépare cette course : montée, pic et affûtage sont calés sur elle."
+                 : "Elle s'insère dans le plan de la course principale : elle remplace la sortie longue de sa semaine.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            if goalPriority == .main {
+                VStack(alignment: .leading, spacing: 4) {
+                    TextField("Plafond hebdomadaire (km, facultatif)", text: $goalOverrideText)
+                        .textFieldStyle(.roundedBorder)
+                    Text("Vide : calculé sur la course et votre niveau. Rempli : appliqué tel quel, "
+                         + "même au-dessus du calcul — le suivi de charge vous dira ce qu'il en pense.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             }
 
             Button("Créer") { createGoal() }
@@ -115,6 +148,10 @@ struct TrainingView: View {
         Double(goalClimbText.replacingOccurrences(of: ",", with: ".")) ?? 0
     }
 
+    private var parsedOverrideKm: Double? {
+        Double(goalOverrideText.replacingOccurrences(of: ",", with: ".")).flatMap { $0 > 0 ? $0 : nil }
+    }
+
     private var canCreateGoal: Bool {
         !goalName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             && parsedDistanceKm > 0
@@ -125,11 +162,15 @@ struct TrainingView: View {
         do {
             try viewModel.createGoal(name: goalName.trimmingCharacters(in: .whitespacesAndNewlines),
                                      raceDate: goalRaceDate, distanceKm: parsedDistanceKm,
-                                     elevationGainM: parsedClimbM)
+                                     elevationGainM: parsedClimbM, priority: goalPriority,
+                                     peakWeeklyKmOverride: goalPriority == .main ? parsedOverrideKm : nil)
             try viewModel.load()
             goalName = ""
             goalDistanceText = ""
             goalClimbText = ""
+            goalOverrideText = ""
+            goalPriority = .main
+            showingAddRace = false
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -142,6 +183,90 @@ struct TrainingView: View {
         } catch {
             errorMessage = error.localizedDescription
         }
+    }
+
+    private func deletePendingGoal() {
+        guard let goal = goalPendingDeletion else { return }
+        goalPendingDeletion = nil
+        do {
+            try viewModel.deleteGoal(id: goal.id)
+            try viewModel.load()
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    // MARK: - Saison
+
+    /// La saison : chaque course à venir avec sa place, et ce que le plan
+    /// en fait. C'est ici qu'on ajoute une course, même quand un objectif
+    /// existe déjà — la v1 n'offrait le formulaire qu'à l'écran vide.
+    @ViewBuilder
+    private func seasonSection(activeGoal: RaceGoal) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Text("Saison").font(.title2.bold())
+                Spacer()
+                Button {
+                    withAnimation(.snappy) { showingAddRace.toggle() }
+                } label: {
+                    Label(showingAddRace ? "Fermer" : "Ajouter une course",
+                          systemImage: showingAddRace ? "xmark" : "plus")
+                }
+                .buttonStyle(.bordered)
+            }
+            VStack(spacing: 8) {
+                ForEach(viewModel.upcomingGoals, id: \.id) { race in
+                    seasonRow(race, activeGoal: activeGoal)
+                }
+            }
+            if showingAddRace {
+                createGoalForm
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func seasonRow(_ race: RaceGoal, activeGoal: RaceGoal) -> some View {
+        let isActive = race.id == activeGoal.id
+        let inPlan = race.priority == .tuneUp && race.raceDate < activeGoal.raceDate
+        HStack(spacing: 14) {
+            Image(systemName: isActive ? "flag.checkered" : (race.priority == .main ? "flag" : "figure.run"))
+                .font(.body.weight(.semibold))
+                .foregroundStyle(isActive ? Color.teal : Color.secondary)
+                .frame(width: 30, height: 30)
+                .background((isActive ? Color.teal : Color.secondary).opacity(0.12),
+                            in: RoundedRectangle(cornerRadius: 8))
+            VStack(alignment: .leading, spacing: 2) {
+                Text(race.name).font(.callout.weight(.semibold))
+                Text(seasonCaption(race, isActive: isActive, inPlan: inPlan))
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+            Spacer()
+            statText(race.distanceKm.formatted(.number.precision(.fractionLength(0...1))) + " km",
+                     icon: "location.fill")
+            if race.elevationGainM > 0 {
+                statText("D+ \(Int(race.elevationGainM.rounded())) m", icon: "mountain.2.fill")
+            }
+            Button(role: .destructive) {
+                goalPendingDeletion = race
+            } label: {
+                Image(systemName: "trash")
+            }
+            .buttonStyle(.borderless)
+            .help("Retirer cette course")
+        }
+        .padding(12)
+        .background(.background, in: RoundedRectangle(cornerRadius: 12))
+        .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(.separator.opacity(0.4)))
+    }
+
+    private func seasonCaption(_ race: RaceGoal, isActive: Bool, inPlan: Bool) -> String {
+        let when = raceDateText(race.raceDate)
+        if isActive { return "Course principale · \(when) · le plan la prépare" }
+        if inPlan { return "Préparation · \(when) · intégrée au plan" }
+        if race.priority == .main { return "Course principale · \(when) · prochain objectif" }
+        return "Préparation · \(when) · après la course principale"
     }
 
     // MARK: - Objectif actif
@@ -247,6 +372,25 @@ struct TrainingView: View {
             text += " Ce rythme un peu plus soutenu est celui d'une reprise : votre base est sous la "
                 + "distance de course."
         }
+        if plan.recoveryWeekCount > 0 {
+            text += "\n\nToutes les trois semaines de montée, une semaine allégée (−30 %) laisse le corps "
+                + "assimiler : \(plan.recoveryWeekCount) dans ce plan. La montée reprend ensuite là où elle "
+                + "s'était arrêtée."
+        }
+        let races = plan.tuneUpRaces
+        if !races.isEmpty {
+            text += "\n\nCourses de préparation intégrées : " + races.map(\.name).joined(separator: ", ")
+                + ". Chacune remplace la sortie longue de sa semaine ; après une course de 15 km-effort "
+                + "ou plus, la semaine suivante est allégée."
+        }
+        let cap = plan.volumeCapKm.formatted(.number.precision(.fractionLength(1)))
+        if plan.isVolumeCapOverridden {
+            text += "\n\nPlafond de volume : \(cap) km/semaine, votre choix — appliqué tel quel."
+        } else {
+            let effort = plan.goal.effortKm.formatted(.number.precision(.fractionLength(1)))
+            text += "\n\nPlafond de volume : \(cap) km/semaine, 1,5 fois les \(effort) km-effort de la "
+                + "course (distance + 1 km par 100 m de D+), jamais sous votre base actuelle."
+        }
         return text
     }
 
@@ -278,12 +422,6 @@ struct TrainingView: View {
     private static func capitalizedFirst(_ s: String) -> String {
         guard let first = s.first else { return s }
         return first.uppercased() + s.dropFirst()
-    }
-
-    /// Deuxième course à venir, s'il y en a une : la v1 ne planifie que la
-    /// plus proche, mais elle ne doit pas faire comme si l'autre n'existait pas.
-    private var nextGoalAfterActive: RaceGoal? {
-        viewModel.upcomingGoals.count > 1 ? viewModel.upcomingGoals[1] : nil
     }
 
     private func raceDateText(_ date: Date) -> String {
@@ -394,6 +532,7 @@ struct TrainingView: View {
         case .baseEndurance: return "Endurance"
         case .optionalEasy: return "Optionnelle"
         case .legOpener: return "Déverrouillage"
+        case .tuneUpRace: return "Course"
         }
     }
 
@@ -421,6 +560,7 @@ struct TrainingView: View {
         case .hills, .vo2MaxIntervals: return "intensité"
         case .baseEndurance, .optionalEasy: return "récupération active"
         case .legOpener: return "réveil"
+        case .tuneUpRace: return "course, à votre main"
         }
     }
 
@@ -517,13 +657,14 @@ struct TrainingView: View {
 
     @ViewBuilder
     private func upcomingWeekRow(_ week: PlannedWeek, rampFactor: Double) -> some View {
-        let longRun = week.sessions.first { $0.kind == .longRun }
+        let longRun = week.sessions.first { $0.kind == .longRun || $0.kind == .tuneUpRace }
         let hills = week.sessions.first { $0.kind == .hills }
         HStack(spacing: 14) {
             VStack(alignment: .leading, spacing: 2) {
                 Text(week.monday.formatted(.dateTime.day().month(.wide).locale(Locale(identifier: "fr_FR"))))
                     .font(.callout.weight(.semibold))
-                Text(roleLabel(week.role)).font(.caption).foregroundStyle(.secondary)
+                Text(week.tuneUp.map { roleLabel(week.role) + " · " + $0.name } ?? roleLabel(week.role))
+                    .font(.caption).foregroundStyle(week.tuneUp == nil ? Color.secondary : Color.teal)
                 Text(weekRoleCaption(week.role, rampFactor: rampFactor))
                     .font(.caption2).foregroundStyle(.secondary)
             }
@@ -532,10 +673,12 @@ struct TrainingView: View {
                 statText(week.targetKm.formatted(.number.precision(.fractionLength(1))) + " km", icon: "figure.run")
                 if let longRun {
                     statText(longRun.targetKm.formatted(.number.precision(.fractionLength(1))) + " km",
-                            icon: "arrow.up.forward")
+                            icon: longRun.kind == .tuneUpRace ? "flag.checkered" : "arrow.up.forward")
                 }
-                if let hills, hills.targetClimbM > 0 {
-                    statText("D+ \(Int(hills.targetClimbM.rounded())) m", icon: "mountain.2")
+                // D+ de la semaine : côtes et sortie longue (trail) ou course.
+                let weekClimb = (hills?.targetClimbM ?? 0) + (longRun?.targetClimbM ?? 0)
+                if weekClimb > 0 {
+                    statText("D+ \(Int(weekClimb.rounded())) m", icon: "mountain.2")
                 }
             }
         }
@@ -548,6 +691,8 @@ struct TrainingView: View {
         switch role {
         case .currentWeekClosing: return "Semaine en cours"
         case .build: return "Construction"
+        case .recovery: return "Semaine allégée"
+        case .tuneUp: return "Course de préparation"
         case .peak: return "Pic"
         case .taper: return "Affûtage"
         case .raceWeek: return "Semaine de course"
@@ -561,6 +706,10 @@ struct TrainingView: View {
         case .build:
             let ramp = Int(((rampFactor - 1) * 100).rounded())
             return "Montée en charge — au plus +\(ramp) % sur la semaine précédente."
+        case .recovery:
+            return "On souffle : −30 % pour assimiler. La montée reprend la semaine suivante."
+        case .tuneUp:
+            return "La course remplace la sortie longue ; le reste de la semaine est facile."
         case .peak:
             return "Le plus gros volume du plan, deux semaines avant la course."
         case .taper:

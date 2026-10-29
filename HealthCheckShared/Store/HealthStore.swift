@@ -84,7 +84,24 @@ final class HealthStore: @unchecked Sendable {
                     createdAt TEXT NOT NULL
                 )
                 """)
+            try Self.migrateRaceGoalSeasonColumns(db)
             try Self.migrateDedupKeys(db)
+        }
+    }
+
+    /// Ajoute à `race_goal` les deux colonnes de la saison (spec
+    /// 2026-10-29) : la priorité de la course et le plafond personnalisé.
+    /// Idempotente — elle lit les colonnes présentes au lieu de dépendre
+    /// d'un numéro de version — et sans perte : les objectifs déjà saisis
+    /// deviennent des courses principales sans plafond, soit exactement ce
+    /// que le moteur faisait d'eux avant.
+    private static func migrateRaceGoalSeasonColumns(_ db: Database) throws {
+        let columns = Set(try db.columns(in: "race_goal").map(\.name))
+        if !columns.contains("priority") {
+            try db.execute(sql: "ALTER TABLE race_goal ADD COLUMN priority TEXT NOT NULL DEFAULT 'main'")
+        }
+        if !columns.contains("peakWeeklyKmOverride") {
+            try db.execute(sql: "ALTER TABLE race_goal ADD COLUMN peakWeeklyKmOverride REAL")
         }
     }
 
@@ -445,14 +462,17 @@ final class HealthStore: @unchecked Sendable {
         try queue().write { db in
             try db.execute(sql: """
                 INSERT OR REPLACE INTO race_goal
-                    (id, name, raceDate, distanceKm, elevationGainM, objective, createdAt)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
+                    (id, name, raceDate, distanceKm, elevationGainM, objective, createdAt,
+                     priority, peakWeeklyKmOverride)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 arguments: [goal.id, goal.name,
                             Self.isoFormatter.string(from: goal.raceDate),
                             goal.distanceKm, goal.elevationGainM,
                             goal.objective.rawValue,
-                            Self.isoFormatter.string(from: goal.createdAt)])
+                            Self.isoFormatter.string(from: goal.createdAt),
+                            goal.priority.rawValue,
+                            goal.peakWeeklyKmOverride])
         }
     }
 
@@ -470,10 +490,16 @@ final class HealthStore: @unchecked Sendable {
                       let createdAt = Self.isoFormatter.date(from: row["createdAt"]),
                       let objective = RaceGoal.Objective(rawValue: row["objective"])
                 else { return nil }
+                // Une priorité inconnue (écrite par une version future) est
+                // lue comme principale plutôt que de faire disparaître la course.
+                let priorityRaw: String? = row["priority"]
+                let priority = priorityRaw.flatMap(RaceGoal.Priority.init(rawValue:)) ?? .main
+                let override: Double? = row["peakWeeklyKmOverride"]
                 return RaceGoal(id: row["id"], name: row["name"], raceDate: raceDate,
                                 distanceKm: row["distanceKm"],
                                 elevationGainM: row["elevationGainM"],
-                                objective: objective, createdAt: createdAt)
+                                objective: objective, createdAt: createdAt,
+                                priority: priority, peakWeeklyKmOverride: override)
             }
         }
     }
