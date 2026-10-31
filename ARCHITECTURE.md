@@ -17,6 +17,16 @@ framework se lie (le SDK le marque disponible depuis macOS 13) mais
 empiriquement jusqu'à la beta macOS 27. Les données Apple Watch/iPhone
 ne peuvent venir que de l'export zip manuel de l'app Santé.
 
+Deux diagrammes interactifs rendent la topologie décrite ici, générés avec
+Archify depuis les spécifications conservées à côté (ouvrir le `.html` dans un
+navigateur ; régénérer avec `archify deliver` depuis le `.json`) :
+
+- `docs/diagrams/healthcheck-architecture.html` — les composants, les deux
+  frontières d'appareil et les trois chemins d'ingestion.
+- `docs/diagrams/healthcheck-dataflow.html` — le chemin d'écriture à travers
+  la porte de dédup jusqu'aux trois tables, puis la résolution au moment de
+  la lecture et l'analyse.
+
 ## Flux de données
 
 ```

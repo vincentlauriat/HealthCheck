@@ -17,6 +17,15 @@ links (SDK marks it available since macOS 13) but
 empirically up to macOS 27 beta. Apple Watch/iPhone data can only come
 from the manual Health-app zip export.
 
+Two interactive diagrams render this document's topology, generated with
+Archify from the specifications kept beside them (open the `.html` in a
+browser; regenerate with `archify deliver` from the `.json`):
+
+- `docs/diagrams/healthcheck-architecture.html` — components, the two
+  device boundaries, and the three ingestion paths.
+- `docs/diagrams/healthcheck-dataflow.html` — the write path through the
+  dedup gate into the three tables, then read-time resolution and analysis.
+
 ## Data flow
 
 ```
