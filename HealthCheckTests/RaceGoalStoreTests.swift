@@ -113,6 +113,15 @@ final class RaceGoalStoreTests: XCTestCase {
         XCTAssertEqual(goals.first?.priority, .main)
         XCTAssertNil(goals.first?.peakWeeklyKmOverride)
 
+        // La lecture tolère des colonnes absentes : relire l'ancien objectif
+        // passe même sans migration. Seule une écriture prouve qu'elles
+        // existent désormais.
+        let tuneUp = RaceGoal(id: "tune-up", name: "Route des 4 Châteaux", raceDate: date("2026-11-15"),
+                              distanceKm: 18, elevationGainM: 300, objective: .finishComfortable,
+                              createdAt: date("2026-10-29"), priority: .tuneUp, peakWeeklyKmOverride: 30)
+        try store.saveRaceGoal(tuneUp)
+        XCTAssertEqual(try store.raceGoals().last, tuneUp)
+
         // Rouvrir une base déjà migrée ne doit pas retenter l'ALTER TABLE.
         _ = try HealthStore(path: path)
     }
