@@ -166,11 +166,16 @@ final class TrainingPlannerTests: XCTestCase {
         XCTAssertEqual(plan.weeks[1].targetKm, 23.1, accuracy: 0.1)
     }
 
-    func test_plan_peakVolume_isCappedAtOnePointFiveTimesRaceDistance() {
-        let plan = TrainingPlanner.plan(goal: goal(), history: trainedHistory(), hrMax: 190,
+    /// Le plafond suit le kilomètre-effort (17 km + 400 m → 21 km-effort,
+    /// × 1,5 = 31,5 km), plus la seule distance. Avec 28 km/semaine de base,
+    /// la rampe à 1,10 donne 30,8 puis 33,9 : le pic **doit** être rogné à
+    /// 31,5 — une égalité exacte, que la seule borne `<=` ne prouverait pas.
+    func test_plan_peakVolume_isCappedAtOnePointFiveTimesRaceEffortKm() {
+        let plan = TrainingPlanner.plan(goal: goal(), history: trainedHistory(perDayKm: 4.0), hrMax: 190,
                                         today: date("2026-08-23"), calendar: calendar)
         let peak = plan.weeks.first { $0.role == .peak }!
-        XCTAssertLessThanOrEqual(peak.targetKm, 17 * 1.5 + 0.001)
+        XCTAssertEqual(plan.volumeCapKm, (17 + 4) * 1.5, accuracy: 0.001)
+        XCTAssertEqual(peak.targetKm, (17 + 4) * 1.5, accuracy: 0.001)
     }
 
     func test_plan_raceTooClose_isTaperOnlyAndNeverRamps() {
@@ -374,14 +379,24 @@ final class TrainingPlannerTests: XCTestCase {
         }
     }
 
-    func test_sessions_longRun_neverExceedsEightyPercentOfRaceDistance() {
+    /// Jusqu'au semi, la sortie longue peut atteindre la distance de course,
+    /// jamais la dépasser — l'ancien plafond (14 km, 80 %) a disparu.
+    func test_sessions_longRun_neverExceedsRaceDistanceForShortRaces() {
         let plan = TrainingPlanner.plan(goal: goal(), history: trainedHistory(perDayKm: 5.0),
                                         hrMax: 190, today: date("2026-08-23"), calendar: calendar)
         for week in plan.weeks {
             if let long = week.sessions.first(where: { $0.kind == .longRun }) {
-                XCTAssertLessThanOrEqual(long.targetKm, min(14, 17 * 0.8) + 0.001)
+                XCTAssertLessThanOrEqual(long.targetKm, 17 + 0.001)
             }
         }
+    }
+
+    func test_longRunCap_isRaceDistanceUpToHalfMarathon_thenThreeQuartersBoundedAt32() {
+        XCTAssertEqual(TrainingPlanner.longRunCapKm(goal: goal(km: 17)), 17, accuracy: 0.001)
+        XCTAssertEqual(TrainingPlanner.longRunCapKm(goal: goal(km: 21.1)), 21.1, accuracy: 0.001)
+        XCTAssertEqual(TrainingPlanner.longRunCapKm(goal: goal(km: 30)), 22.5, accuracy: 0.001)
+        XCTAssertEqual(TrainingPlanner.longRunCapKm(goal: goal(km: 42.195)), 31.65, accuracy: 0.01)
+        XCTAssertEqual(TrainingPlanner.longRunCapKm(goal: goal(km: 100)), 32, accuracy: 0.001)
     }
 
     func test_sessions_buildWeek_hasThreeCoreSessionsPlusOneOptional() {
@@ -396,7 +411,7 @@ final class TrainingPlannerTests: XCTestCase {
         let first = weeks.first!.sessions.first { $0.kind == .hills }!
         XCTAssertEqual(first.targetClimbM, 100, accuracy: 0.5)
         let peak = weeks.first { $0.role == .peak }!.sessions.first { $0.kind == .hills }!
-        XCTAssertEqual(peak.targetClimbM, 300, accuracy: 0.5) // min(300, 400 × 0.75)
+        XCTAssertEqual(peak.targetClimbM, 300, accuracy: 0.5) // 400 × 0.75
     }
 
     func test_sessions_raceWeek_swapsHillsForALegOpener() {
@@ -615,7 +630,10 @@ final class TrainingPlannerTests: XCTestCase {
 
         let plan = TrainingPlanner.plan(goal: longerGoal, history: comebackHistory, hrMax: 190,
                                         today: date("2026-08-23"), calendar: calendar)
-        XCTAssertEqual(plan.rampWeekCount, totalTargetWeeks - 2)
+        // Les semaines allégées du cycle 3 + 1 ne montent pas : elles sont
+        // comptées à part.
+        XCTAssertGreaterThan(plan.recoveryWeekCount, 0, "un plan de 15 semaines doit souffler")
+        XCTAssertEqual(plan.rampWeekCount + plan.recoveryWeekCount, totalTargetWeeks - 2)
         XCTAssertEqual(plan.taperWeekCount, 2)
 
         let fiveWeekPlan = TrainingPlanner.plan(goal: goal(), history: comebackHistory, hrMax: 190,

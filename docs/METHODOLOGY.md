@@ -792,9 +792,19 @@ rapide), sinon 1,10. `TrainingPlan.rampFactor` et `.anchorBaseKm` sont
 exposés sur le résultat précisément pour que l'écran explique le plan sans
 recalculer cet ancrage (`TrainingPlanner.swift:47-53`).
 
-Chaque semaine de montée applique ce facteur, plafonné pour que la **semaine
-de pic** ne dépasse jamais `goal.distanceKm × 1,5` (`volumeCap`,
-`peakVolumeMultiplier = 1.5`, `TrainingPlanner.swift:86,232,294`).
+Chaque semaine de montée applique ce facteur, plafonné par `volumeCapKm` :
+
+```swift
+volumeCapKm = goal.peakWeeklyKmOverride                       // choix de l'utilisateur, appliqué tel quel
+           ?? max(goal.effortKm × 1.5, anchorBaseKm)          // peakVolumeMultiplier = 1.5
+effortKm    = distanceKm + elevationGainM / 100               // kilomètre-effort
+```
+Le kilomètre-effort remplace la distance seule, qui sous-estimait une
+course à dénivelé (17 km et 650 m D+ pèsent 23,5 km-effort, plafond 35,25
+km). Le plafond ne descend jamais sous la base mesurée : un coureur qui
+court déjà plus n'est pas ramené en arrière. Un plafond personnalisé n'est
+jamais refusé ; au-delà de 1,3 × le plafond calculé, le moniteur de charge
+le mentionne (§12).
 
 ### 11.4 La règle de non-rattrapage — et son absence de plancher
 
@@ -886,8 +896,8 @@ baseEndurance = reste (volume − longue − côtes), plancher minimumBaseKm = 3
 longKm = min(
     targetKm × 0.60,
     previousLongKm + longRunWeeklyGrowthKm,   // 2.5 km/semaine max
-    min(14.0, goal.distanceKm × 0.8)          // plafond absolu
-)
+    longRunCapKm(goal)                        // distance de course jusqu'au semi,
+)                                             // puis min(distance × 0.75, 32 km)
 if affûtage: longKm = min(longKm, goal.distanceKm × 0.4)
 ```
 (`TrainingPlanner.swift:377-380`) où `previousLongKm` part de la plus longue
@@ -898,8 +908,8 @@ et progresse ensuite semaine après semaine à partir de la sortie longue
 
 **Côtes :** cible de dénivelé qui grandit linéairement de
 `firstWeekClimbM = 100` m (première semaine) jusqu'au pic
-`peakClimb = min(maximumClimbM, elevationGainM × 0,75)`, plafonné à
-`maximumClimbM = 300` m
+`peakClimb = elevationGainM × 0,75` (`peakClimbShare`), sans plafond absolu
+depuis la saison (l'ancien plafond de 300 m bridait tout trail)
 (`TrainingPlanner.swift:304-311,329-330,240`) ; ×0,5 en affûtage ; nul en
 semaine de course (remplacée par un « déverrouillage » de 15 minutes,
 `legOpener`) et pendant la semaine de clôture (voir plus bas).
@@ -948,9 +958,10 @@ des séances, pas une somme garantie exacte des séances qui en sortent.
 - **Aucune prescription d'allure** (min/km) — l'objectif v1 est le confort,
   pas un temps cible ; seules des zones de fréquence cardiaque sont
   prescrites.
-- **Un seul objectif actif à la fois** : la course future la plus proche
-  l'emporte, les autres sont ignorées tant qu'elle n'est pas passée
-  (`RaceGoal.active`, `RaceGoal.swift:20-28`).
+- **Une seule course préparée à la fois** : la course **principale** future
+  la plus proche (ou, à défaut, la course la plus proche). Les courses de
+  préparation qui la précèdent sont intégrées au plan (§11.9) ; une autre
+  course principale attend son tour.
 - Le kilométrage en côtes et en plat est traité identiquement dans le
   volume — la séance de côtes dédiée est le seul mécanisme d'équilibrage,
   il n'y a pas de métrique ajustée à la pente.
@@ -988,6 +999,37 @@ la même constante que le moniteur de charge, référencée et non dupliquée) �
 en dessous, la stagnation n'est pas surprenante et ne mérite pas d'alerte.
 
 ---
+
+### 11.9 Saison : courses de préparation et cycle 3 + 1
+
+Spec complète : `docs/superpowers/specs/2026-10-29-season-planning-design.md`.
+
+**Courses de préparation** (`RaceGoal.Priority.tuneUp`) : toutes celles qui
+précèdent la course principale, passées comprises (une semaine courue ne
+doit pas changer de forme le lendemain de la course). Dans la zone de
+montée, hors pic, leur semaine prend le rôle `.tuneUp` :
+
+```swift
+target = max(lastRampTarget × 0.85, race.distanceKm + 3.0)   // tuneUpWeekFactor, minimumBaseKm
+séances = [course, déverrouillage 15 min, endurance (reste, plancher 3 km)]
+```
+Une course d'au moins 15 km-effort (`recoveryAfterRaceEffortKm`) est suivie
+d'une semaine `.recovery`. Au pic, à l'affûtage ou en maintien, la course
+garde le rôle de la semaine et remplace seulement la sortie longue.
+
+**Cycle 3 + 1** : après trois semaines de montée consécutives
+(`buildWeeksPerCycle = 3`), une semaine `.recovery` à `lastRampTarget × 0,70`
+(`recoveryFactor`), sans séance dure ni optionnelle, sortie longue à 0,70 de
+la précédente. Jamais au pic ni la semaine qui le précède.
+
+**Reprise de la montée** : semaines `.recovery` et `.tuneUp` ne modifient ni
+`lastRampTarget` ni la graine de sortie longue ; la montée suivante repart
+de la dernière vraie cible de montée. La règle de non-rattrapage s'applique
+inchangée aux semaines de montée passées.
+
+**Trail** (`elevationGainM / distanceKm ≥ 30`, `trailGradientMPerKm`) : la
+sortie longue porte le gradient de la course (`longKm × D+ / distance`,
+moitié en semaine allégée ou d'affûtage).
 
 ## 12. Suivi de charge — `TrainingLoadMonitor`
 
@@ -1039,7 +1081,9 @@ le réalisé de la semaine à la **cible du plan** :
 
 | Condition | Constante | Alerte |
 |---|---|---|
-| exécuté > 125 % de la cible | `overshootFactor = 1.25` | avertissement : « Vous dépassez le plan — tenez-vous-en aux séances prévues » |
+| exécuté > 125 % de la cible | `overshootFactor = 1.25` | avertissement : « Au-dessus du plan cette semaine : X km pour Y km prévus. Rien d'interdit — gardez les séances faciles vraiment faciles et surveillez la fatigue. » |
+| semaine `.recovery` en cours | — | information : la semaine allégée est voulue |
+| plafond personnalisé > 1,3 × plafond calculé | `highOverrideFactor = 1.3` | information : le choix est appliqué, avec ce qu'il implique |
 | exécuté < 50 % de la cible **et** ≤ 2 jours restants dans la semaine | `behindFactor = 0.5`, `lateWeekDaysLeft = 2` | info : « Semaine en retard — elle ne sera pas rattrapée la semaine suivante » |
 | forme du jour < 50 **et** une séance de côtes ou une sortie longue restent à faire | `lowReadinessScore = 50.0` | info : « Forme du jour basse — intervertissez avec une séance facile » |
 

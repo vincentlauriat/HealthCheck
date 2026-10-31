@@ -1,4 +1,5 @@
 import XCTest
+import GRDB
 @testable import HealthCheck
 
 final class RaceGoalStoreTests: XCTestCase {
@@ -65,5 +66,63 @@ final class RaceGoalStoreTests: XCTestCase {
 
     func test_active_allRacesPast_isNil() {
         XCTAssertNil(RaceGoal.active(in: [goal("Past", "2026-08-01")], today: date("2026-08-23")))
+    }
+
+    // MARK: - Saison
+
+    func test_saveRaceGoal_roundTripsPriorityAndOverride() throws {
+        let store = try HealthStore(path: ":memory:")
+        let tuneUp = RaceGoal(id: UUID().uuidString, name: "Route des 4 Châteaux", raceDate: date("2026-11-15"),
+                              distanceKm: 18, elevationGainM: 300, objective: .finishComfortable,
+                              createdAt: date("2026-10-29"), priority: .tuneUp, peakWeeklyKmOverride: nil)
+        let main = RaceGoal(id: UUID().uuidString, name: "Restonica GT20K", raceDate: date("2027-07-09"),
+                            distanceKm: 17, elevationGainM: 650, objective: .finishComfortable,
+                            createdAt: date("2026-10-29"), priority: .main, peakWeeklyKmOverride: 42.5)
+        try store.saveRaceGoal(tuneUp)
+        try store.saveRaceGoal(main)
+        XCTAssertEqual(try store.raceGoals(), [tuneUp, main])
+    }
+
+    /// Une base créée avant la saison n'a ni `priority` ni
+    /// `peakWeeklyKmOverride`. L'ouvrir doit ajouter les colonnes sans rien
+    /// perdre, et relire l'objectif existant comme une course principale
+    /// sans plafond — ce que le moteur faisait déjà de lui.
+    func test_legacyRaceGoalTable_isMigratedWithoutLosingTheGoal() throws {
+        let path = NSTemporaryDirectory() + "race-goal-\(UUID().uuidString).sqlite"
+        defer { try? FileManager.default.removeItem(atPath: path) }
+        do {
+            let legacy = try DatabaseQueue(path: path)
+            try legacy.write { db in
+                try db.execute(sql: """
+                    CREATE TABLE race_goal (
+                        id TEXT PRIMARY KEY, name TEXT NOT NULL, raceDate TEXT NOT NULL,
+                        distanceKm REAL NOT NULL, elevationGainM REAL NOT NULL,
+                        objective TEXT NOT NULL, createdAt TEXT NOT NULL
+                    )
+                    """)
+                try db.execute(sql: """
+                    INSERT INTO race_goal VALUES ('legacy', 'Paris-Versailles', '2026-09-27T08:00:00.000Z',
+                                                  16.5, 290, 'finishComfortable', '2026-08-23T07:00:00.000Z')
+                    """)
+            }
+        }
+
+        let store = try HealthStore(path: path)
+        let goals = try store.raceGoals()
+        XCTAssertEqual(goals.map(\.id), ["legacy"])
+        XCTAssertEqual(goals.first?.priority, .main)
+        XCTAssertNil(goals.first?.peakWeeklyKmOverride)
+
+        // La lecture tolère des colonnes absentes : relire l'ancien objectif
+        // passe même sans migration. Seule une écriture prouve qu'elles
+        // existent désormais.
+        let tuneUp = RaceGoal(id: "tune-up", name: "Route des 4 Châteaux", raceDate: date("2026-11-15"),
+                              distanceKm: 18, elevationGainM: 300, objective: .finishComfortable,
+                              createdAt: date("2026-10-29"), priority: .tuneUp, peakWeeklyKmOverride: 30)
+        try store.saveRaceGoal(tuneUp)
+        XCTAssertEqual(try store.raceGoals().last, tuneUp)
+
+        // Rouvrir une base déjà migrée ne doit pas retenter l'ALTER TABLE.
+        _ = try HealthStore(path: path)
     }
 }

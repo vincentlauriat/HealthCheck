@@ -146,7 +146,7 @@ final class TrainingLoadMonitorTests: XCTestCase {
                                         today: date("2026-08-24"), calendar: calendar)
         let a = TrainingLoadMonitor.assess(history: history, plan: plan, readiness: nil,
                                            today: date("2026-08-28"), calendar: calendar)
-        XCTAssertTrue(a.alerts.contains { $0.severity == .warning && $0.message.contains("dépassez le plan") })
+        XCTAssertTrue(a.alerts.contains { $0.severity == .warning && $0.message.contains("Au-dessus du plan") })
     }
 
     func test_assess_withPlan_farBehindLateInTheWeek_informsWithoutWarning() {
@@ -210,7 +210,7 @@ final class TrainingLoadMonitorTests: XCTestCase {
     /// La semaine en cours peut être `.currentWeekClosing` (cible à 0, trop
     /// tard pour recevoir des consignes). Sans le garde `week.role !=
     /// .currentWeekClosing`, n'importe quelle sortie dépasserait
-    /// mécaniquement `0 × 1,25`, et un avertissement « dépassez le plan »
+    /// mécaniquement `0 × 1,25`, et un avertissement « au-dessus du plan »
     /// se déclencherait à tort.
     func test_assess_withPlan_currentWeekClosing_producesNoOvershootWarning() {
         let g = goal()
@@ -311,7 +311,7 @@ final class TrainingLoadMonitorTests: XCTestCase {
 
         let a = TrainingLoadMonitor.assess(history: history, plan: plan, readiness: nil,
                                            today: today, calendar: calendar)
-        XCTAssertTrue(a.alerts.contains { $0.severity == .warning && $0.message.contains("dépassez le plan") },
+        XCTAssertTrue(a.alerts.contains { $0.severity == .warning && $0.message.contains("Au-dessus du plan") },
                       "2× le volume prescrit doit déclencher l'avertissement de surdosage")
     }
 
