@@ -40,7 +40,7 @@ L'app est organisée en neuf sections :
 | **Sommeil** | Score de nuit 0-100 (durée vs cible 8 h, % profond, % REM, continuité), phases empilées sur 14 nuits, moyennes. |
 | **Effort** | Minutes par zone cardiaque Z1-Z5 (bornées sur la FC max réellement observée), score d'effort quotidien pondéré, historique 14 j coloré par intensité. |
 | **Séances** | Volume hebdomadaire par activité sur 12 semaines, 25 dernières séances (durée, distance, kcal, FC moyenne), trace GPS dépliable sur carte MapKit. |
-| **Entraînement** | Objectif de course (nom, date, distance, dénivelé) → plan hebdomadaire généré (volume, sortie longue, côtes, endurance), rapprochement automatique des séances courues, moniteur de charge aiguë/chronique avec alertes relatives au plan. |
+| **Entraînement** | Saison de courses : une course principale et des courses de préparation (nom, date, distance, dénivelé, plafond hebdomadaire optionnel) → plan hebdomadaire généré (volume, sortie longue avec dénivelé en trail, côtes, endurance), cycles 3 + 1 avec semaines allégées, semaines de course de préparation et récupération après les grosses courses ; rapprochement automatique des séances courues, moniteur de charge aiguë/chronique avec alertes relatives au plan. |
 | **Corps** | Composition corporelle complète : poids, masses grasse/maigre, muscle, eau, os, graisse viscérale ; deltas 30 j / 1 an ancrés sur la dernière pesée ; diagramme de Sankey de la répartition du poids ; courbes poids/maigre avec bande de graisse. |
 | **Corrélations** | 5 questions sur 180 j (ex. « mieux dormir améliore-t-il votre HRV du lendemain ? ») — Pearson avec garde-fous : minimum 10 paires, variance nulle refusée, avertissement corrélation ≠ causalité. |
 | **Tendances** | FC repos, poids, VO₂ max, sommeil — aire + moyenne mobile 7 j, périodes 1 sem → tout. |
@@ -154,7 +154,7 @@ HealthCheck/
 │   ├── ViewModels/      # Un par section, @MainActor, chargement unique
 │   └── Views/           # SwiftUI + Swift Charts + Sankey maison
 ├── HealthCheckShared/    # DTO d'échange + protocole compagnon, partagés Mac/iOS
-├── HealthCheckTests/    # 197 tests (moteurs + store + mapping + synchro compagnon + entraînement)
+├── HealthCheckTests/    # 324 tests (moteurs + store + mapping + synchro compagnon + entraînement)
 ├── Companion/            # App iOS (HealthKit, synchro, appairage, UI)
 ├── CompanionTests/       # 64 tests (mapping HealthKit, ancres, synchro, view model, conseils/forme locaux)
 ├── Scripts/release.sh   # Release signée + notarisée
@@ -208,3 +208,4 @@ Ce projet est distribué sous licence MIT — voir [LICENSE](LICENSE).
 - [x] (Optionnel) App compagnon iOS pour supprimer l'export manuel — récepteur Mac + app iOS livrés (serveur, appairage, ingestion, lecture HealthKit, synchro manuelle/arrière-plan) ; validation sur iPhone physique restante
 - [x] Écran Entraînement — objectif de course, plan hebdomadaire (`TrainingPlanner`), rapprochement des séances (`SessionMatcher`), moniteur de charge relatif au plan (`TrainingLoadMonitor`)
 - [x] Onglet Conseils côté Companion iOS — forme, conseil du jour, tendance VO2max calculés localement, indépendants de l'appairage Mac
+- [x] Planification de saison — courses principale et de préparation, cycles 3 + 1, plafonds de volume (`TrainingPlanner`, migration `race_goal`)
