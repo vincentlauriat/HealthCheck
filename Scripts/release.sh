@@ -4,6 +4,20 @@
 # release/, notarisation (profil trousseau AppliMacVincentGithub), staple.
 set -euo pipefail
 
+# Notary credentials: an App Store Connect API key (.p8) when NOTARY_KEY_ID, NOTARY_ISSUER_ID and
+# NOTARY_KEY_PATH are set or read from ~/.config/notarytool/api-key.env (it survives a keychain
+# reset); otherwise the keychain profile given as first argument. Usage: notary_run <profile> <args>
+notary_run() {
+  _np="$1"; shift
+  _nf="${NOTARY_ENV_FILE:-$HOME/.config/notarytool/api-key.env}"
+  if [ -z "${NOTARY_KEY_ID:-}" ] && [ -f "$_nf" ]; then . "$_nf"; fi
+  if [ -n "${NOTARY_KEY_ID:-}" ]; then
+    xcrun notarytool "$@" --key "${NOTARY_KEY_PATH/#\~/$HOME}" --key-id "$NOTARY_KEY_ID" --issuer "${NOTARY_ISSUER_ID:-}"
+  else
+    xcrun notarytool "$@" --keychain-profile "$_np"
+  fi
+}
+
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 APP_NAME="HealthCheck"
 SCHEME="HealthCheck"
@@ -120,7 +134,7 @@ hdiutil create -volname "$APP_NAME" -srcfolder "$DMG_SRC" -ov -format UDZO "$DMG
 echo "  $DMG"
 
 echo "── Notarisation (peut prendre quelques minutes) ──"
-xcrun notarytool submit "$DMG" --keychain-profile "$NOTARY_PROFILE" --wait
+notary_run "$NOTARY_PROFILE" submit "$DMG" --wait
 
 echo "── Staple ──"
 xcrun stapler staple "$DMG"
